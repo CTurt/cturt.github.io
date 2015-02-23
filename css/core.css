@@ -51,6 +51,9 @@ p {
 	margin-bottom: 16px;
 	padding: 0;
 }
+img {
+	max-width: 100%;
+}
 form {
 	margin-bottom: 48px;
 }
@@ -277,7 +280,7 @@ a:active {
 	padding-top: 5%;
 	padding-bottom: 5%;
 }
-.separator {
+hr {
 	width: 100%;
 	height: 1px;
 	margin-left: 0;
