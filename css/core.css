@@ -305,11 +305,18 @@ hr {
 }
 iframe {
 	display: block;
-	width: 560px;
-	height: 315px;
 	margin-left: auto;
 	margin-right: auto;
 	margin-bottom: 16px;
+	border: 0;
+}
+.youtube {
+	width: 560px;
+	height: 315px;
+}
+.contributions {
+	width: 721px;
+	height: 110px;
 }
 .footer {
 	width: 100%;
