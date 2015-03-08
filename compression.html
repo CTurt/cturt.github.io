@@ -79,7 +79,7 @@
 				</p>
 				
 				<p>
-					My compressor uses 2 bytes for references to data:W 12 bits for the position (relative to the current byte), and 4 bits for the length. This means that data up to 4095 bytes away can be referenced, with lengths of up to 15 bytes. This ratio was chosen to target files of 4KB and larger, which don't repeat large sections of data, just enough to make compression viable. I tried other ratios, but 12:4 seemed to work well for me!
+					My compressor uses 2 bytes for references to data: 12 bits for the position (relative to the current byte), and 4 bits for the length. This means that data up to 4095 bytes away can be referenced, with lengths of up to 15 bytes. This ratio was chosen to target files of 4KB and larger, which don't repeat large sections of data, just enough to make compression viable. I tried other ratios, but 12:4 seemed to work well for me!
 				</p>
 				
 				<p>
