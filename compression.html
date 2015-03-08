@@ -1,0 +1,91 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>CTurt</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="compression.html" class="header-element">
+						Compression
+					</a>
+					
+					<a href="exploits.html" class="header-element">
+						Exploits
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Compression</h1>
+				<hr>
+				
+				<p>
+					For a long time, I've seen compression as a magicical, black box.
+				</p>
+				
+				<p>
+					Put a file through a compressor, out comes another file, put the new file in a decompressor, and out comes the original. Some files get compressed better than others, and some may even get larger after compression. I never really gave it much more thought than this.
+				</p>
+				
+				<p>
+					But I recently decided to change this by learning about some simple compression techniques, and seeing if I could create my own implementations in C.
+				</p>
+				
+				<br>
+				
+				<h2>CTC</h2>
+				<p>
+					<a href="https://github.com/CTurt/CTC">This</a> was my first attempt at compression.
+				</p>
+				
+				<p>
+					It is based on the same principle as <a href="http://en.wikipedia.org/wiki/Huffman_coding">Huffman compression</a>: to encode each character as an unique pattern of bits, with variable lengths. The most frequently used characters are given the shortest bit patterns, and the least frequently used characters are given the longest. The distribution of bit patterns is often thought of as being a tree.
+				</p>
+				
+				<p>
+					In order for Huffman compressed data to be decompressed, the bit patterns of each character must be known, as it is dependent on the input file. I experimented with the best way to compress this data, I combined <a href="http://en.wikipedia.org/wiki/Differential_coding">Differential coding</a> with <a href="http://en.wikipedia.org/wiki/Run-length_encoding">RLE</a> on bytes of 1, which gives favourable results.
+				</p>
+				
+				<p>
+					While my compressor doesn't build the trees as efficiently as real Huffman compression, it is still able to compress simple text documents which refrain from using too many different characters, reasonably; the project's README.md file can be reduced in size by about 20% when compressed for example. Blank bitmaps, and other easy to compress data can give size reductions of up to 70%!
+				</p>
+				
+				<br>
+				
+				<h2>CTC2</h2>
+				<p>
+					While I was pleased with my first attempt at compression, I wanted to experiment with other techniques to further my understanding of the topic.
+				</p>
+				
+				<p>
+					I started reading about <a href="http://en.wikipedia.org/wiki/LZ77_and_LZ78">LZ77 compression</a>, which can generally provide better compression on a larger range of files, and came up with <a href="https://github.com/CTurt/CTC2">CTC2</a>.
+				</p>
+				
+				<p>
+					LZ77 compression is based on the assumption that enough data will be repeated in order to make storing references, instead of repeated data, decrease the file size.
+				</p>
+				
+				<p>
+					My compressor uses 2 bytes for references to data:W 12 bits for the position (relative to the current byte), and 4 bits for the length. This means that data up to 4095 bytes away can be referenced, with lengths of up to 15 bytes. This ratio was chosen to target files of 4KB and larger, which don't repeat large sections of data, just enough to make compression viable. I tried other ratios, but 12:4 seemed to work well for me!
+				</p>
+				
+				<p>
+					CTC2 is able to compress its own main.c file by about 55%! A great improvement over the original CTC (though we aren't comparing the same file).
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
