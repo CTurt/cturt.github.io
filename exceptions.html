@@ -1,0 +1,178 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>CTurt</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="ds.html" class="header-element">
+						DS
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Implementing exceptions in C</h1>
+				<hr>
+				
+				<p>
+					After reading about the <a href="http://acez.re/ps-vita-level-1-webkitties-3/">PS Vita webkit exploit</a>, I discovered the standard C functions: <code>setjmp</code> and <code>longjmp</code>, found in <code>setjmp.h</code>.
+				</p>
+				
+				<p>
+					To understand what these functions do, take a look at the following example:
+				</p>
+				
+				<div class="quote">
+					<p>
+						The example below shows the basic idea of setjmp. There, <code>main()</code> calls <code>first()</code>, which in turn calls <code>second()</code>. Then, <code>second()</code> jumps back into <code>main()</code>, skipping <code>first()</code>'s call of <code>printf()</code>.
+					</p>
+					
+					<pre><code>#include &lt;stdio.h&gt;
+#include &lt;setjmp.h&gt;
+ 
+static jmp_buf buf;
+ 
+void second(void) {
+    printf("second\n");         // prints
+    longjmp(buf,1);             // jumps back to where setjmp was called - making setjmp now return 1
+}
+ 
+void first(void) {
+    second();
+    printf("first\n");          // does not print
+}
+ 
+int main() {   
+    if ( ! setjmp(buf) ) {
+        first();                // when executed, setjmp returns 0
+    } else {                    // when longjmp jumps back, setjmp returns 1
+        printf("main\n");       // prints
+    }
+ 
+    return 0;
+}</code></pre>
+					
+					<p>
+						When executed, the above program will output:
+					</p>
+					
+					<pre><code>second
+main</code></pre>
+					
+					<p>
+						Notice that although the <code>first()</code> subroutine gets called, "<code>first</code>" is never printed. "<code>main</code>" gets printed as the conditional statement <code>if ( ! setjmp(buf) )</code> is executed a second time.
+					</p>
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="http://en.wikipedia.org/wiki/Setjmp.h">Wikipedia</a>
+				</div>
+				<br>
+				
+				<br>
+				
+				<p>
+					As you can see, this is not very maintainable code. It is also common for there to be differences between different implementations of the functions, making it something that you should avoid using.
+				</p>
+				
+				<p>
+					What practical use could these functions ever have? Well, Wikipedia states that:
+				</p>
+				
+				<div class="quote">
+					A typical use of <code>setjmp/longjmp</code> is implementation of an <a href="http://en.wikipedia.org/wiki/Exception_mechanism">exception mechanism</a>
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="http://en.wikipedia.org/wiki/Setjmp.h">Wikipedia</a>
+				</div>
+				<br>
+				
+				<br>
+				
+				<p>
+					So, I decided to see if I could get an exception handling implementation of my own, in C.
+				</p>
+				
+				<p>
+					The library I wrote can be found on <a href="https://github.com/CTurt/Exception">GitHub</a>, it is used like so:
+				</p>
+				
+				<pre><code>/*
+	CTurt's implementation of exceptions in C
+	licensed under the MIT License (MIT)
+	
+	https://github.com/CTurt/Exception
+*/
+
+/*
+	Program output:
+
+	Doing something...
+	Process failed due to error 1!
+	End of program
+*/
+
+#include &lt;stdio.h&gt;
+
+#include "exception.h"
+
+void process(void) {
+	printf("Doing something...\n");
+	throw(1);
+}
+
+int main(void) {
+	// Create a new exception
+	exception(
+		try() {
+			process();
+			
+			// this never happens because process always throws error 1
+			printf("Got to end of process!\n");
+		}
+		
+		// is executed when throw(1) is called within the try
+		catch(1) {
+			printf("Process failed due to error 1!\n");
+		}
+		
+		// is executed when a throw is called within the try and there
+		// is no catch specific to the exception
+		finally() {
+			// use e to get the value passed to throw
+			printf("Process failed due to error %d!\n", e);
+		}
+	);
+	
+	printf("End of program\n");
+	
+	return 0;
+}
+</code></pre>
+				
+				<p>
+					As you can see, the syntax is at least a little bit cleaner than using <code>setjmp</code> and <code>longjmp</code> directly, but I would still not recommend using this in any serious projects.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
