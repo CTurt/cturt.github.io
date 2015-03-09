@@ -5,7 +5,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<title>CTurt</title>
+		<title>dsgmLib</title>
 	</head>
 	
 	<body>
@@ -33,7 +33,7 @@
 				<hr>
 				
 				<p>
-					dsgmLib was originally designed to be the game engine used in a complete remake of <a href="http://dsgamemaker.com">DS Game Maker</a>, however, it still works great as a standalone library for making DS games and applications.
+					dsgmLib was originally designed to be the game engine used in a complete remake of <a href="http://dsgamemaker.com">DS Game Maker</a>; since dsgmLib code was designed to be generated from the DS Game Maker application, it can sometimes feel repetitive and convoluted to set up rooms and objects by hand, however, once you become familiar with the syntax, dsgmLib can be used as a powerful, standalone library for making all kinds of DS games and applications.
 				</p>
 				
 				<div class="quote">
@@ -49,8 +49,8 @@
 				<div class="quote-reference">
 					<a href="https://github.com/DSGameMaker/dsgmLib/blob/master/README.md">- dsgmLib README.md</a>
 				</div>
-				
 				<br>
+				
 				<br>
 				
 				<h2>Features</h2>
@@ -65,6 +65,26 @@
 					<li>Scaling and rotating of sprites</li>
 					<li>Sound effects, and music</li>
 				</ul>
+				
+				<br>
+				
+				<h2>Event and object based code</h2>
+				<p>
+					As a C programmer, object oriented programming is not something that I have much experience with; I had to employ some, <i>questionable</i>, techniques in order to make the object system work as I wanted. Because of this, the source code is not representative of my usual, clean, style.
+				</p>
+				
+				<p>
+					With that said, the combination of event driven, and object oriented code is extremely pleasing; in the right hands, dsgmLib can be used to create some superbly clean code:
+				</p>
+				
+				<pre><code>void ball_touch(ballObjectInstance *me) {
+	me->x += 32;
+	me->y += 32;
+}</code></pre>
+				
+				<p>
+					<i>When any instance of <code>ball</code> is touched, it is moved down and right by 32 pixels.</i>
+				</p>
 				
 				<br>
 				
