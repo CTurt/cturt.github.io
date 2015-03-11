@@ -283,6 +283,18 @@ hr {
 	background-color: rgb(0, 132, 150);
 	border-color: rgb(0, 132, 150);
 }
+.quote {
+	padding: 16px;
+	background-color: rgb(234, 234, 234);
+	-webkit-border-radius: 8px;
+	-moz-border-radius: 8px;
+	border-radius: 8px;
+	margin-bottom: 4px;
+}
+.quote-reference {
+	float: right;
+	font-style: italic;
+}
 .footer {
 	width: 100%;
 	height: 60px;
