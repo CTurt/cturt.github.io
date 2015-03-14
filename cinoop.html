@@ -49,7 +49,11 @@
 				</p>
 				
 				<p>
-					Cinoop is written in C and is <a href="https://github.com/CTurt/Chinoop">open source</a>. While I wouldn't recommend trying to learn about emulation from someone as inexperienced as me, I wanted to outline the process of starting an emulator for the first time, talk about which documents were most helpful to me, and also talk about some of the design choices I went through.
+					Cinoop is written in C and is <a href="https://github.com/CTurt/Chinoop">open source</a>. It can be run on Windows, DS, or GameCube.
+				</p>
+				
+				<p>
+					While I wouldn't recommend trying to learn about emulation from someone as inexperienced as me, I wanted to outline the process of starting an emulator for the first time, talk about which documents were most helpful to me, and also talk about some of the design choices I went through.
 				</p>
 				
 				<br>
@@ -289,66 +293,6 @@ void ld_b_n(unsigned char operand) { registers.b = operand; }
 				
 				<br>
 				
-				<h2>GPU bug</h2>
-				<p>
-					Most of my GPU code is based on <a href="http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-Graphics">this tutorial</a>, however, there is one detail which is not entirely accurate:
-				</p>
-				
-				<div class="quote">
-					There is space in the GameBoy memory for 384 tiles
-				</div>
-				
-				<div class="quote-reference">
-					<a href="http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-Graphics">- Imran Nazar</a>
-				</div>
-				
-				<br>
-				
-				<p>
-					The Game Boy actually has enough space in VRAM for 512 tiles, however only 384 can be displayed.
-				</p>
-				
-				<p>
-					Let's take a look at his <code>updatetile</code> function:
-				</p>
-				
-				<pre><code>addr &= 0x1FFE;
-...
-var tile = (addr >> 4) & 511;
-...
-GPU._tileset[tile][y][x] = ...
-</pre></code>
-				
-				<p>
-					Did you spot the problem?
-				</p>
-				
-				<p>
-					If a write is made to <code>0x9FFF</code>, then the tile that will be written is 511 (<code>tile = ((0x9FFF & 0x1FFE) >> 4) & 511</code>); this is out of bounds of the 384 element array!
-				</p>
-				
-				<p>
-					In JavaScript this doesn't really matter, since an array will just grow if a previously out of bounds value is written to, however, in my C emulator, I got some juicy, <a href="http://en.wikipedia.org/wiki/Undefined_behavior">undefined behaviour</a> when running Tetris: other parts of memory were being written to, such as the cartridge ROM, which in turn caused the wrong instructions to be executed. This was extremely confusing and frustrating!
-				</p>
-				
-				<p>
-					To fix this problem, you could either expand your tileset memory to have 512 elements:
-				</p>
-				
-				<pre><code>unsigned char tiles[512][8][8];</code></pre>
-				
-				<p>
-					Or you could perform bounds checking on the tile value, before writing to tileset memory:
-				</p>
-				
-				<pre><code>if(tile >= 384) return;</code></pre>
-				
-				<p>
-					I chose to expand my tileset memory.
-				</p>
-				
-				<br>
-				
 				<h2>Tilesets</h2>			
 				<p>
 					Running what seems like an endless list of CPU instructions, to check everything is working, is important, but it becomes dull very quickly. Drawing the tileset would be my first, visual confirmation that Cinoop was actually working well enough to load graphics.
@@ -525,6 +469,99 @@ jr z</code></pre>
 				</p>
 				
 				<img src="images/cinoop/menu.png" />
+				<br>
+				
+				<h2>Porting</h2>
+				<p>
+					To make Cinoop more useful, I decided to port it to several other systems.
+				</p>
+				
+				<br>
+				
+				<h3>DS</h3>
+				<p>
+					The first system I ported Cinoop to was the DS, which really didn't take long since I am so familiar with it.
+				</p>
+				
+				<p>
+					I started by rendering to the DS in framebuffer mode, which can be done as follows.
+				</p>
+				
+				<pre><code>videoSetMode(MODE_FB0);
+vramSetBankA(VRAM_A_LCD);
+VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
+				
+				<p>
+					This was good at first because it meant that I could just reuse the Windows rendering code, so I managed to get Cinoop up and running fairly quickly:
+				</p>
+				
+				<img src="images/cinoop/ds.png" />
+				<br>
+				
+				<p>
+					However, the DS already has support for tiles and sprites; rendering to a framebuffer is slow.
+				</p>
+				
+				<br>
+				
+				<h3>GameCube</h3>
+				<p>
+					The GameCube isn't a system that I have ever programmed for, so I decided that this would be a good project to start with. While there is not nearly as much documentation as for the DS, it was still Thanks to libogc and devkitPPC it was easy to get started.
+				</p>
+				
+				<p>
+					Unlike x86 and the DS, the GameCube's PowerPC processor is big endian. This was a minor annoyance, but was trivial to account for:
+				</p>
+				
+				<pre><code>#ifdef WIN
+	#define LITTLE_E
+#endif
+
+#ifdef DS
+	#define LITTLE_E
+#endif
+
+#ifdef GC
+	#define BIG_E
+#endif
+
+struct registers {
+	struct {
+		union {
+			struct {
+				#ifdef LITTLE_E
+					unsigned char f;
+					unsigned char a;
+				#else
+					unsigned char a;
+					unsigned char f;
+				#endif
+			};
+			unsigned short af;
+		};
+	};
+	
+	struct {
+		union {
+			struct {
+				#ifdef LITTLE_E
+					unsigned char c;
+					unsigned char b;
+				#else
+					unsigned char b;
+					unsigned char c;
+				#endif
+			};
+			unsigned short bc;
+		};
+	};
+	...</code></pre>
+				
+				<p>
+					The GameCube emulator I used for testing, gcube, doesn't support reading files from the memory card, so I had to hardcode the Tetris ROM into the binary, which was another minor annoyance. With all that done, I had Cinoop running on the GameCube!
+				</p>
+				
+				<img src="images/cinoop/gamecube.png" />
 				<br>
 				
 				<br>
