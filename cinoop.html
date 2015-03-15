@@ -49,7 +49,7 @@
 				</p>
 				
 				<p>
-					Cinoop is written in C and is <a href="https://github.com/CTurt/Chinoop">open source</a>. It can be run on Windows, DS, or GameCube.
+					Cinoop is written in C and is <a href="https://github.com/CTurt/Cinoop">open source</a>. It can be run on Windows, DS, or GameCube.
 				</p>
 				
 				<p>
@@ -563,6 +563,38 @@ struct registers {
 				
 				<img src="images/cinoop/gamecube.png" />
 				<br>
+				
+				<h3>3DS</h3>				
+				<p>
+					3DS development is a lot harder than DS development since it has had far less time to mature. There is far less documentation, and it feels clunky to develop for.
+				</p>
+				
+				<p>
+					For example, the DS' libfat supports file reading using the standard C procedures (<code>fopen</code> et al.), however the 3DS' ctrulib has its own special way to read files (<code>FSUSER_OpenFileDirectly</a> et al.).
+				</p>
+				
+				<p>
+					3DS emulation also isn't very good at the moment, so I had to test on real hardware, which was quite time consuming.
+				</p>
+				
+				<p>
+					The 3DS scene is very chaotic at the moment; there are multiple launchers which you should support when releasing something:
+				</p>
+				
+				<ul>
+					3ds - Flashcards
+					3dsx and smdh - Homebrew Launcher
+					cia - Custom firmwares
+					elf - Emulators
+				</ul>
+				
+				<p>
+					Also note that some applications are released as a ".dat" ROP chain, since they require kernel access.
+				</p>
+				
+				<p>
+					Apart from these few annoyances, the 3DS port didn't take too long. In the future, I hope to add support for rendering sprites above the background using 3D.
+				</p>
 				
 				<br>
 				
