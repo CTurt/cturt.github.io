@@ -285,15 +285,22 @@ hr {
 }
 .quote {
 	padding: 16px;
+	padding-bottom: 16px;
 	background-color: rgb(234, 234, 234);
 	-webkit-border-radius: 8px;
 	-moz-border-radius: 8px;
 	border-radius: 8px;
 	margin-bottom: 4px;
 }
+.quote p:last-child {
+	margin-bottom: 0px;
+}
 .quote-reference {
 	float: right;
 	font-style: italic;
+}
+iframe {
+	margin-bottom: 16px;
 }
 .footer {
 	width: 100%;
