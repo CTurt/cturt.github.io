@@ -449,7 +449,7 @@ for(i = 0; i < (144 / 8) * (160 / 8); i++) {
 	if(tetrisPatch && address == 0xff80) return;</code></pre>
 				
 				<p>
-					It wasn't my intention to use game specific patches rather than sorting out bugs properly, but I assumed that if I temporarily enabled this patch, the problem would eventually sort its self out as I improved Cinoop.
+					It wasn't my intention to use game specific patches rather than sorting out bugs properly, but I assumed that if I temporarily enabled this patch, the problem would eventually sort its self out as I improved Cinoop (which it did).
 				</p>
 				
 				<p>
@@ -501,6 +501,13 @@ VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
 				<p>
 					However, the DS already has support for tiles and sprites; rendering to a framebuffer is slow.
 				</p>
+				
+				<p>
+					I revised the code to use the DS' native tile rendering. It ran faster than the framebuffer renderer, but it had some minor graphical glitches on some tiles:
+				</p>
+				
+				<img src="images/cinoop/dsTiles.png" />
+				<br>
 				
 				<br>
 				
