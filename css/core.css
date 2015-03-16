@@ -299,7 +299,16 @@ hr {
 	float: right;
 	font-style: italic;
 }
+.center {
+	width: 100%;
+	text-align: center;
+}
 iframe {
+	display: block;
+	width: 560px;
+	height: 315px;
+	margin-left: auto;
+	margin-right: auto;
 	margin-bottom: 16px;
 }
 .footer {
