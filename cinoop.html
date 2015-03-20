@@ -509,13 +509,13 @@ VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
 				<br>
 				
 				<p>
-					I'm not exactly sure what caused this, but I think it was because I was writing to VRAM too frequently. I fixed the issue by writing to an array in RAM instead, and setting a <code>dirtyMap</code> variable. During the DS' VBlank, I checked to see if the map had changed, and if so, copied the tiles from RAM into VRAM:
+					I'm not exactly sure what caused this, but I think it was because I was writing to VRAM too frequently. I fixed the issue by writing to an array in RAM instead, and setting a <code>dirtyTileset</code> variable. During the DS' VBlank, I checked to see if the tileset had changed, and if so, copied the tiles from RAM into VRAM:
 				</p>
 				
 				<pre><code>void dsVblank(void) {
-	if(dirtyMap) {
+	if(dirtyTileset) {
 		memcpy(bgGetGfxPtr(layer), tiles, 160 / 8 * 144 / 8 * 32);
-		dirtyMap = 0;
+		dirtyTileset = 0;
 	}
 }
 
@@ -527,9 +527,13 @@ void updateTile(unsigned short address, unsigned char value) {
 	...
 	
 	#ifdef DS
-		dirtyMap = 1;
+		dirtyTileset = 1;
 	#endif
 }</code></pre>
+				
+				<p>
+					The way that the DS video modes are designed, it is not possible for sprites and backgrounds to share a tileset, like the Game Boy does. As a result of this, I had to copy the tileset into both the background, and sprite memory in the <code>dsVblank</code> routine.
+				</p>
 				
 				<p>
 					Finally, I wrote a plain black tile into VRAM, and used it for the border. With the finalised tile rendering system in place, the emulator ran noticeably faster (but still not full speed).
@@ -656,7 +660,7 @@ struct registers {
 				
 				<h2>Final thoughts</h2>
 				<p>
-					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>. It isn't currently in a state to run anything to the point where it is playable, but I have still learnt a lot, and I hope to improve on it in time.
+					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>. It isn't currently in a state to run anything to the point where it is fully playable, but I have still learnt a lot, and I hope to improve on it in time.
 				</p>
 				
 				<p>
