@@ -1,0 +1,550 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>CTurt</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="ds.html" class="header-element">
+						DS
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Cinoop</h1>
+				<hr>
+				
+				<p>
+					I've always wanted to write an emulator from scratch, but I've held off for a long time because it's probably the most advanced programming project I've ever wanted to do.
+				</p>
+				
+				<p>
+					Picking a system to emulate isn't an easy choice; the standard first emulator project seems to be a <a href="http://en.wikipedia.org/wiki/CHIP-8">CHIP-8</a> emulator. Reading about CHIP-8 definitely helped me to understand a lot of emulation concepts, but it seemed a bit too basic. I felt that I got enough out of just reading through other people's emulators, and that writing my own would be a pointless exercise.
+				</p>
+				
+				<p>
+					On the other hand, there's the NES and Game Boy; both of which seemed far too advanced for me!
+				</p>
+				
+				<p>
+					Eventually, I decided to write a minimalist Game Boy interpreting emulator, without support for custom mappers or sound, (and probably many inaccuracies). I called the project Cinoop.
+				</p>
+				
+				<p>
+					Cinoop is written in C and is <a href="https://github.com/CTurt/Chinoop">open source</a>. While I wouldn't recommend trying to learn about emulation from someone as inexperienced as me, I wanted to outline the process of starting an emulator for the first time, talk about which documents were most helpful to me, and also talk about some of the design choices I went through.
+				</p>
+				
+				<br>
+				
+				<h2>Starting off</h2>
+				<p>
+					I used my own library, <a href="https://github.com/CTurt/LDFS">LDFS</a>, to create a window with a valid OpenGL context. A better choice would have been something more standard, and cross-platform, such as <a href="https://www.libsdl.org/">SDL</a>, however, I went with LDFS just because I was familiar with it.
+				</p>
+				
+				<p>
+					I then read through some <a href="http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf">Game Boy documents</a> to get a better overview of the project. In hindsight, I should have spent much longer doing this so that I wouldn't have to keep looking things up later, but I was excited!
+				</p>
+				
+				<p>
+					Most of the Game Boy specific code that I wrote in the beginning, such as loading a ROM, was based heavily on other emulators. I looked at how two or three different emulators did it, and then wrote it into Cinoop in my own style. It wasn't worth trying to write code on my own just yet, I needed to have a base to work with first, before I could experiment with doing things my own way.
+				</p>
+				
+				<br>
+				
+				<h2>Memory</h2>
+				<p>
+					Different sources can refer to memory regions differently. High RAM is sometimes called Zero Page Memory, Cartridge Data is sometimes just called ROM, and if a document just says RAM, it is usually refering to the Working RAM. Being aware of this, is essential when reading through documents written by different people.
+				</p>
+				
+				<br>
+				
+				<h2>Registers</h2>
+				<p>
+					The Game Boy has eight 8 bit registers: A, B, C, D, E, F, H, and L, as well as two 16 bit registers: SP, and PC. Initially I implemented the registers like so:
+				</p>
+				
+				<pre><code>struct registers {
+	unsigned char a;
+	unsigned char b;
+	unsigned char c;
+	unsigned char d;
+	unsigned char e;
+	unsigned char h;
+	unsigned char l;
+	unsigned char flags;
+	unsigned short sp;
+	unsigned short pc;
+} extern registers;
+</code></pre>
+				
+				<p>
+					While this model is fine for dealing with instructions that access the 8 bit registers individually, what I didn't realise is that often the 8 bit registers are grouped together to form the 16 bit registers: AF, BC, DE, and HL.
+				</p>
+				
+				<p>
+					I revised my register structure to make accessing grouped registers easier:
+				</p>
+				
+				<pre><code>struct registers {
+	struct {
+		union {
+			struct {
+				unsigned char f;
+				unsigned char a;
+			};
+			unsigned short af;
+		};
+	};
+	
+	struct {
+		union {
+			struct {
+				unsigned char c;
+				unsigned char b;
+			};
+			unsigned short bc;
+		};
+	};
+	
+	struct {
+		union {
+			struct {
+				unsigned char e;
+				unsigned char d;
+			};
+			unsigned short de;
+		};
+	};
+	
+	struct {
+		union {
+			struct {
+				unsigned char l;
+				unsigned char h;
+			};
+			unsigned short hl;
+		};
+	};
+	
+	unsigned short sp;
+	unsigned short pc;
+} extern registers;
+</code></pre>
+				
+				<p>
+					I used C11's anonymous structs and unions so that I could access individual registers, or grouped registers straight from the root structure: <code>registers.a</code> or <code>registers.af</code> for example.
+				</p>
+				
+				<p>
+					This is one of the more unique aspects of my emulator; since most other Game Boy emulators were written in an older C standard, (or an undesirable alternative like C++), they didn't have access to anonymous structs or unions, which meant that they either had to access registers with a messy chain, like <code>gameboy_proc->AF.b.h</code> (this is how <a href="http://www.amidog.com/amiga/gbe/">GBE</a> accesses register a), or rely on bit operations.
+				</p>
+				
+				<br>
+				
+				<h2>Flags</h2>
+				<p>
+					The Game Boy has an 8 bit register which controls if the last operation resulted in zero, an underflow, a nibble overflow, or a byte overflow; refered to as the zero flag, the negative flag, the half carry flag, and the full carry flag, respectively.
+				</p>
+				
+				<p>
+					One thing that initially tripped me up, is that I wasn't sure if I should update the flags after every instruction, or after just some, and if so, which ones (and how should I store this information). I eventually came across <a href="http://gameboy.mongenel.com/dmg/opcodes.html">this great piece of documentation</a> which describes in detail which instructions should update the flags, and to what values.
+				</p>
+				
+				<br>
+				
+				<h2>Implementing the CPU</h2>
+				<p>
+					Just to get things started, I went with the classic <code>switch(instruction) {</code> approach, in which all instructions are placed in the same function.
+				</p>
+				
+				<p>
+					Whenever an unimplemented instruction was encountered, the register values were written to a debug file, along with the current instruction's hexadecimal value.
+				</p>
+				
+				<p>
+					I chose to use the game <a href="http://en.wikipedia.org/wiki/Tetris_%28Game_Boy%29">Tetris</a> for testing. Upon running it, I got a message telling me "Undefined instruction 0x00!".
+				</p>
+				
+				<p>
+					To confirm that this was right, I ran the game in <a href="http://problemkaputt.de/gmb.htm">NO$GMB</a>, which has an excellent debugger. Sure enough, the first instruction of Tetris is 0x00, which is a <a href="http://en.wikipedia.org/wiki/NOP">NOP</a>.
+				</p>
+				
+				<p>
+					I implemented the NOP instruction, and ran the game again to get the next, unsupported instruction. I continued with this method for a few more instructions, checking each time that the register values displayed by Cinoop matched those in NO$GMB.
+				</p>
+				
+				<br>
+				
+				<h2>Improving instruction handling</h2>
+				<p>
+					Looking up each instruction in NO$GMB, or <a href="http://imrannazar.com/Gameboy-Z80-Opcode-Map">an online table</a>, started to get tedious. While I didn't want to write a fully fledged debugger, I wanted something slightly more substantial to work with.
+				</p>
+				
+				<p>
+					I went away from the approach of doing everything directly in an instruction's code, and towards the idea of storing information about each instruction in a structure, so that common tasks could reuse the same code.
+				</p>
+				
+				<p>
+					For example, rather than having each instruction's code responsible for retrieving its operands, I thought it would make more sense to store the operand lengths in the structure, and reuse the same code to retrieve operands for every instruction.
+				</p>
+				
+				<p>
+					I also copied every instruction's disassembly into the structure:
+				</p>
+				
+				<pre><code>struct instruction {
+	char *disassembly;
+	unsigned char operandLength;
+	void *execute;
+	//unsigned char ticks;
+} extern const instructions[256];
+
+...
+
+const struct instruction instructions[256] = {
+	{ "NOP", 0, nop },                          // 0x00
+	{ "LD BC, 0x%04X", 2, NULL },               // 0x01
+	{ "LD (BC), A", 0, NULL },                  // 0x02
+	...
+</code></pre>
+				
+				<p>
+					This, in combination with storing the operand lengths, made it incredibly easy to print out the instruction.
+				</p>
+				
+				<p>
+					All I had to do now was run the game, and it would not only tell me the hexadecimal value of the unsupported instruction, but also the full disassembly of it.
+				</p>
+				
+				<p>
+					Running the game now, gave me the message "Unimplemented instruction 0x06 (LD B, 0x00)!". This was all I needed to write the 0x06 instruction, I didn't have to stop and find it in an external program or piece of documentation:
+				</p>
+				
+				<pre><code>// 0x06
+void ld_b_n(unsigned char operand) { registers.b = operand; }
+</code></pre>
+				
+				<p>
+					This greatly improved the speed at which I could implement new instructions, and I continued to write most of the CPU this way.
+				</p>
+				
+				<p>
+					I also considered the idea of storing whether an instruction should update certain flags, in the instruction's structure, but decided against the idea because it would just over complicate the system, and would probably cause it to run slower.
+				</p>
+				
+				<p>
+					Implementing the CPU wasn't particularly difficult, it was just time consuming. Most instructions are fairly straight forward, and some are identical other than the target register (<code>INC A</code>, and <code>INC B</code> for example). In addition, there are multiple <code>NOP</code>s (<code>LD A, A</code>, <code>LD B, B</code>, etc...).
+				</p>
+				
+				<p>
+					However, there was one instruction which confused me for a while: <a href="http://www.worldofspectrum.org/faq/reference/z80reference.htm#DAA">DAA</a>, which is used to display the score in Tetris. After looking at several other emulators, I managed to write my own implementation. One thing to note, is that unlike in the original Z80A CPU, the Half Carry flag is always cleared, which makes it a little bit simpler.
+				</p>
+				
+				<br>
+				
+				<h2>Real time debugging</h2>
+				<p>
+					Eventually, I realised that running the whole game until I got to an unimplemented instruction was not very flexible.
+				</p>
+				
+				<p>
+					I could tweak the <code>cpuStep</code> function to give me some pseudo breakpoints:
+				</p>
+				
+				<pre><code>if(registers.pc == 0x300) {
+	printRegisters();
+}
+</code></pre>
+				
+				<p>
+					But this still wasn't very easy to use. If there was a mistake in one of my instruction implementations, I would want to run the game step by step so that I could find it. To do this, I created a basic, real time debugger, which I could run alongside NO$GMB to check that the instructions were being executed correctly:
+				</p>
+				
+				<img src="images/cinoop/debug.png" />
+				<br>
+				
+				<br>
+				
+				<p>
+					I was also able to add breakpoints in the <code>readByte</code> and <code>writeByte</code> function, which meant that I could activate a realtime, step by step, debugger on any condition I wanted. In combination with being able to run the game in NO$GMB, this turned out to be sufficient for debugging most problems.
+				</p>
+				
+				<br>
+				
+				<h2>GPU bug</h2>
+				<p>
+					Most of my GPU code is based on <a href="http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-Graphics">this tutorial</a>, however, there is one detail which is not entirely accurate:
+				</p>
+				
+				<div class="quote">
+					There is space in the GameBoy memory for 384 tiles
+				</div>
+				
+				<div class="quote-reference">
+					<a href="http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-Graphics">- Imran Nazar</a>
+				</div>
+				
+				<br>
+				
+				<p>
+					The Game Boy actually has enough space in VRAM for 512 tiles, however only 384 can be displayed.
+				</p>
+				
+				<p>
+					Let's take a look at his <code>updatetile</code> function:
+				</p>
+				
+				<pre><code>addr &= 0x1FFE;
+...
+var tile = (addr >> 4) & 511;
+...
+GPU._tileset[tile][y][x] = ...
+</pre></code>
+				
+				<p>
+					Did you spot the problem?
+				</p>
+				
+				<p>
+					If a write is made to <code>0x9FFF</code>, then the tile that will be written is 511 (<code>tile = ((0x9FFF & 0x1FFE) >> 4) & 511</code>); this is out of bounds of the 384 element array!
+				</p>
+				
+				<p>
+					In JavaScript this doesn't really matter, since an array will just grow if a previously out of bounds value is written to, however, in my C emulator, I got some juicy, <a href="http://en.wikipedia.org/wiki/Undefined_behavior">undefined behaviour</a> when running Tetris: other parts of memory were being written to, such as the cartridge ROM, which in turn caused the wrong instructions to be executed. This was extremely confusing and frustrating!
+				</p>
+				
+				<p>
+					To fix this problem, you could either expand your tileset memory to have 512 elements:
+				</p>
+				
+				<pre><code>unsigned char tiles[512][8][8];</code></pre>
+				
+				<p>
+					Or you could perform bounds checking on the tile value, before writing to tileset memory:
+				</p>
+				
+				<pre><code>if(tile >= 384) return;</code></pre>
+				
+				<p>
+					I chose to expand my tileset memory.
+				</p>
+				
+				<br>
+				
+				<h2>Tilesets</h2>			
+				<p>
+					Running what seems like an endless list of CPU instructions, to check everything is working, is important, but it becomes dull very quickly. Drawing the tileset would be my first, visual confirmation that Cinoop was actually working well enough to load graphics.
+				</p>
+				
+				<p>
+					I ran Tetris through NO$GMB to see which instructions were copying the tileset into VRAM. The first function to load tiles starts at <code>0x2817</code>, and ends at <code>0x282a</code>.
+				</p>
+				
+				<p>
+					I set a breakpoint in my emulator for the start of the function:
+				</p>
+				
+				<pre><code>if(registers.pc == 0x2817) {
+	realtimeDebugEnable = 1;
+}</code></pre>
+			
+				<p>
+					Of course, when I ran the emulator, it would exit before reaching this function since I hadn't implemented enough instructions; but I kept working, and eventually the breakpoint triggered! Then there were a few more instructions to implement to get through the function, before I could dump the first tile:
+				</p>
+				
+				<pre><code>// End of tileset loading function
+if(registers.pc == 0x282a) {
+	FILE *f = fopen("tile0.bin", "wb");
+	fwrite(vram, 16, 1, f);
+	fclose(f);
+	
+	realtimeDebugEnable = 1;
+}</code></pre>
+				
+				<p>
+					I compared this with NO$GMB's memory, and the data matched!
+				</p>
+				
+				<pre><code>00 00 3c 3c 66 66 66 66 66 66 66 66 3c 3c 00 00</pre></code>
+				
+				<p>
+					The next thing to do was to dump the processed tile as well:
+				</p>
+				
+				<pre><code>FILE *f = fopen("tile0.txt", "wb");
+int x, y;
+for(y = 0; y < 8; y++) {
+	for(x = 0; x < 8; x++) fprintf(f, "%02x ", tiles[0][x][y]);
+	fprintf(f, "\n");
+}
+fclose(f);
+</code></pre>
+				
+				<p>
+					This was the result:
+				</p>
+				
+				<pre><code>00 00 00 00 00 00 00 00 
+00 00 03 03 03 03 00 00 
+00 03 03 00 00 03 03 00 
+00 03 03 00 00 03 03 00 
+00 03 03 00 00 03 03 00 
+00 03 03 00 00 03 03 00 
+00 00 03 03 03 03 00 00 
+00 00 00 00 00 00 00 00</code></pre>
+				
+				<p>
+					To clarify the above image, let's replace "00" with "  ", and "03" with "xx":
+				</p>
+				
+				<pre><code>                        
+      xx xx xx xx       
+   xx xx       xx xx    
+   xx xx       xx xx    
+   xx xx       xx xx    
+   xx xx       xx xx    
+      xx xx xx xx       
+                       </code></pre>
+				
+				<p>
+					With the confidence that everything was working as it should, I copied the first 8 tiles onto the screen:
+				</p>
+				
+				<pre><code>int i, x, y;
+for(i = 0; i < 8; i++) {
+	for(x = 0; x < 8; x++) {
+		for(y = 0; y < 8; y++) {
+			framebuffer[i * 8 + x + y * 160].r = palette[tiles[i][x][y]].r;
+			framebuffer[i * 8 + x + y * 160].g = palette[tiles[i][x][y]].g;
+			framebuffer[i * 8 + x + y * 160].b = palette[tiles[i][x][y]].b;
+		}
+	}
+}</code></pre>
+				
+				<img src="images/cinoop/tiles.png" />
+				<br>
+				
+				<p>
+					I let the game run a little bit further, and then copied as many tiles as would fit onto the screen:
+				</p>
+				
+				<pre><code>// draw tileset to framebuffer as a test
+int i;
+for(i = 0; i < (144 / 8) * (160 / 8); i++) {
+	int x;
+	for(x = 0; x < 8; x++) {
+		int y;
+		for(y = 0; y < 8; y++) {
+			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].r = palette[tiles[i][x][y]].r;
+			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].g = palette[tiles[i][x][y]].g;
+			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].b = palette[tiles[i][x][y]].b;
+		}
+	}
+}</code></pre>
+				
+				<img src="images/cinoop/fullTileset.png" />
+				<br>
+				
+				<br>
+				
+				<h2>Maps</h2>
+				
+				<p>
+					My initial attempt at reading maps resulted in this:
+				</p>
+				
+				<img src="images/cinoop/map1.png" />
+				<br>
+				
+				<p>
+					I'm not sure if this was caused by a problem with the GPU tutorial that I followed, or my implementation, but changing the following line:
+				</p>
+				
+				<pre><code>mapOffset += ((gpu.scanline + gpu.scrollY) & 255) >> 3;</code></pre>
+				
+				<p>
+					to:
+				</p>
+				
+				<pre><code>mapOffset += (((gpu.scanline + gpu.scrollY) & 255) >> 3) << 5;</code></pre>
+				
+				<p>
+					fixed the problem. My emulator could now reach the copyright screen of Tetris!
+				</p>
+				
+				<img src="images/cinoop/map2.png" />
+				<br>
+				
+				<br>
+				
+				<h2>Getting past the copyright screen</h2>
+				<p>
+					Cinoop was getting stuck in a loop, and not progressing past the copyright screen. After some brief debugging, I found that blocking any writes to the first byte of HRAM (0xff80) would allow the loop to be completed:
+				</p>
+				
+				<pre><code>void writeByte(unsigned short address, unsigned char value) {
+	// Block writes to ff80
+	if(tetrisPatch && address == 0xff80) return;</code></pre>
+				
+				<p>
+					I wasn't sure of the real cause of the loop not completing, but I assumed that if I temporarily enabled this patch, the problem would eventually sort its self out as I improved the emulator.
+				</p>
+				
+				<p>
+					After temporarily fixing the previous looping problem, I was presented with another; the game was repeating the following three instructions infinitely:
+				</p>
+				
+				<pre><code>ld a, 0xff80
+and a
+jr z</code></pre>
+				
+				<p>
+					I realised that it was probably waiting for the value to be written to by an interrupt, so I dumped the interrupt enable register: <code>0x09</code>, meaning that both VBlank and Serial interrupts were enabled (<code>(1 &lt;&lt; 0) | (1 &lt;&lt; 3)</code>), since it probably wasn't dependent on there being a Serial interrupt, I assumed that my VBlank code was wrong.
+				</p>
+				
+				<p>
+					Sure enough, it was! After correcting the VBlank interrupt handler, I was presented with a few more unimplemented instructions, and eventually, Cinoop made it to the Tetris menu!
+				</p>
+				
+				<img src="images/cinoop/menu.png" />
+				<br>
+				
+				<br>
+				
+				<h2>Final thoughts</h2>
+				<p>
+					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>. It isn't currently in a state to run anything to the point where it is playable, but I have still learnt a lot, and I hope to improve on it in time.
+				</p>
+				
+				<p>
+					During most of the development, I used NO$GMB to confirm that my emulator was working, however, <a href="http://bgb.bircd.org/">bgb</a> is more accurate, is still being actively maintained, and has a debugger which is just as good as NO$GMB's; I would recommend using it over NO$GMB.
+				</p>
+				
+				<br>
+				
+				<h2>Thanks</h2>
+				<p>
+					<a href="http://imrannazar.com/GameBoy-Emulation-in-JavaScript">Imran Nazar</a>, <a href="http://www.amidog.com/amiga/gbe/">Chuck Mason and Steven Fuller</a>, <a href="http://problemkaputt.de/gmb.htm">Martin Korth</a>, <a href="http://bgb.bircd.org/">beware</a>, and <a href="http://blog.gg8.se/">nitro2k01</a>.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
