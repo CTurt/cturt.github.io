@@ -29,31 +29,95 @@
 					</a>
 				</div>
 				
-				<h1>DS Custom Firmware</h1>
+				<h1>DS Custom Firmwares</h1>
 				<hr>
 				
 				<p>
-					Some time ago I experimented with making my own custom firmware for the Nintendo DS.
+					Some time ago I experimented with making my own custom firmwares for the Nintendo DS.
 				</p>
 				
 				<p>
 					The DS firmware is <a href="http://problemkaputt.de/gbatek.htm#dsfirmwareserialflashmemory">stored on a 256KB flash memory chip</a> which can be <a href="http://problemkaputt.de/gbatek.htm#dsserialperipheralinterfacebusspi">rewritten via the SPI bus</a>.
 				</p>
 				
+				<br>
+				
+				<h2>Getting code flashed to the firmware</h2>
 				<p>
-					After updating some horridly outdated code (<a href="https://home.comcast.net/~olimar/DS/">Olimar's</a> hbfirmware) to be compatible with the latest version of devkitARM, I could now make my own CFWs! I won't be sharing this code, since it's not well polished, and I don't want to be responsible for any damage to any consoles.
+					Since I don't have a hardware flasher like <a href="http://www.darkfader.net/ds/">darkfader</a> does, I didn't want to risk writing this code from scratch because I would have no way of restoring the firmware back if it went wrong and so I'd probably just end up with a bricked DS.
+				</p>
+				
+				<p>
+					So, I updated <a href="https://home.comcast.net/~olimar/DS/">Olimar's</a> hbfirmware to be compatible with the latest versions of libnds and devkitARM instead.
+				</p>
+				
+				<p>
+					I could now flash my own code to the firmware! I won't be sharing this code, since it's not well polished, and I don't want to be responsible for any damage to any consoles.
 				</p>
 				
 				<div class="center">
 					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/cHjrnWWLcoo" frameborder="0" allowfullscreen></iframe>
 				</div>
 				
+				<br>
+				
+				<h2>Wireless controller CFW</h2>
 				<p>
 					Since I didn't think I'd be able to make anything better than the stock firmware, I went with a different approach, and tried to turn an old DS into a wireless gaming controller. The results are pleasing!
 				</p>
 				
 				<div class="center">
 					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/YAZiM_NLgDM" frameborder="0" allowfullscreen></iframe>
+				</div>
+				
+				<br>
+				
+				<h2>Modifications to the original firmware</h2>
+				<p>
+					There is something deeply satisfying about adding some personalisation to your systems, even if it is just a minor text change (changing the carrier name of an iPhone for example).
+				</p>
+				
+				<p>
+					There are 5 sections to the official DS firmwares, which are concealed behind <a href="http://problemkaputt.de/gbatek.htm#dsfirmwareheader">compression and encryption</a>, and are verified with checksums.
+				</p>
+				
+				<p>
+					My main sources of code for extracting and injecting data from the firmware were <a href="http://forum.gbadev.org/viewtopic.php?t=12270">fwunpack by Chishm</a>, and <a href="http://forum.gbadev.org/viewtopic.php?p=107106#107106">Lick's firmware tool</a>; which in turn, take code from <a href="http://sourceforge.net/projects/vba/">VisualBoyAdvance</a>, <a href="https://home.comcast.net/~olimar/DS/">hbmenu</a>, and probably others.
+				</p>
+				
+				<p>
+					It was difficult to understand how most of it worked since it relied extensively on reverse engineered code (probably generated with <a href="https://www.hex-rays.com/products/decompiler/">Hex-Rays Decompiler</a>).
+				</p>
+				
+				<p>
+					Take a look at this for example:
+				</p>
+				
+				<pre><code>r1=*(u16*)&firmware[0x14];
+tmp=r1&7;
+r0=*(u16*)&firmware[0x0c];
+r0=r0*(4&lt;&lt;tmp);
+tmp=(r1&gt;&gt;3)&amp;7;
+r2=*(u16*)&amp;firmware[0x0e];
+r2=0x2800000-r2*(4&lt;&lt;tmp);</code></pre>
+				
+				<p>
+					Which can be simplified to:
+				</p>
+				
+				<pre><code>arm9romAddress = firmwareHeader-&gt;arm9romAddress * (4 &lt;&lt; (firmwareHeader-&gt;shift &amp; 7));
+arm9ramAddress = 0x02800000 - (firmwareHeader-&gt;arm9ramAddress * (4 &lt;&lt; ((firmwareHeader-&gt;shift &gt;&gt; 3) &amp; 7)));</code></pre>
+				
+				<p>	
+					After clobbering together lots of code from lots of different places, I was eventually able to extract and inject data into the firmware.
+				</p>
+				
+				<p>
+					I used <a href="http://desmume.org/">DeSmuME</a> for testing because it supports booting to a firmware image, and eventually I flashed it to firmware of a real DS.
+				</p>
+				
+				<div class="center">
+					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/bF7NuRreoCU" frameborder="0" allowfullscreen></iframe>
 				</div>
 			</div>
 		</div>
