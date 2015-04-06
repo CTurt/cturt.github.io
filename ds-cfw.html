@@ -5,7 +5,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<title>DS CFW</title>
+		<title>DS Custom Firmwares</title>
 	</head>
 	
 	<body>
@@ -37,22 +37,42 @@
 				</p>
 				
 				<p>
-					The DS firmware is <a href="http://problemkaputt.de/gbatek.htm#dsfirmwareserialflashmemory">stored on a 256KB flash memory chip</a> which can be <a href="http://problemkaputt.de/gbatek.htm#dsserialperipheralinterfacebusspi">rewritten via the SPI bus</a>.
+					The DS firmware is <a href="http://problemkaputt.de/gbatek.htm#dsfirmwareserialflashmemory">stored on a 256KB rewritable flash memory chip (NVRAM)</a>.
+				</p>
+				
+				<p>
+					NVRAM can be <a href="http://problemkaputt.de/gbatek.htm#dsserialperipheralinterfacebusspi">rewritten via the SPI bus</a> on ARM 7, and in pages (256 byte chunks) only.
+				</p>
+				
+				<p>
+					libnds provides abstractions for writing to NVRAM (source/arm7/firmware.c), however, the <code>writeFirmwarePage</code> function is declared <code>static</code>, so you can't access it. You must either remove the <code>static</code> qualifier and recompile the library, or just copy the function to your project.
+				</p>
+				
+				<p>
+					There is a small section at the end of the firmware which stores your username, birthday, WiFi settings, etc, that can be rewritten freely. However, the rest of the firmware (containing the ARM 7 and ARM 9 binaries, and additional data) is protected and can only be rewritten whilst the SL1 terminal is shorted.
 				</p>
 				
 				<br>
 				
 				<h2>Getting code flashed to the firmware</h2>
 				<p>
-					Since I don't have a hardware flasher like <a href="http://www.darkfader.net/ds/">darkfader</a> does, I didn't want to risk writing this code from scratch because I would have no way of restoring the firmware back if it went wrong and so I'd probably just end up with a bricked DS.
+					If you have a hardware flasher like <a href="http://www.darkfader.net/ds/">darkfader</a> does, you can directly flash data to the NVRAM chip.
 				</p>
 				
 				<p>
-					So, I updated <a href="https://home.comcast.net/~olimar/DS/">Olimar's</a> hbfirmware to be compatible with the latest versions of libnds and devkitARM instead.
+					Since I didn't, I injected my custom firmwares into FlashMe, and used the modified installer to flash my firmwares for a while, but this was just a temporary solution.
 				</p>
 				
 				<p>
-					I could now flash my own code to the firmware! I won't be sharing this code, since it's not well polished, and I don't want to be responsible for any damage to any consoles.
+					I then updated <a href="https://home.comcast.net/~olimar/DS/">Olimar's</a> hbfirmware to be compatible with the latest versions of libnds and devkitARM instead. This <i>worked</i>, but was very messy code, and sound and text didn't work (so I had no idea when flashing was complete).
+				</p>
+				
+				<p>
+					Finally, I wrote my own firmware flashing tool from scratch (<a href="https://github.com/CTurt/CFW-Suite/tree/master/fwManager">fwManager</a>). This tool allows you to store multiple firmwares on your flashcard under the <code>/firmwares</code> directory, and flash them easily (without having to recompile an installer).
+				</p>
+				
+				<p>
+					I could now flash my own code to the firmware!
 				</p>
 				
 				<div class="center">
@@ -86,11 +106,11 @@
 				</p>
 				
 				<p>
-					It was difficult to understand how most of it worked since it relied extensively on reverse engineered code (probably generated with <a href="https://www.hex-rays.com/products/decompiler/">Hex-Rays Decompiler</a>).
+					It was difficult to understand how most of it worked since they rely extensively on reverse engineered code (probably generated with <a href="https://www.hex-rays.com/products/decompiler/">Hex-Rays Decompiler</a>).
 				</p>
 				
 				<p>
-					Take a look at this for example:
+					In addition, most of the process is fairly cryptic anyway. Take a look at this for example:
 				</p>
 				
 				<pre><code>r1=*(u16*)&firmware[0x14];
@@ -102,18 +122,18 @@ r2=*(u16*)&amp;firmware[0x0e];
 r2=0x2800000-r2*(4&lt;&lt;tmp);</code></pre>
 				
 				<p>
-					Which can be simplified to:
+					Even after giving everything meaningful names, it is still somewhat confusing:
 				</p>
 				
 				<pre><code>arm9romAddress = firmwareHeader-&gt;arm9romAddress * (4 &lt;&lt; (firmwareHeader-&gt;shift &amp; 7));
 arm9ramAddress = 0x02800000 - (firmwareHeader-&gt;arm9ramAddress * (4 &lt;&lt; ((firmwareHeader-&gt;shift &gt;&gt; 3) &amp; 7)));</code></pre>
 				
 				<p>	
-					After clobbering together lots of code from lots of different places, I was eventually able to extract and inject data into the firmware.
+					After clobbering together lots of code from lots of different places, I was eventually able to extract and inject data into the gui section (part 5) of the firmware. I open sourced it on GitHub: <a href="https://github.com/CTurt/CFW-Suite/tree/master/guiTool">guiTool</a>.
 				</p>
 				
 				<p>
-					I used <a href="http://desmume.org/">DeSmuME</a> for testing because it supports booting to a firmware image, and eventually I flashed it to firmware of a real DS.
+					From there, I modified the "Touch the Touch Screen to continue" text. Tested that my firmware worked with <a href="http://desmume.org/">DeSmuME</a>, and eventually flashed it to firmware of a real DS using fwManager.
 				</p>
 				
 				<div class="center">
