@@ -662,6 +662,52 @@ struct registers {
 				
 				<br>
 				
+				<h3>PS2</h3>
+				<p>
+					I had plans for a PS2 port of Cinoop, but I gave up due to the many difficulties of PS2 development.
+				</p>
+				
+				<p>
+					The first reason for this is because of the decentralised nature of the scene; whatever information about PS2 development that is still available is scattered across the internet like Lego in a child's room.
+				</p>
+				
+				<p>
+					I tried to install the <a href="https://github.com/ps2dev">ps2dev</a> toolchain from GitHub. I tried on Windows 7, Ubuntu 14.04, and Mac OS X Lion. Whatever I did, I ended up with numerous compile errors, so I just gave up.
+				</p>
+				
+				<p>
+					For anyone who can actually manage to setup a PS2 development kit, there is no easy way to plot pixels directly to a framebuffer, like there was for every other system I ported Cinoop to.
+				</p>
+				
+				<div class="quote">
+					<p>
+						There's no way to write directly to the frame buffer because the VRAM is not within EE RAM and isn't mapped to EE memory space. The only way is to have a local framebuffer within EE RAM, which you can transfer to the real framebuffer within VRAM via DMA at every frame. The VRAM is actually 4MB of eRAM within the GS.
+					</p>
+					
+					<p>
+						To understand how this is to be done, it's important to first understand how to upload textures during a program's runtime. The frame buffer is basically a very large texture. Some graphics libraries (e.g. gsKit) have nice functions for facilitating processes like this.
+					</p>
+					
+					<p>
+						I think that it may be possible to transfer bitmap data directly to the frame buffer on the GS because I think that FMCB (and probably some earlier homebrew demos) does that for drawing its boot logo. But so far I've only transferred bitmap data to the GS as texture data (to a buffer within VRAM which is outside of the frame buffer), which is later drawn onto the frame buffer as a full-screen 2D-texture.
+					</p>
+					
+					<p>
+						You may be now wondering why it's so difficult to do something as simple as updating the frame buffer. Well, it's because the PlayStation 2 was primarily made to support 3D rather than 2D. As mentioned above, the VRAM is within the GS, which is a separate processor from the EE.
+					</p>
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="https://github.com/sp193">Liu Woon Yung</a>
+				</div>
+				<br>
+				
+				<p>
+					So, I just gave up with a PS2 port.
+				</p>
+				
+				<br>
+				
 				<h2>Final thoughts</h2>
 				<p>
 					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>. It isn't currently in a state to run anything to the point where it is fully playable, but I have still learnt a lot, and I hope to improve on it in time.
