@@ -56,7 +56,7 @@ input[type=text], input[type=email] {
 	height: auto;
 	margin-top: 6px;
 	margin-bottom: 16px;
-	padding: 4px;
+	padding: 8px;
 	display: block;
 	box-sizing: content-box;
 	outline: none;
@@ -121,17 +121,16 @@ input[type=submit]:active {
 input[type="submit"]::-moz-focus-inner {
 	border: 0;
 }
-textarea {
+textarea, .input-box {
 	min-width: 100%;
 	width: 100%;
 	min-height: 300px;
 	height: 300px;
 	margin-top: 6px;
 	margin-bottom: 16px;
-	padding: 4px;
+	padding: 8px;
 	display: block;
 	box-sizing: content-box;
-	resize: both;
 	outline: none;
 	overflow: auto;
 	background-color: rgb(255, 255, 255);
@@ -145,8 +144,14 @@ textarea {
 	-moz-box-shadow: rgba(0, 0, 0, 0.06) 0 8px 12px 0px, rgba(255, 255, 255, 0.8) 0px 0px 0px 1px;
 	box-shadow: rgba(0, 0, 0, 0.06) 0 8px 12px 0px, rgba(255, 255, 255, 0.8) 0px 0px 0px 1px;
 }
-textarea:focus {
+textarea:focus, .input-box:focus {
 	border: 1px solid rgb(0, 132, 190);
+}
+textarea {
+	resize: both;
+}
+.input-box {
+	height: auto;
 }
 li {
 	margin-bottom: 3px;
