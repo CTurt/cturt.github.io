@@ -1,0 +1,348 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>VertexNet malware analysis</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="ds.html" class="header-element">
+						DS
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Reverse engineering VertexNet malware</h1>
+				<hr>
+				
+				<p>
+					I wanted to improve my reverse engineering skills, and I decided that doing some malware analysis was the best way to do this. Malware can be an excellent target for reverse engineering not only because there are far less ethical considerations than if you were reverse engineering a legitimate application, but also because most malware employs obfuscation and anti-debugger protections, which most legitimate applications don't bother with; these force you to develop a much more advanced understanding of reverse engineering.
+				</p>
+				
+				<p>
+					This article shows how I approached the malware in the hope that it can be useful to others who are also relatively new to reverse engineering.
+				</p>
+				
+				<p>
+					I searched for a simple target on <a href="http://kernelmode.info">KernelMode.info</a> (as I'm a beginner to malware analysis) and came across <a href="http://www.kernelmode.info/forum/viewtopic.php?f=16&t=1128">Win32 VertexNet</a>. Apparently it was written in C++ and has very little obfuscation, so it should be a great target for me to start with.
+				</p>
+				
+				<p>
+					Before I go on, I did all of this analysis in a Windows XP virtual machine; you should never try to reverse engineer any malware on a computer that you care about!
+				</p>
+				
+				<br>
+				<h2>Unpacking</h2>
+				
+				<p>
+					Loading the the executable into IDA Pro gives a small section of code that does some kind of loop. IDA couldn't find any functions, and it looked like it had been programmed directly in x86. It certainly wasn't the payload!
+				</p>
+				
+				<p>
+					I could have debugged the executable to unpack its payload manually; but I discovered two sections called <code>UPX0</code> and <code>UPX1</code> which, after a quick search, lead me to the application which it had been packed with, <a href="http://upx.sourceforge.net/">UPX</a>.
+				</p>
+								
+				<p>
+					After downloading UPX, I was able to unpack the executable with the following command line:
+				</p>
+				
+				<pre><code>upx VNet.exe -d -o unpacked.exe</code></pre>
+				
+				<p>
+					Now that we have the unpacked executable; there are 144 functions, all of which can be succesfully decompiled!
+				</p>
+				
+				<br>
+				<h2>Understanding program flow</h2>
+				
+				<p>
+					Before attaching a debugger, I wanted to browse through a few functions to get a vague understanding of the program flow.
+				</p>
+				
+				<p>
+					Let's start analysing <code>WinMain</code>; there is no obfuscation on this function, and you can generate the following pseudo code by pressing <code>F5</code>:
+				</p>
+				
+				<pre><code>int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+{
+  struct tagMSG Msg; // [sp+4h] [bp-1Ch]@1
+
+  sub_406980();
+  while ( GetMessageA(&Msg, NULL, 0, 0) )
+  {
+	TranslateMessage(&Msg);
+	DispatchMessageA(&Msg);
+  }
+  return 0;
+}</code></pre>
+				
+				<p>
+					What a lovely introduction to malware RE; we can clearly tell that <code>sub_406980();</code> is the initialisation function of the malware; so select it and hit <code>N</code> to give it a suitable name (<code>init</code>).
+				</p>
+				
+				<p>
+					Double click on the <code>init</code> function to view its pseudo code. You can press <code>Esc</code> to go back to the last function you viewed.
+				</p>
+				
+				<p>
+					From here we can see some more function calls which we will come back to later, but the most apparent are the two calls to <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms682453%28v=vs.85%29.aspx">CreateThread</a>:
+				</p>
+				
+				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &ThreadId);
+return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &ThreadId);</pre></code>
+				
+				<p>
+					I named the two threads' start routines <code>thread1</code> and <code>thread2</code>.
+				</p>
+				
+				<br>
+				<h2>Understanding frequently used functions</h2>
+				
+				<p>
+					I saw that <code>sub_4022B0</code> was one of the most frequently called functions, so I took a closer look at what it does.
+				</p>
+				
+				<p>
+					Initially, this function looked quite daunting:
+				</p>
+				
+				<pre><code>int __usercall sub_4022B0<eax>(unsigned int a1<eax>, int a2<edx>, int a3<ecx>)
+{
+  unsigned int v3; // esi@1
+  signed int v4; // eax@5
+
+  v3 = a1;
+  if ( a1 < 4 )
+  {
+LABEL_4:
+    if ( !v3 )
+      return 0;
+  }
+  else
+  {
+    while ( *(_DWORD *)a2 == *(_DWORD *)a3 )
+    {
+      v3 -= 4;
+      a3 += 4;
+      a2 += 4;
+      if ( v3 < 4 )
+        goto LABEL_4;
+    }
+  }
+  v4 = *(_BYTE *)a2 - *(_BYTE *)a3;
+  if ( *(_BYTE *)a2 != *(_BYTE *)a3 )
+    return (v4 >> 31) | 1;
+  if ( v3 <= 1 )
+    return 0;
+  v4 = *(_BYTE *)(a2 + 1) - *(_BYTE *)(a3 + 1);
+  if ( *(_BYTE *)(a2 + 1) != *(_BYTE *)(a3 + 1) )
+    return (v4 >> 31) | 1;
+  if ( v3 <= 2 )
+    return 0;
+  v4 = *(_BYTE *)(a2 + 2) - *(_BYTE *)(a3 + 2);
+  if ( *(_BYTE *)(a2 + 2) != *(_BYTE *)(a3 + 2) )
+    return (v4 >> 31) | 1;
+  if ( v3 > 3 )
+  {
+    v4 = *(_BYTE *)(a2 + 3) - *(_BYTE *)(a3 + 3);
+    return (v4 >> 31) | 1;
+  }
+  return 0;
+}</code></pre>
+				
+				<p>
+					It appears to use <code>a2</code> and <code>a3</code> as pointers to integers, however, it later goes on to use these as pointers to characters.
+				</p>
+				
+				<p>
+					One of the best ways I've found to help understand what a function does is by adding and removing whitespace to make it match your own style. Whilst doing this it became clear what the function does: it performs a string comparison. The reason that the pointers are dereferenced to integers instead of characters at the start is just an optimisation; it is faster to compare blocks of 4 bytes at a time than to compare all bytes individually.
+				</p>
+				
+				<pre><code>int compareStrings(unsigned int length, char *string1, char *string2) {
+	unsigned int i = length;
+	
+	if(length < 4) {
+		LABEL_4:
+		if(i == 0) return 0;
+	}
+	else {
+		while(*(int *)string1 == *(int *)string2) {
+			i -= 4;
+			string2 += 4;
+			string1 += 4;
+			if(i < 4) goto LABEL_4;
+		}
+	}
+	
+	signed int difference;
+	
+	difference = (unsigned __int8)string1[0] - (unsigned __int8)string2[0];
+	if(string1[0] != string2[0]) return (difference >> 31) | 1;
+	
+	if(i <= 1) return 0;
+	
+	difference = (unsigned __int8)string1[1] - (unsigned __int8)string2[1];
+	if(string1[1] != string2[1]) return (difference >> 31) | 1;
+	
+	if(i <= 2) return 0;
+	
+	difference = (unsigned __int8)string1[2] - (unsigned __int8)string2[2];
+	if(string1[2] != string2[2]) return (difference >> 31) | 1;
+	
+	if(i > 3) {
+		difference = (unsigned __int8)string1[3] - (unsigned __int8)string2[3];
+		return (difference >> 31) | 1;
+	}
+	
+	return 0;
+}</code></pre>
+				
+				<p>
+					I'm not entirely sure of this function's purpose considering it does the same job as <code>strncmp</code> (with a slightly different parameter order). A futile attempt at obfuscation, or an incompetent programmer, you decide!
+				</p>
+				
+				<p>
+					Regardless, now that we know the correct function declaration, we can identify the types of all variables which are passed to it, and get a better understanding of any code that uses it in general.
+				</p>
+				
+				<br>
+				<h2>Using strings view</h2>
+				
+				<p>
+					Now that we've got a reasonable understanding of the program's flow, let's try using the strings view (<code>Shift + F12</code>) to identify some more functions of interest.
+				</p>
+				
+				<p>
+					There are definitely some interesting strings including: PHP URLs, HTTP headers, and even some debug text. You can get "xrefs" to exactly where a string is referenced in the code; this can be used to identify a few more functions.
+				</p>
+				
+				<p>
+					However, this is definitely not all of the data used by the malware, some things are missing.
+				</p>
+				
+				<br>
+				<h2>Extracting resources</h2>
+				
+				<p>
+					Later on in the code I found several calls to <code>sub_409360</code>. It easy to identify this function's purpose as <code>getResource</code> since it contains some very standard Windows <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ff468900%28v=vs.85%29.aspx">resource</a> opening code (<a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms648042%28v=vs.85%29.aspx">FindResource</a>, <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms648046%28v=vs.85%29.aspx">LoadResource</a>, etc). It also contains useful debug strings including <code>"[ERROR] while finding resource"</code> and <code>"[ERROR] while loading ressource"</code> which confirm this.
+				</p>
+				
+				<p>
+					After a quick search I found an application which can extract resources from a Windows executable, <a href="http://www.angusj.com/resourcehacker/">ResourceHacker</a>. These are the resources that the malware contains:
+				</p>
+				
+				<ul>
+					<li><b>DEFPATH</b> %DEFDRIVE%</li>
+					<li><b>GCMDINT</b> 30</li>
+					<li><b>HKNAME</b> vnet</li>
+					<li><b>HPORT</b> 80</li>
+					<li><b>INSTALL</b> 1</li>
+					<li><b>IPATH</b> dropped.exe</li>
+					<li><b>KAINT</b> 120</li>
+					<li><b>MUTEX</b> VN_MUTEX1656721546</li>
+					<li><b>PANELPATH</b> /admtriii/v/</li>
+					<li><b>ROOTURL</b> www.cg1.fr</li>
+				</ul>
+				
+				<p>
+					All resources are very small and could have easily been placed in the <code>.text</code> section along with the rest of the code, so why are they stored as resources? Another futile attempt at obfuscation?
+				</p>
+				
+				<br>
+				<h2>Debugging</h2>
+				
+				<p>
+					After taking a reasonable look at a few other functions, I attached a debugger and started to run through the code. By this point, the gist of what it did was farily obvious.
+				</p>
+				
+				<br>
+				<h2>Details of infection</h2>
+				
+				<p>
+					Upon execution VertexNet copies itself to <code>C:\dropped.exe</code>.
+				</p>
+				
+				<p>
+					It then creates a registry entry called <code>vnet</code> with the value <code>C:\dropped.exe</code> at the following path:
+				</p>
+				
+				<pre><code>HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\</code></pre>
+				
+				<p>
+					This causes the malware to automatically execute at startup.
+				</p>
+				
+				<br>
+				<h2>Remote commands</h2>
+				
+				<p>
+					Commands are fetched remotely from <code>tasks.php</code> and are handled in <code>sub_404D50</code>. It is blindingly obvious what all of these commands do since they are sent as strings. Here is a list of all handled commands:
+				</p>
+				
+				<ul>
+					<li>msg::</li>
+					<li>ERROR</li>
+					<li>exec::</li>
+					<li>close</li>
+					<li>getproc</li>
+					<li>getmodules::</li>
+					<li>setkeylogger::</li>
+					<li>getklogs</li>
+					<li>readfile::</li>
+					<li>uninstall</li>
+					<li>update::</li>
+					<li>urldl::</li>
+					<li>httpflood::</li>
+					<li>remoteshell::</li>
+					<li>visitpage::</li>
+				</ul>
+				
+				<p>
+					When the <code>setkeylogger::</code> command is received, a new thread is created (<code>sub_404300</code>):
+				</p>
+				
+				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &ThreadId);</code></pre>
+				
+				<p>
+					Keylogs are stored in the file <code>vnlogs.log</code> which can be read by using the <code>getklogs</code> command.
+				</p>
+				
+				<br>
+				<h2>Summary of analysis</h2>
+				
+				<p>
+					The VertexNet malware has some very basic protections like packing itself with UPX, implementing its own version of standard C library functions, and storing sensitive information as resources, however, this is all fairly standard and can be bypassed without much thought by using freely available tools.
+				</p>
+				
+				<p>
+					The author of the malware left debug strings in the final executable which can be used to easily identify functions via xrefs.
+				</p>
+				
+				<p>
+					There are no real obfuscations or anti-debugger mechanisms. The only thing that makes debugging slightly more difficult is the usage of multithreading.
+				</p>
+				
+				<p>
+					All wireless traffic is sent in plaintext, without any encryption; commands are sent as strings rather than an enumerator which would have been at least a bit less obvious.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
