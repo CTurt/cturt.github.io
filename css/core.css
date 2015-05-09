@@ -16,10 +16,7 @@ body {
 	margin: 0;
 	padding: 0;
 	background-color: rgb(255, 255, 255);
-	
-	/*font-family: "Ubuntu", Helvetica, "Helvetica Neue", Arial, sans-serif;*/
 	font-family: Arial, sans-serif;
-	
 	color: rgb(51, 51, 51);
 }
 h1, h2, h3 {
@@ -221,7 +218,8 @@ a:active {
 	letter-spacing: -1px;
 }
 .header-element {
-	width: 100px;
+	width: 24%; /* 100 / elementCount - 1 */
+	max-width: 100px;
 	height: 100%;
 	margin: 0;
 	padding-top: 10px;
@@ -262,7 +260,7 @@ a:active {
 	display: inline-block;
 }
 .container {
-	min-width: 400px;
+	min-width: 256px; /* may vary depending on content */
 	max-width: 1000px;
 	width: 85%;
 	margin-left: auto;
