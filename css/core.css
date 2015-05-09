@@ -39,6 +39,9 @@ p {
 	margin-bottom: 16px;
 	padding: 0;
 }
+pre {
+	overflow-x: auto;
+}
 img {
 	max-width: 100%;
 }
