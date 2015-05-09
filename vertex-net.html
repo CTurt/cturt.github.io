@@ -289,11 +289,30 @@ LABEL_4:
 					This causes the malware to automatically execute at startup.
 				</p>
 				
+				<p>
+					Two main threads are then created: <code>thread1</code>, which sends a request to <code>adduser.php</code> (which contains information about your system), and <code>thread2</code>, which fetches commands remotely from <code>tasks.php</code>.
+				</p>
+				
+				<p>
+					The malware can be removed manually by following these steps:
+				</p>
+				
+				<ul>
+					<li>Close the process in Task Manager (or ignore this stage and just restart your computer afterwards)</li>
+					<li>Delete the original executable and <code>vnlogs.log</code> in the same directory if there is one</li>
+					<li>Delete the copy located at <code>C:\dropped.exe</code> and <code>vnlogs.log</code> in the same directory if there is one</li>
+					<li>Remove the registry entry <code>vnet</code> at <code>HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\</code>
+				</ul>
+				
+				<p>
+					But I would recommend performing a full system scan instead of doing it manually. The malware could have been used to remotely install additional malware on your system (it is uncommon to be infected with just a single piece of malware). The malware could also be stored in a system backup if you made one whilst infected, which an anti-virus program can remove.
+				</p>
+				
 				<br>
 				<h2>Remote commands</h2>
 				
 				<p>
-					Commands are fetched remotely from <code>tasks.php</code> and are handled in <code>sub_404D50</code>. It is blindingly obvious what all of these commands do since they are sent as strings. Here is a list of all handled commands:
+					In <code>thread2</code> commands are fetched remotely from <code>tasks.php</code> and are then handled by <code>sub_404D50</code>. It is blindingly obvious what all of these commands do since they are sent as strings. Here is a list of all handled commands:
 				</p>
 				
 				<ul>
