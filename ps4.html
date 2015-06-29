@@ -1,0 +1,484 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>PS4</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="ds.html" class="header-element">
+						DS
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>The state of PS4 hacking</h1>
+				<hr>
+				
+				<p>
+					Since there hasn't really been any public announcments regarding PS4 hacking for a long time now, I wanted to explain a bit about how far PS4 hacking has come, and what is preventing further progression.
+				</p>
+				
+				<br>
+				
+				<h2>Background information about the PS4</h2>
+				<div class="quote">
+					As you probably know the PS4 features a custom AMD x86-64 CPU (8 cores), and there are loads of research available for this CPU architecture, even if this specific version might deviate slightly from known standards. For example, PFLA (Page Fault Liberation Army) released a proof of concept implementing a complete Turing machine using only page faults and the x86 MMU during the 29C3 congress, check their awesome video over at YouTube. Also interesting if you are trying to run code within a virtual machine and want to execute instructions on the host CPU.
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="http://www.eurasia.nu/modules.php?name=News&file=article&sid=3251&mode=&order=0&thold=0">EurAsia news article 3251</a>
+				</div>
+				<br>
+				
+				<br>
+				
+				<p>
+					As well as having a well documented CPU architecture, much of <a href="https://en.wikipedia.org/wiki/PlayStation_4_system_software">the software used in the PS4</a> is <a href="http://www.scei.co.jp/ps4-license/">open source</a>.
+				</p>
+				
+				<p>
+					Most notably, the PS4's Orbis OS is based on FreeBSD, just like the PS3's OS was (with parts of NetBSD as well); but as well as FreeBSD 9.0, other noticable software used includes <a href="http://www.mono-project.com/docs/advanced/runtime/">Mono VM</a>, and <a href="https://www.webkit.org/">WebKit</a>.
+				</p>
+				
+				<br>
+				
+				<h2>WebKit entry point</h2>
+				<p>
+					WebKit is the open source layout engine which renders web pages in the browsers for iOS, Wii U, 3DS, PS Vita, and the PS4.
+				</p>
+				
+				<p>
+					Although so widely used and mature, WebKit does have its share of vulnerabilities; you can learn about most of them by reading <a href="https://en.wikipedia.org/wiki/Pwn2Own#Summary_of_successful_exploits">Pwn2Own write-ups</a>.
+				</p>
+				
+				<p>
+					In particular, the browser in PS4 firmware 1.76 uses a version of WebKit which is vulnerable to <a href="https://www.exploit-db.com/exploits/28081/">CVE-2012-3748</a>, a heap-based buffer overflow in the <code>JSArray::sort(...)</code> method.
+				</p>
+				
+				<p>
+					In 2014, nas and Proxima announced that they had successfully been able to <a href="http://wololo.net/talk/viewtopic.php?p=368577">port this exploit to the PS4's browser</a>, and released the PoC code publically as the first entry point into hacking the PS4.
+				</p>
+				
+				<p>
+					This gives us arbitrary read and write access to everything the WebKit process can read and write to, which can be used to dump modules, and overwrite return addresses on the stack, letting us control the Program Counter (for ROP).
+				</p>
+				
+				<p>
+					Since then, many <a href="http://wololo.net/2015/04/22/new-webkit-exploit-found-vita-maybe-playstation-4/">other vulnerabilities have been found in WebKit</a>, which could probably allow for module dumping and ROP on later firmwares of the PS4, but as of writing, no one has ported any of these exploits to the PS4 publically.
+				</p>
+				
+				<br>
+				
+				<h2>What is ROP?</h2>
+				<p>
+					Unlike in primitive devices like the <a href="exploits.html">DS</a> and PSP, the PS4 has a kernel which controls the properties of different areas of memory. Pages of memory which are marked as executable cannot be overwritten, and pages of memory which are marked as writable cannot be executed; this is known as <a href="https://en.wikipedia.org/wiki/Data_Execution_Prevention">Data Execution Prevention (DEP)</a>.
+				</p>
+				
+				<p>
+					This means that we can't just copy a payload into memory and execute it. However, we can execute code which is already loaded into memory and marked as executable.
+				</p>
+				
+				<p>
+					<a href="https://en.wikipedia.org/wiki/Return-oriented_programming">Return-Oriented Programming (ROP)</a> is just an extension to traditional stack smashing, but instead of overwriting only a single value which the PC will jump to, we can chain together many different addresses, known as gadgets.
+				</p>
+				
+				<p>
+					A gadget is usually just a single desired instruction followed by a <code>ret</code>.
+				</p>
+				
+				<p>
+					In x86_64 assembly, when a <code>ret</code> instruction is reached, a 64bit value is popped off the stack and the PC jumps to it; since we can control the stack, we can make every <code>ret</code> instruction jump to the next desired gadget.
+				</p>
+				
+				<p>
+					For example, from <code>0x80000</code> may contains instructions:
+				</p>
+				
+				<pre><code>mov rax, 0
+ret</code></pre>
+				
+				<p>
+					And from <code>0x90000</code> may contain instructions:
+				</p>
+				
+				<pre><code>mov rbx, 0
+ret</code></pre>
+				
+				<p>
+					If we overwrite a return address on the stack to contain <code>0x80000</code> followed by <code>0x90000</code>, then as soon as the first <code>ret</code> instruction is reached execution will jump to <code>mov rax, 0</code>, and immediately afterwards, the next <code>ret</code> instruction will pop <code>0x90000</code> off the stack and jump to <code>mov rbx, 0</code>.
+				</p>
+				
+				<p>
+					Effectively this chain will set both <code>rax</code> and <code>rbx</code> to 0, just as if we had written the code into a single location and executed it from there.
+				</p>
+				
+				<p>
+					ROP chains aren't limited to just a list of addresses; assuming that from <code>0xa0000</code> contains these instructions:
+				</p>
+				
+				<pre><code>pop rax
+ret</code></pre>
+				
+				<p>
+					We can set the first item in the chain to <code>0xa0000</code> and the next item to any desired value for <code>rax</code>. This means that with sufficient gadgets, ROP can do basically anything.
+				</p>
+				
+				<br>
+				
+				<h2>Finding gadgets</h2>
+				<p>
+					Think of ROP as writing a new chapter to a book, using only words that have appeard at the end of sentences in the previous chapters.
+				</p>
+				
+				<p>
+					It's obvious from the structure of most sentences that we probably won't be able to find words like 'and' or 'but' appearing at the end of any sentences, but we will need these connectives in order to write anything meaningful.
+				</p>
+				
+				<p>
+					It is quite possible however, that a sentence has ended with 'sand'. Although the author only ever intended for the word to be read from the 's', if we start reading from the 'a', it will appear as an entirely different word by coincidence, 'and'.
+				</p>
+				
+				<p>
+					These principals also apply to ROP.
+				</p>
+				
+				<p>
+					Since the structure of almost all functions follows something like this:
+				</p>
+				
+				<pre><code>; Save registers
+push    rbp
+mov     rbp, rsp
+push    r15
+push    r14
+push    r13
+push    r12
+push    rbx
+sub     rsp, 18h
+
+; Function body
+
+; Restore registers
+add     rsp, 18h
+pop     rbx
+pop     r12
+pop     r13
+pop     r14
+pop     r15
+pop     rbp
+ret</code></pre>
+				
+				<p>
+					You'd expect to only be able to find <code>pop</code> gadgets, or more rarely, something like <code>xor rax, rax</code> to set the return value to 0 before returning.
+				</p>
+				
+				<p>
+					Having a comparison like:
+				</p>
+				
+				<pre><code>cmp [rax], r12
+ret</code></pre>
+				
+				<p>
+					Wouldn't make any sense since the result of the comparison isn't used by the function. However, there is still a possibility that we can find gadgets like these.
+				</p>
+				
+				<p>
+					Luckily for us, x86_64 instructions have variable lengths, just like words. And also like words, x86_64 instructions can mean something entirely different if decoded from an unintended location.
+				</p>
+				
+				<div class="quote">
+					The x86_64 architecture is a variable-length CISC instruction set. Return-oriented programming on the x86_64 takes advantage of the fact that the instruction set is very "dense", that is, any random sequence of bytes is likely to be interpretable as some valid set of x86_64 instructions.
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="https://en.wikipedia.org/wiki/Return-oriented_programming">Wikipedia</a>
+				</div>
+				<br>
+				
+				<br>
+				
+				<p>
+					To demonstrate this, take a look at the end of this function from the WebKit module:
+				</p>
+				
+				<pre><code>000000000052BE0D                 mov     eax, [rdx+8]
+000000000052BE10                 mov     [rsi+10h], eax
+000000000052BE13                 or      byte ptr [rsi+39h], 20h
+000000000052BE17                 ret</code></pre>
+				
+				<p>
+					Now take a look at what the code looks like if we start decoding from 0x52be14:
+				</p>
+				
+				<pre><code>000000000052BE14                 cmp     [rax], r12
+000000000052BE17                 ret</code></pre>
+				
+				<p>
+					Even though this code was never intended to be executed, it is within an area of memory which has been marked as executable, so it is perfectly valid to use as a gadget.
+				</p>
+				
+				<p>
+					Of course, it would be incredibily time consuming to look at every possible way of interpreting code before every single <code>ret</code> instruction manually; and that's why tools exist to do this for you. The one that I use to search for ROP gadgets is <a href="https://github.com/0vercl0k/rp/">rp++</a>; to generate a text file filled with gadgets, just use:
+				</p>
+				
+				<pre><code>rp-win-x64 -f mod14.bin --raw=x64 --rop=1 --unique > mod14.txt</code></pre>
+				
+				<p>
+					It is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality. So ROP is a viable method of bypassing DEP which will still let us execute almost anything we want.
+				</p>
+				
+				<br>
+				
+				<h2>ASLR</h2>
+				<p>
+					<a href="https://en.wikipedia.org/wiki/Address_space_layout_randomization">Address Space Layout Randomization (ASLR)</a> is a security technique which causes the base addresses of modules to be different every time you start the PS4.
+				</p>
+				
+				<p>
+					It has been reported to me that very old firmwares (1.05) don't have ASLR enabled, but I can't confirm this myself. I know for certain that at least firmwares 1.71 to 1.76 (probably more) have ASLR enabled for all modules except from the kernel.
+				</p>
+				
+				<p>
+					For most exploits this would be a problem because if you don't know the addresses of the gadgets in memory, you would have no idea what to write to the stack.
+				</p>
+				
+				<p>
+					Luckily for us, if we read the modules table with JavaScript, we can calculate the addresses of all gadgets before we trigger ROP execution, bypassing ASLR.
+				</p>
+				
+				<br>
+				
+				<h2>JuSt-ROP</h2>
+				<p>
+					Using JavaScript to write and execute dynamic ROP chains gives us a tremendous advantage over a standard buffer overflow attack.
+				</p>
+				
+				<p>
+					As well as bypassing ASLR, we can also read the user agent of the browser, and provide a different ROP chain for different browser versions, giving our exploit the highest compatibility possible.
+				</p>
+				
+				<p>
+					We can even use JavaScript to read the memory at our gadgets' addresses to check that they are correct, giving us almost perfect reliability.
+				</p>
+				
+				<p>
+					Writing ROP chains dynamically, rather than generating them with a script beforehand, just makes sense.
+				</p>
+				
+				<p>
+					I created a JavaScript framework for writing ROP chains, <a href="https://github.com/CTurt/JuSt-ROP">JuSt-ROP</a>, for this very reason.
+				</p>
+				
+				<br>
+				
+				<h2>System calls</h2>
+				<p>
+					Using the following JuSt-ROP function, we can try to perform any system call:
+				</p>
+				
+				<pre><code>this.syscall = function(name, systemCallNumber, arg1, arg2, arg3, arg4, arg5, arg6) {
+	console.log("syscall " + name);
+	
+	this.add("pop rax", systemCallNumber);
+	if(typeof(arg1) !== "undefined") this.add("pop rdi", arg1);
+	if(typeof(arg2) !== "undefined") this.add("pop rsi", arg2);
+	if(typeof(arg3) !== "undefined") this.add("pop rdx", arg3);
+	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
+	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
+	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
+	this.add("pop rbp", stackBase + returnAddress - (chainLength + 8) + 0x1480);
+	this.add("mov r10, rcx and syscall");
+}</code></pre>
+				
+				<p>
+					Using system calls can tell us a huge amount about the PS4 kernel. Not only that, but using system calls is most likely the only way that we can interact with the kernel, and thus potentially trigger a kernel exploit.
+				</p>
+				
+				<br>
+				
+				<h2>Getpid</h2>
+				<p>
+					Just by using system call 20, <a href="http://www.freebsd.org/cgi/man.cgi?query=getpid&sektion=2">getpid(void)</a>, we can learn a lot about the kernel.
+				</p>
+				
+				<p>
+					The very fact that this system call works at all tells us that Sony didn't bother mixing up the system call numbers as a means of <a href="https://en.wikipedia.org/wiki/Security_through_obscurity">security through obscurity</a> (under the BSD license they could have done this without releasing the new system call numbers).
+				</p>
+				
+				<p>
+					So, we automatically have a <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master">list of system calls in the PS4 kernel</a> to try.
+				</p>
+				
+				<p>
+					Secondly, by calling <code>getpid()</code>, restarting the browser, and calling it again, we get a return value 1 higher than the previous value. This sequential PID allocation is the default FreeBSD 9.0 behaviour. The fact that there isn't <a href="http://security.stackexchange.com/questions/88692/do-randomized-pid-bring-more-security">PID randomisation</a> tells us that Sony likely didn't bother adding any additional security enhancements such as those from projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>.
+				</p>
+				
+				<br>
+				
+				<h2>Sandboxing</h2>
+				<p>
+					Unfortunately not all system calls will work; some will return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>.
+				</p>
+				
+				<p>
+					For example, trying to allocate some RWX memory:
+				</p>
+				
+				<pre><code>//void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
+//mmap(NULL, 1024, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS, -1, 0);
+chain.syscall("mmap", 71, 0, 1024, 1 | 2 | 4, 4096, -1, 0);</code></pre>
+				
+				<p>
+					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
+				</p>
+				
+				<p>
+					Other system calls may fail for other reasons, for example, trying to create an SCTP socket:
+				</p>
+				
+				<pre><code>//int socket(int domain, int type, int protocol);
+//socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
+chain.syscall("socket", 97, 2, 1, 132);</code></pre>
+				
+				<p>
+					This returns <code>0x2b</code>, which, at first may seem to be a valid socket, but is actually <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel.
+				</p>
+				
+				<br>
+				
+				<h2>FreeBSD 9.0 kernel exploits</h2>
+				<p>
+					It makes little sense trying to look for new kernel vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/master/sys/kern">FreeBSD kernel source code</a> because since <a href="https://www.freebsd.org/releases/9.0R/schedule.html">FreeBSD 9.0's release on 12'th January 2012</a>, <a href="https://www.exploit-db.com/platform/?p=freebsd">several kernel exploits have already been found</a>, which the PS4 could potentially be vulnerable to.
+				</p>
+				
+				<p>
+					We can immediately dismiss some of these for obvious reasons:
+				</p>
+				
+				<ul>
+					<li>
+						<a href="https://www.exploit-db.com/exploits/26368/">FreeBSD 9.0-9.1 mmap/ptrace - Privilege Escalation Exploit</a> - this won't work since, as previously stated, we don't have access to the <code>mmap</code> system call.
+					</li>
+					
+					<li>
+						<a href="https://www.exploit-db.com/exploits/26454/">FreeBSD 9 - Address Space Manipulation Privilege Escalation</a> - again, relies on the <code>mmap</code> system call.
+					</li>
+					
+					<li>
+						<a href="https://www.exploit-db.com/exploits/28718/">FreeBSD 9.0 - Intel SYSRET Kernel Privilege Escalation Exploit</a> - won't work because the PS4 uses an AMD processor.
+					</li>
+					
+					<li>
+						<a href="https://www.exploit-db.com/exploits/35938/">FreeBSD Kernel - Multiple Vulnerabilities</a> - maybe the first vulnerability will lead to something, but the other 2 rely on SCTP sockets, which the PS4 kernel has disabled (as previously stated).
+					</li>
+				</ul>
+				
+				<p>
+					However, there are <a href="http://www.cvedetails.com/vulnerability-list/vendor_id-6/product_id-7/version_id-145395/Freebsd-Freebsd-9.1.html">some smaller vulnerabilites</a>, which could lead to something:
+				</p>
+				
+				<br>
+				
+				<h2>getlogin</h2>
+				<p>
+					One vulnerability which looks easy to try is using the <a href="http://www.cvedetails.com/cve/CVE-2014-8476/">getlogin system call to leak a small amount of kernel memory</a>.
+				</p>
+				
+				<p>
+					The <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&sektion=2"><code>getlogin</code></a> system call is intended to copy the login name of the current session to userland memory, however, due to a bug, the whole buffer is always copied, and not just the size of the name string. This means that we can read some uninitialised data from the kernel, which might be of some use.
+				</p>
+				
+				<p>
+					Note that the system call (49) is actually <code>int getlogin_r(char *name, int	len);</code> and not <code>char *getlogin(void);</code>.
+				</p>
+				
+				<p>
+					So, let's try copying some kernel memory into an unused part of userland memory:
+				</p>
+				
+				<pre><code>chain.syscall("getlogin", 49, stack_base + return_va + 0x480, 17);</code></pre>
+				
+				<p>
+					Unfortunately 17 bytes is the most data we can get, since:
+				</p>
+				
+				<div class="quote">
+					Login names are limited to <code>MAXLOGNAME</code> (from <code>&lt;sys/param.h&gt;</code>) characters, currently 17 including null.
+				</div>
+				
+				<div class="quote-reference">
+					- <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&sektion=2">FreeBSD Man Pages</a>
+				</div>
+				<br>
+				
+				<br>
+				
+				<p>
+					After executing the chain, the return value was 0, which means that the system call worked! An excellent start. Now let's take a look at the memory which we pointed to:
+				</p>
+				
+				<p>
+					Before executing the chain:
+				</p>
+				
+				<pre><code>00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00</code></pre>
+				
+				<p>
+					After executing the chain:
+				</p>
+				
+				<pre><code>72 6f 6f 74 00 fe ff ff 08 62 61 82 ff ff ff ff
+00</code></pre>
+				
+				<p>
+					After decoding the first 4 bytes as ASCII:
+				</p>
+				
+				<pre><code>root</code></pre>
+				
+				<p>
+					So the browser is executed as root! That was unexpected. But more interestingly, the memory that we were able to leak from the kernel looks like some kind of pointer to something in the kernel. But even more interestingly, every time I run this ROP chain, I always get the same pointer, which is evidence to support <a href="https://twitter.com/yifanlu/status/551498289284009984">Yifanlu's claims that the PS4 has no Kernel ASLR</a>!
+				</p>
+				
+				<br>
+				
+				<h2>Summary</h2>
+				<p>
+					From the information currently available, the PS4's kernel seems to be very similar to the stock FreeBSD 9.0 kernel, possibly with some additional system calls, but no dramatic changes like PID randomisation. And of course, I'm inclined to believe that it has all of the same juicy vulnerabilities as FreeBSD 9.0's kernel!
+				</p>
+				
+				<p>
+					Unfortunately, most kernel exploits cannot be triggered from the WebKit entry point that we currently have due to sandboxing constraints (likely to be just stock FreeBSD jails).
+				</p>
+				
+				<p>
+					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit; there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>.
+				</p>
+				
+				<p>
+					But it's much more likely that a kernel vulnerability will be found on the PS4 through ROP.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
