@@ -254,7 +254,7 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					It has been reported to me that very old firmwares (1.05) don't have ASLR enabled, but I can't confirm this myself. I know for certain that at least firmwares 1.71 to 1.76 (probably more) have ASLR enabled for all modules except from the kernel.
+					It has been reported to me that very old firmwares (1.05) don't have ASLR enabled, but I can't confirm this myself. I know for certain that at least firmwares 1.71 to 1.76 (and probably more) have ASLR enabled for all modules except for the kernel.
 				</p>
 				
 				<p>
@@ -352,7 +352,7 @@ chain.syscall("mmap", 71, 0, 1024, 1 | 2 | 4, 4096, -1, 0);</code></pre>
 				</p>
 				
 				<p>
-					Other system calls may fail for other reasons, for example, trying to create an SCTP socket:
+					Other system calls may fail for different reasons, for example, trying to create an SCTP socket:
 				</p>
 				
 				<pre><code>//int socket(int domain, int type, int protocol);
