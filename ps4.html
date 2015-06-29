@@ -393,7 +393,7 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</ul>
 				
 				<p>
-					However, there are <a href="http://www.cvedetails.com/vulnerability-list/vendor_id-6/product_id-7/version_id-145395/Freebsd-Freebsd-9.1.html">some smaller vulnerabilites</a>, which could lead to something:
+					However, there are <a href="http://www.cvedetails.com/vulnerability-list/vendor_id-6/product_id-7/version_id-118765/Freebsd-Freebsd-9.0.html">some smaller vulnerabilites</a>, which could lead to something:
 				</p>
 				
 				<br>
@@ -472,11 +472,15 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit; there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>.
+					With FreeBSD 10 being out, it's unlikely that anyone is stashing away any private exploits for FreeBSD 9, so unless a new one is suddenly released, we're stuck with what is currently available.
 				</p>
 				
 				<p>
-					But it's much more likely that a kernel vulnerability will be found on the PS4 through ROP.
+					It may not be impossible to exploit the PS4 kernel by leveraging some of the existing kernel memory corruption vulnerabilities, but it certainly would't be easy.
+				</p>
+				
+				<p>
+					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>; but it remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities.
 				</p>
 			</div>
 		</div>
