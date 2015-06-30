@@ -40,6 +40,10 @@
 					I will explain some security concepts that generally apply to all modern systems, and my discoveries that I made from running tests on the PS4.
 				</p>
 				
+				<p>
+					If you are not particularly familiar with exploitation, you should read my article about <a href="DS-exploit-finding.html">exploiting DS games through stack smash vulnerabilities in save files</a> first.
+				</p>
+				
 				<br>
 				
 				<h2>Background information about the PS4</h2>
@@ -484,7 +488,7 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities.
+					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities though.
 				</p>
 			</div>
 		</div>
