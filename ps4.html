@@ -342,9 +342,84 @@ ret</code></pre>
 				
 				<br>
 				
+				<h2>Browsing the filesystem</h2>
+				<p>
+					We can use the <code>open</code> and <code>read</code> system calls on the <code>/dev/</code> directory to list everything it contains:
+				</p>
+				
+				<pre><code>writeString(stack_base + return_va + 0x480, "/dev/");
+chain.syscall("open", 5, stack_base + return_va + 0x480, 0, 0);
+chain.write_rax_ToVariable(0);
+
+chain.read_rdi_FromVariable(0);
+chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028);</code></pre>
+				
+				<p>
+					This is the resultant memory:
+				</p>
+				
+				<pre><code>0000010: 0700 0000 1000 0205 6469 7073 7700 0000  ........dipsw...
+0000020: 0800 0000 1000 0204 6e75 6c6c 0000 0000  ........null....
+0000030: 0900 0000 1000 0204 7a65 726f 0000 0000  ........zero....
+0000040: 0301 0000 0c00 0402 6664 0000 0b00 0000  ........fd......
+0000050: 1000 0a05 7374 6469 6e00 0000 0d00 0000  ....stdin.......
+0000060: 1000 0a06 7374 646f 7574 0000 0f00 0000  ....stdout......
+0000070: 1000 0a06 7374 6465 7272 0000 1000 0000  ....stderr......
+0000080: 1000 0205 646d 656d 3000 0000 1100 0000  ....dmem0.......
+0000090: 1000 0205 646d 656d 3100 0000 1300 0000  ....dmem1.......
+00000a0: 1000 0206 7261 6e64 6f6d 0000 1400 0000  ....random......
+00000b0: 1000 0a07 7572 616e 646f 6d00 1600 0000  ....urandom.....
+00000c0: 1400 020b 6465 6369 5f73 7464 6f75 7400  ....deci_stdout.
+00000d0: 1700 0000 1400 020b 6465 6369 5f73 7464  ........deci_std
+00000e0: 6572 7200 1800 0000 1400 0209 6465 6369  err.........deci
+00000f0: 5f74 7479 3200 0000 1900 0000 1400 0209  _tty2...........
+0000100: 6465 6369 5f74 7479 3300 0000 1a00 0000  deci_tty3.......
+0000110: 1400 0209 6465 6369 5f74 7479 3400 0000  ....deci_tty4...
+0000120: 1b00 0000 1400 0209 6465 6369 5f74 7479  ........deci_tty
+0000130: 3500 0000 1c00 0000 1400 0209 6465 6369  5...........deci
+0000140: 5f74 7479 3600 0000 1d00 0000 1400 0209  _tty6...........
+0000150: 6465 6369 5f74 7479 3700 0000 1e00 0000  deci_tty7.......
+0000160: 1400 020a 6465 6369 5f74 7479 6130 0000  ....deci_ttya0..
+0000170: 1f00 0000 1400 020a 6465 6369 5f74 7479  ........deci_tty
+0000180: 6230 0000 2000 0000 1400 020a 6465 6369  b0.. .......deci
+0000190: 5f74 7479 6330 0000 2200 0000 1400 020a  _ttyc0..".......
+00001a0: 6465 6369 5f73 7464 696e 0000 2300 0000  deci_stdin..#...
+00001b0: 0c00 0203 6270 6600 2400 0000 1000 0a04  ....bpf.$.......
+00001c0: 6270 6630 0000 0000 2900 0000 0c00 0203  bpf0....).......
+00001d0: 6869 6400 2c00 0000 1400 0208 7363 655f  hid.,.......sce_
+00001e0: 7a6c 6962 0000 0000 2e00 0000 1000 0204  zlib............
+00001f0: 6374 7479 0000 0000 3400 0000 0c00 0202  ctty....4.......
+0000200: 6763 0000 3900 0000 0c00 0203 6463 6500  gc..9.......dce.
+0000210: 3a00 0000 1000 0205 6462 6767 6300 0000  :.......dbggc...
+0000220: 3e00 0000 0c00 0203 616a 6d00 4100 0000  >.......ajm.A...
+0000230: 0c00 0203 7576 6400 4200 0000 0c00 0203  ....uvd.B.......
+0000240: 7663 6500 4500 0000 1800 020d 6e6f 7469  vce.E.......noti
+0000250: 6669 6361 7469 6f6e 3000 0000 4600 0000  fication0...F...
+0000260: 1800 020d 6e6f 7469 6669 6361 7469 6f6e  ....notification
+0000270: 3100 0000 5000 0000 1000 0206 7573 6263  1...P.......usbc
+0000280: 746c 0000 5600 0000 1000 0206 6361 6d65  tl..V.......came
+0000290: 7261 0000 8500 0000 0c00 0203 726e 6700  ra..........rng.
+00002a0: 0701 0000 0c00 0403 7573 6200 c900 0000  ........usb.....
+00002b0: 1000 0a07 7567 656e 302e 3400 0000 0000  ....ugen0.4.....
+00002c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................</code></pre>
+				
+				<p>
+					You can change the <code>writeString</code> call to read some of the devices listed, for example: reading <code>"/dev/urandom"</code> will fill the memory with random data.
+				</p>
+				
+				<p>
+					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing.
+				</p>
+				
+				<br>
+				
 				<h2>Sandboxing</h2>
 				<p>
-					Unfortunately not all system calls will work; some will return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>.
+					As well as file related system calls failing for certain paths, there are other reasons for a system call to fail.
+				</p>
+				
+				<p>
+					Most commonly, a disallowed system call will just return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>.
 				</p>
 				
 				<p>
@@ -356,11 +431,7 @@ ret</code></pre>
 chain.syscall("mmap", 71, 0, 1024, 1 | 2 | 4, 4096, -1, 0);</code></pre>
 				
 				<p>
-					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
-				</p>
-				
-				<p>
-					Other system calls may fail for different reasons, for example, trying to create an SCTP socket:
+					But other system calls may fail for different reasons, for example, trying to create an SCTP socket:
 				</p>
 				
 				<pre><code>//int socket(int domain, int type, int protocol);
@@ -369,6 +440,10 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				
 				<p>
 					This returns <code>0x2b</code>, which, at first may seem to be a valid socket, but is actually <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel.
+				</p>
+				
+				<p>
+					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
 				</p>
 				
 				<br>
@@ -488,7 +563,7 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities though.
+					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel exploit will be found on the PS4 through system call vulnerabilities though.
 				</p>
 			</div>
 		</div>
