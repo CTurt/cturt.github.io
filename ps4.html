@@ -254,11 +254,11 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					It has been reported to me that very old firmwares (1.05) don't have ASLR enabled, but I can't confirm this myself. I know for certain that at least firmwares 1.71 to 1.76 (and probably more) have ASLR enabled for all modules except for the kernel.
+					It has been reported to me that <a href="https://www.youtube.com/watch?v=aEu208625XA">very old firmwares (1.05) don't have ASLR enabled</a>. I don't know exactly when ASLR was introduced, but it was somewhere between firmwares 1.05 and 1.71. Note that kernel ASLR is not enabled (for firmwares 1.76 and lower at least), this will be proved later in the article.
 				</p>
 				
 				<p>
-					For most exploits this would be a problem because if you don't know the addresses of the gadgets in memory, you would have no idea what to write to the stack.
+					For most exploits ASLR would be a problem because if you don't know the addresses of the gadgets in memory, you would have no idea what to write to the stack.
 				</p>
 				
 				<p>
@@ -480,7 +480,7 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>; but it remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities.
+					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel vulnerability will be found on the PS4 through system call vulnerabilities.
 				</p>
 			</div>
 		</div>
