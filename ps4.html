@@ -439,10 +439,26 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Using <code>exit</code> halts the WebKit process completely and gives the generic "There is not enough free system memory" error:
+					Using <code>exit</code> halts the WebKit process completely and gives a generic "There is not enough free system memory" error (the same error that is triggered during a segmentation fault):
 				</p>
 				
 				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
+				
+				<p>
+					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> may return a valid pointer, we can't actually execute the memory:
+				</p>
+				
+				<pre><code>chain.syscall("mmap", 477, 0, 4096, 1 | 2 | 4, 4096, -1, 0);
+chain.write_rax_ToVariable(0);
+chain.read_rdi_FromVariable(0);
+chain.add("pop rax", 0xfeeb);
+chain.add("mov [rdi], rax");
+chain.add("mov rax, rdi");
+chain.add("jmp rax");</code></pre>
+				
+				<p>
+					This will also cause a segmentation fault (indicated by the "There is not enough free system memory" error message).
+				</p>
 				
 				<p>
 					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
