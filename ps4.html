@@ -408,7 +408,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 				</p>
 				
 				<p>
-					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing.
+					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing. Trying to read files and directories that <a href="http://www.psdevwiki.com/ps4/Talk:Files_on_the_PS4">do exist</a> but are restricted will give you error 2, <code>ENOENT</code>, "No such file or directory".
 				</p>
 				
 				<br>
@@ -419,16 +419,12 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 				</p>
 				
 				<p>
-					Most commonly, a disallowed system call will just return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>.
+					Compatibilty system calls are disabled. If you are trying to call <code>mmap</code> for example, you must use <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L854">system call number 447</a>, not <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L172">71</a> or <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L379">197</a>.
 				</p>
 				
 				<p>
-					For example, trying to allocate some RWX memory:
+					Most commonly, a disallowed system call will just return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>. For example: trying to use <code>ptrace</code> with any arguments.
 				</p>
-				
-				<pre><code>//void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
-//mmap(NULL, 1024, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS, -1, 0);
-chain.syscall("mmap", 71, 0, 1024, 1 | 2 | 4, 4096, -1, 0);</code></pre>
 				
 				<p>
 					But other system calls may fail for different reasons, for example, trying to create an SCTP socket:
@@ -441,6 +437,12 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				<p>
 					This returns <code>0x2b</code>, which, at first may seem to be a valid socket, but is actually <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel.
 				</p>
+				
+				<p>
+					Using <code>exit</code> halts the WebKit process completely and gives the generic "There is not enough free system memory" error:
+				</p>
+				
+				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
 				
 				<p>
 					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
@@ -459,11 +461,11 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				
 				<ul>
 					<li>
-						<a href="https://www.exploit-db.com/exploits/26368/">FreeBSD 9.0-9.1 mmap/ptrace - Privilege Escalation Exploit</a> - this won't work since, as previously stated, we don't have access to the <code>mmap</code> system call.
+						<a href="https://www.exploit-db.com/exploits/26368/">FreeBSD 9.0-9.1 mmap/ptrace - Privilege Escalation Exploit</a> - this won't work since, as previously stated, we don't have access to the <code>ptrace</code> system call.
 					</li>
 					
 					<li>
-						<a href="https://www.exploit-db.com/exploits/26454/">FreeBSD 9 - Address Space Manipulation Privilege Escalation</a> - again, relies on the <code>mmap</code> system call.
+						<a href="https://www.exploit-db.com/exploits/26454/">FreeBSD 9 - Address Space Manipulation Privilege Escalation</a> - again, relies on the <code>ptrace</code> system call.
 					</li>
 					
 					<li>
