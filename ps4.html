@@ -439,7 +439,7 @@ chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				</p>
 				
 				<p>
-					Using <code>exit</code> halts the WebKit process completely and gives a generic "There is not enough free system memory" error (the same error that is triggered during a segmentation fault):
+					Using <code>exit</code> halts the WebKit process completely and gives a generic "There is not enough free system memory" error (which usually indicates a segmentation fault):
 				</p>
 				
 				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
@@ -478,10 +478,6 @@ chain.add("jmp rax");</code></pre>
 				<ul>
 					<li>
 						<a href="https://www.exploit-db.com/exploits/26368/">FreeBSD 9.0-9.1 mmap/ptrace - Privilege Escalation Exploit</a> - this won't work since, as previously stated, we don't have access to the <code>ptrace</code> system call.
-					</li>
-					
-					<li>
-						<a href="https://www.exploit-db.com/exploits/26454/">FreeBSD 9 - Address Space Manipulation Privilege Escalation</a> - again, relies on the <code>ptrace</code> system call.
 					</li>
 					
 					<li>
