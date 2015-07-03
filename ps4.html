@@ -605,7 +605,11 @@ if (error)
 				<pre><code>root</code></pre>
 				
 				<p>
-					So the browser is executed as root! That was unexpected. But more interestingly, the memory that we were able to leak from the kernel looks like some kind of pointer to something in the kernel. But even more interestingly, every time I run this ROP chain, I always get the same pointer, which is evidence to support <a href="https://twitter.com/yifanlu/status/551498289284009984">Yifanlu's claims that the PS4 has no Kernel ASLR</a>!
+					So the browser is executed as root! That was unexpected.
+				</p>
+				
+				<p>
+					But more interestingly, the memory leaked looks like a pointer to something in the kernel, which is always the same each time the chain is run; this is evidence to support <a href="https://twitter.com/yifanlu/status/551498289284009984">Yifanlu's claims that the PS4 has no Kernel ASLR</a>!
 				</p>
 				
 				<br>
