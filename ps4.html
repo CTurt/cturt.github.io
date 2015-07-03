@@ -466,6 +466,57 @@ chain.add("jmp rax");</code></pre>
 				
 				<br>
 				
+				<h2>Jails</h2>
+				<p>
+					We can prove the existence of FreeBSD jails being actively used in the PS4's kernel through the <code>auditon</code> system call being impossible to execute within a jailed environment:
+				</p>
+				
+				<pre><code>chain.syscall("auditon", 446, 0, 0, 0);</code></pre>
+				
+				<p>
+					The first thing the <code>auditon</code> system call does is check <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/master/sys/security/audit/audit_syscalls.c#L165">here</a>, and if so, return <code>ENOSYS</code>:
+				</p>
+				
+				<pre><code>if (jailed(td->td_ucred))
+	return (ENOSYS);</code></pre>
+				
+				<p>
+					Otherwise the system call would most likely return <code>EPERM</code> from the <code>mac_system_check_auditon</code> <a href="https://github.com/freebsd/freebsd/blob/master/sys/security/audit/audit_syscalls.c#L169">here</a>:
+				</p>
+				
+				<pre><code>error = mac_system_check_auditon(td->td_ucred, uap->cmd);
+if (error)
+	return (error);</code></pre>
+				
+				<p>
+					Or from the <code>priv_check</code> <a href="https://github.com/freebsd/freebsd/blob/master/sys/security/audit/audit_syscalls.c#L174">here</a>:
+				</p>
+				
+				<pre><code>error = priv_check(td, PRIV_AUDIT_CONTROL);
+if (error)
+	return (error);</code></pre>
+				
+				<p>
+					The absolute furthest that the system call could reach would be immediately after the <code>priv_check</code>, <a href="https://github.com/freebsd/freebsd/blob/master/sys/security/audit/audit_syscalls.c#L178">here</a>, before returning <code>EINVAL</code> due to the length argument being 0:
+				</p>
+				
+				<pre><code>if ((uap->length <= 0) || (uap->length > sizeof(union auditon_udata)))
+	return (EINVAL);</code></pre>
+				
+				<p>
+					Since <code>mac_system_check_auditon</code> and <code>priv_check</code> will never return <code>ENOSYS</code>, having the <code>jailed</code> check pass is the only way <code>ENOSYS</code> could be returned.
+				</p>
+				
+				<p>
+					When executing the chain, <code>ENOSYS</code> is returned (<code>0x48</code>).
+				</p>
+				
+				<p>
+					This tells us that whatever sandbox system the PS4 uses is at least based on jails because <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/master/sys/kern/kern_jail.c#L3515">returns 1</a> when called by the kernel.
+				</p>
+				
+				<br>
+				
 				<h2>FreeBSD 9.0 kernel exploits</h2>
 				<p>
 					It makes little sense trying to look for new kernel vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/master/sys/kern">FreeBSD kernel source code</a> because since <a href="https://www.freebsd.org/releases/9.0R/schedule.html">FreeBSD 9.0's release on 12'th January 2012</a>, <a href="https://www.exploit-db.com/platform/?p=freebsd">several kernel exploits have already been found</a>, which the PS4 could potentially be vulnerable to.
