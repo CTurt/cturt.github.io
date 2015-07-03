@@ -270,8 +270,34 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					Luckily for us, if we read the modules table with JavaScript, we can calculate the addresses of all gadgets before we trigger ROP execution, bypassing ASLR.
+					Luckily for us, if we read the modules table with JavaScript to get the base addresses of all loaded modules, we can calculate the addresses of all gadgets before we trigger ROP execution, bypassing ASLR.
 				</p>
+				
+				<p>
+					The modules table also includes the filenames of the modules:
+				</p>
+				
+				<ul>
+					<li>libkernel.sprx</li>
+					<li>libSceLibcInternal.sprx</li>
+					<li>libSceSysmodule.sprx</li>
+					<li>libSceNet.sprx</li>
+					<li>libSceNetCtl.sprx</li>
+					<li>libSceIpmi.sprx</li>
+					<li>libSceMbus.sprx</li>
+					<li>libSceRegMgr.sprx</li>
+					<li>libSceRtc.sprx</li>
+					<li>libScePad.sprx</li>
+					<li>libSceVideoOut.sprx</li>
+					<li>libScePigletv2VSH.sprx</li>
+					<li>libSceOrbisCompat.sprx</li>
+					<li>libSceWebKit2.sprx</li>
+					<li>libSceSysCore.sprx</li>
+					<li>libSceSsl.sprx</li>
+					<li>libSceVideoCoreServerInterface.sprx</li>
+					<li>libSceSystemService.sprx</li>
+					<li>libSceCompositeExt.sprx</li>
+				</ul>
 				
 				<br>
 				
