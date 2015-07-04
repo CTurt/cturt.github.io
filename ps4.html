@@ -256,13 +256,49 @@ ret</code></pre>
 				
 				<br>
 				
+				<h2>Segmentation faults</h2>
+				<p>
+					If we <i>do</i> try to execute a non-executable page of memory, or try to write to a non-writable page of memory, a <a href="https://en.wikipedia.org/wiki/Segmentation_fault">segmentation fault</a> will occur.
+				</p>
+				
+				<p>
+					For example, trying the execute code on the stack, which is mapped as read and write only:
+				</p>
+				
+				<pre><code>setU8to(stack_base + return_va + 0x480 + 0, 0xeb);
+setU8to(stack_base + return_va + 0x480 + 1, 0xfe);
+
+chain.add(stack_base + return_va + 0x480);</code></pre>
+				
+				<p>
+					And trying to write to code, which is mapped as read and execute only:
+				</p>
+				
+				<pre><code>setU8to(wk_base, 0);</code></pre>
+				
+				<p>
+					If a segmentation fault occurs, a message saying "There is not enough free system memory" will appear, and the page will fail to load:
+				</p>
+				
+				<div class="center">
+					<img src="images/PS4/segfault.png" />
+				</div>
+				
+				<br>
+				
+				<p>
+					There are other possible reasons for this message to be displayed, such as executing an invalid instruction or an unimplemented system call, but a segmentation fault is the most common.
+				</p>
+				
+				<br>
+				
 				<h2>ASLR</h2>
 				<p>
 					<a href="https://en.wikipedia.org/wiki/Address_space_layout_randomization">Address Space Layout Randomization (ASLR)</a> is a security technique which causes the base addresses of modules to be different every time you start the PS4.
 				</p>
 				
 				<p>
-					It has been reported to me that <a href="https://www.youtube.com/watch?v=aEu208625XA">very old firmwares (1.05) don't have ASLR enabled</a>. I don't know exactly when ASLR was introduced, but it was somewhere between firmwares 1.05 and 1.71. Note that kernel ASLR is not enabled (for firmwares 1.76 and lower at least), this will be proved later in the article.
+					It has been reported to me that <a href="https://www.youtube.com/watch?v=aEu208625XA">very old firmwares (1.05) don't have ASLR enabled</a>, but it was introduced sometime before firmware 1.70. Note that kernel ASLR is not enabled (for firmwares 1.76 and lower at least), which will be proved later in the article.
 				</p>
 				
 				<p>
@@ -430,7 +466,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 00002c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................</code></pre>
 				
 				<p>
-					You can change the <code>writeString</code> call to read some of the devices listed, for example: reading <code>"/dev/urandom"</code> will fill the memory with random data.
+					You can change the <code>writeString</code> call to read some of the devices listed, for example: reading <code>/dev/urandom</code> will fill the memory with random data.
 				</p>
 				
 				<p>
@@ -445,15 +481,21 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 				</p>
 				
 				<p>
-					Compatibilty system calls are disabled. If you are trying to call <code>mmap</code> for example, you must use <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L854">system call number 447</a>, not <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L172">71</a> or <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L379">197</a>.
+					Most commonly, a disallowed system call will just return error <code>1</code>, <code>EPERM</code>, <code>"Operation not permitted"</code>; such as trying to use <code>ptrace</code>, but other system calls may fail for different reasons:
 				</p>
 				
 				<p>
-					Most commonly, a disallowed system call will just return error 1, <code>EPERM</code>, <code>"Operation not permitted"</code>. For example: trying to use <code>ptrace</code> with any arguments.
+					Compatibilty system calls are disabled. If you are trying to call <code>mmap</code> for example, you must use <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L854">system call number 447</a>, not <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L172">71</a> or <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L379">197</a>; otherwise a segfault will be triggered.
 				</p>
 				
 				<p>
-					But other system calls may fail for different reasons, for example, trying to create an SCTP socket:
+					Other system calls such as <code>exit</code> will also trigger a segmentation fault:
+				</p>
+				
+				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
+				
+				<p>
+					Trying to create an SCTP socket will return error <code>0x2b</code>, <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel:
 				</p>
 				
 				<pre><code>//int socket(int domain, int type, int protocol);
@@ -461,17 +503,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				
 				<p>
-					This returns <code>0x2b</code>, which, at first may seem to be a valid socket, but is actually <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel.
-				</p>
-				
-				<p>
-					Using <code>exit</code> halts the WebKit process completely and gives a generic "There is not enough free system memory" error (which usually indicates a segmentation fault):
-				</p>
-				
-				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
-				
-				<p>
-					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> may return a valid pointer, we can't actually execute the memory:
+					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the memory still isn't actually executable and will trigger a segfault if you try:
 				</p>
 				
 				<pre><code>chain.syscall("mmap", 477, 0, 4096, 1 | 2 | 4, 4096, -1, 0);
@@ -481,10 +513,6 @@ chain.add("pop rax", 0xfeeb);
 chain.add("mov [rdi], rax");
 chain.add("mov rax, rdi");
 chain.add("jmp rax");</code></pre>
-				
-				<p>
-					This will also cause a segmentation fault (indicated by the "There is not enough free system memory" error message).
-				</p>
 				
 				<p>
 					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
