@@ -385,7 +385,7 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				
 				<br>
 				
-				<h2>Getpid</h2>
+				<h2>getpid</h2>
 				<p>
 					Just by using system call 20, <a href="http://www.freebsd.org/cgi/man.cgi?query=getpid&sektion=2">getpid(void)</a>, we can learn a lot about the kernel.
 				</p>
@@ -399,7 +399,11 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				</p>
 				
 				<p>
-					Secondly, by calling <code>getpid()</code>, restarting the browser, and calling it again, we get a return value 1 higher than the previous value. This sequential PID allocation is the default FreeBSD 9.0 behaviour. The fact that there isn't <a href="http://security.stackexchange.com/questions/88692/do-randomized-pid-bring-more-security">PID randomisation</a> tells us that Sony likely didn't bother adding any additional security enhancements such as those from projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>.
+					Secondly, by calling <code>getpid()</code>, restarting the browser, and calling it again, we get a return value 1 higher than the previous value. Although FreeBSD has supported <a href="http://security.stackexchange.com/questions/88692/do-randomized-pid-bring-more-security">PID randomisation</a> since 4.0, sequential PID allocation is the default behaviour.
+				</p>
+				
+				<p>
+					The fact that PID allocation is set to the default behaviour indicates that Sony likely didn't bother adding any additional security enhancements such as those encouraged by projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>.
 				</p>
 				
 				<br>
@@ -470,7 +474,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 				</p>
 				
 				<p>
-					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing. Trying to read files and directories that <a href="http://www.psdevwiki.com/ps4/Talk:Files_on_the_PS4">do exist</a> but are restricted will give you error 2, <code>ENOENT</code>, "No such file or directory".
+					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing. Trying to read files and directories that <a href="http://www.psdevwiki.com/ps4/Talk:Files_on_the_PS4">do exist</a> but are restricted will give you error 2, <code>ENOENT</code>, <code>"No such file or directory"</code>.
 				</p>
 				
 				<br>
@@ -670,7 +674,11 @@ if (error)
 				
 				<h2>Summary</h2>
 				<p>
-					From the information currently available, the PS4's kernel seems to be very similar to the stock FreeBSD 9.0 kernel, possibly with some additional system calls, but no dramatic changes like PID randomisation. And of course, I'm inclined to believe that it has all of the same juicy vulnerabilities as FreeBSD 9.0's kernel!
+					From the information currently available, the PS4's kernel seems to be very similar to the stock FreeBSD 9.0 kernel, possibly with some additional system calls, but few dramatic changes. Importantly, the differences that <i>are</i> present appear to be from standard <a href="https://www.freebsd.org/doc/handbook/kernelconfig-custom-kernel.html">kernel configuration</a> changes, and not from custom code.
+				</p>
+				
+				<p>
+					In this respect, I'm inclined to believe that the PS4 shares most of the same juicy vulnerabilities as FreeBSD 9.0's kernel!
 				</p>
 				
 				<p>
