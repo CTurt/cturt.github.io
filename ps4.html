@@ -368,29 +368,6 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				
 				<br>
 				
-								<h2>JavaScript caveats</h2>
-				<p>
-					JavaScript represents numbers using the <a href="https://en.wikipedia.org/wiki/IEEE_floating_point">IEEE-754</a> double-precision (64bit) format. This gives you 53 bits precision, or fifteen to sixteen decimal digits.
-				</p>
-				
-				<p>
-					This means that JavaScript numbers can't handle all possible 64bit values, for some you will just be given an approximation.
-				</p>
-				
-				<p>
-					If you just need to set a 64bit value to something low, like <code>256</code>, <code>setU64to</code> will be fine.
-				</p>
-				
-				<p>
-					But for situations where you are writing a chunk of data, you should avoid writing it in 64bit chunks because there is the possibility that certain bytes will be written incorrectly as a result of this.
-				</p>
-				
-				<p>
-					Instead, you should write data in 32bit chunks (remembering that the PS4 is little endian), to ensure that all data is exact.
-				</p>
-				
-				<br>
-				
 				<h2>JavaScript caveats</h2>
 				<p>
 					JavaScript represents numbers using the <a href="https://en.wikipedia.org/wiki/IEEE_floating_point">IEEE-754</a> double-precision (64bit) format. This provides us with 53bit precision, meaning that it isn't possible to represent every 64bit value, approximations will have to be used for some.
