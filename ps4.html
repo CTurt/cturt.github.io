@@ -262,7 +262,7 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					For example, trying the execute code on the stack, which is mapped as read and write only:
+					For example, trying to execute code on the stack, which is mapped as read and write only:
 				</p>
 				
 				<pre><code>setU8to(stack_base + return_va + 0x480 + 0, 0xeb);
@@ -306,7 +306,7 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				</p>
 				
 				<p>
-					Luckily for us, if we read the modules table with JavaScript to get the base addresses of all loaded modules, we can calculate the addresses of all gadgets before we trigger ROP execution, bypassing ASLR.
+					Luckily for us, if we read the modules table with JavaScript to get the base addresses of all loaded modules, we can calculate the addresses of our gadgets before we trigger ROP execution, bypassing ASLR.
 				</p>
 				
 				<p>
@@ -336,7 +336,11 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				</ul>
 				
 				<p>
-					You can view a complete list of all modules available (not just those loaded by the browser) in <code>libSceSysmodule.sprx</code>.
+					Although the PS4 predominantly uses the [<b>S</b>igned] <b>P</b>PU <b>R</b>elocatable E<b>x</b>ecutable ([S]PRX) format for modules, some string references to [<b>S</b>igned] <b>E</b>xecutable and <b>L</b>inking <b>F</b>ormat ([S]ELF) object files can also be found in the <code>libSceSysmodule.sprx</code> dump, such as <code>bdj.elf</code>, <code>web_core.elf</code> and <code>orbis-jsc-compiler.self</code>. This combination of modules and objects is similar to what is used in the PSP and PS3.
+				</p>
+				
+				<p>
+					You can view <a href="http://www.psdevwiki.com/ps4/Libraries">a complete list of all modules available</a> (not just those loaded by the browser) in <code>libSceSysmodule.sprx</code>. We can load and dump some of these through several of Sony's custom system calls, which will be explained later in this article.
 				</p>
 				
 				<br>
@@ -387,9 +391,28 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				
 				<br>
 				
+				<h2>JavaScript caveats</h2>
+				<p>
+					JavaScript represents numbers using the <a href="https://en.wikipedia.org/wiki/IEEE_floating_point">IEEE-754</a> double-precision (64bit) format. This provides us with 53bit precision, meaning that it isn't possible to represent every 64bit value, approximations will have to be used for some.
+				</p>
+				
+				<p>
+					If you just need to set a 64bit value to something low, like <code>256</code>, then <code>setU64to</code> will be fine.
+				</p>
+				
+				<p>
+					But for situations in which you need to write a buffer or struct of data, there is the possibility that certain bytes will be written incorrectly if it has been written in 64bit chunks.
+				</p>
+				
+				<p>
+					Instead, you should write data in 32bit chunks (remembering that the PS4 is little endian), to ensure that every byte is exact.
+				</p>
+				
+				<br>
+				
 				<h2>System calls</h2>
 				<p>
-					Using the following JuSt-ROP function, we can try to perform any system call:
+					Using the following JuSt-ROP method, we can try to perform any system call:
 				</p>
 				
 				<pre><code>this.syscall = function(name, systemCallNumber, arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -432,6 +455,127 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				<p>
 					The fact that PID allocation is set to the default behaviour indicates that Sony likely didn't bother adding any additional security enhancements such as those encouraged by projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>.
 				</p>
+				
+				<br>
+				
+				<h2>Dumping additional modules</h2>
+				<p>
+					We can dump additional modules by following these stages:
+				</p>
+				
+				<ul>
+					<li>Load the module</li>
+					<li>Get the module's base address</li>
+					<li>Dump the module</li>
+				</ul>
+				
+				<p>
+					To load a module we will need to use the <code>sceSysmoduleLoadModule</code> function from <code>libSceSysmodule.sprx + 0x1850</code>. The first parameter is the module ID to load, and the other 3 should just be passed 0.
+				</p>
+				
+				<p>
+					The following JuSt-ROP method can be used to perform a function call:
+				</p>
+				
+				<pre><code>this.call = function(name, module, address, arg1, arg2, arg3, arg4, arg5, arg6) {
+	console.log("call " + name);
+	
+	if(typeof(arg1) !== "undefined") this.add("pop rdi", arg1);
+	if(typeof(arg2) !== "undefined") this.add("pop rsi", arg2);
+	if(typeof(arg3) !== "undefined") this.add("pop rdx", arg3);
+	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
+	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
+	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
+	this.add("pop rbp", stack_base + return_va - (chainLength + 8) + 0x1480);
+	this.add(module_bases[module] + address);
+}</code></pre>
+				
+				<p>
+					So, to load module <code>0xb</code>:
+				</p>
+				
+				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
+				
+				<p>
+					This should return <code>0</code> on success. To confirm that the module was loaded correctly, we can use one of Sony's custom system calls, number <code>592</code>, to read the list of loaded modules.
+				</p>
+				
+				<p>
+					Sony's system calls are all accessed through regular system call 0 (which usually does nothing in FreeBSD), with the first system call argument controlling which operation should be executed. So the calling convention for a Sony system call is as follows:
+				</p>
+				
+				<ul>
+					<li><code>rax</code> - 0</li>
+					<li><code>rdi</code> - Sony system call number</li>
+					<li><code>rsi</code> - Argument 1</li>
+					<li><code>rdx</code> - Argument 2</li>
+					<li><code>rcx</code> - Argument 3</li>
+					<li><code>r8</code> - Argument 4</li>
+					<li><code>r9</code> - Argument 5</li>
+				</ul>
+				
+				<p>
+					The following code will print a list of currently loaded modules:
+				</p>
+				
+				<pre><code>var data = stack_base + return_va + 0x480;
+var countAddress = data;
+var modulesAddress = data + 8;
+
+// Sony system call 592, sceGetLoadedModules(int *moduleIDs, int max, int *count);
+// returns 0 on success
+chain.syscall("sceGetLoadedModules", 0, 592, modulesAddress, 256, countAddress);
+
+var count = getU64from(countAddress);
+for(var index = 0; index &lt; count; index++) {
+	logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
+}</code></pre>
+				
+				<p>
+					Running this without loading any additional modules will produce the following list:
+				</p>
+				
+				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
+				
+				<p>
+					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Note that module ID is <i>not</i> the same as loaded module ID.
+				</p>
+				
+				<p>
+					We can now use another of Sony's custom system calls, number <code>593</code>, which takes a loaded module ID and a buffer, and fills the buffer with information about the loaded module, including its base address. Since the loaded module ID is always <code>0x65</code>, we can hardcode it into our chain, rather than having to store the result from the module list.
+				</p>
+				
+				<p>
+					The buffer must start with the size of the struct that should be returned, otherwise error <code>0x16</code> will be returned, <code>"Invalid argument"</code>:
+				</p>
+				
+				<pre><code>setU64to(moduleInfoAddress, 0x160);
+chain.syscall("sceKernelGetModuleInfo", 0, 593, 0x65, moduleInfoAddress);
+logAdd(hexDump(moduleInfoAddress, 0x160));</code></pre>
+				
+				<p>
+					It will return <code>0</code> upon success, and fill the buffer with a struct. The struct can be read as follows:
+				</p>
+				
+				<pre><code>var name = readString(moduleInfoAddress + 0x8);
+var codeBase = getU64from(moduleInfoAddress + 0x108);
+var codeSize = getU32from(moduleInfoAddress + 0x110);
+var dataBase = getU64from(moduleInfoAddress + 0x118);
+var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
+				
+				<p>
+					We now have everything we need to dump the module!
+				</p>
+				
+				<pre><code>doDump(codeBase, ((codeSize + dataSize) / 0x1000), 0x1000);</code></pre>
+				
+				<p>
+					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the module:
+				</p>
+				
+				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
+chain.syscall("sceKernelGetModuleInfo2", 0, 608, 0x65, 0, moduleInfoAddress);
+logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<br>
 				
@@ -593,11 +737,11 @@ if (error)
 				</p>
 				
 				<p>
-					When executing the chain, <code>ENOSYS</code> is returned (<code>0x48</code>).
+					When executing the chain, <code>ENOSYS</code> <i>is</i> returned (<code>0x48</code>).
 				</p>
 				
 				<p>
-					This tells us that whatever sandbox system the PS4 uses is at least based on jails because <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/kern/kern_jail.c#L3515">returns 1</a> when called by the kernel.
+					This tells us that whatever sandbox system the PS4 uses is at least based on jails because <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/kern/kern_jail.c#L3518">returns 1</a> when called by the kernel.
 				</p>
 				
 				<br>
@@ -701,7 +845,11 @@ if (error)
 				
 				<h2>Summary</h2>
 				<p>
-					From the information currently available, the PS4's kernel seems to be very similar to the stock FreeBSD 9.0 kernel, possibly with some additional system calls, but few dramatic changes. Importantly, the differences that <i>are</i> present appear to be from standard <a href="https://www.freebsd.org/doc/handbook/kernelconfig-custom-kernel.html">kernel configuration</a> changes, and not from custom code.
+					From the information currently available, the PS4's kernel seems to be very similar to the stock FreeBSD 9.0 kernel.
+				</p>
+				
+				<p>
+					Importantly, the differences that <i>are</i> present appear to be from standard <a href="https://www.freebsd.org/doc/handbook/kernelconfig-custom-kernel.html">kernel configuration</a> changes (such as disabling SCTP sockets), rather than from custom code. All of Sony's custom kernel code seems to be contained within system call <code>0</code>, which can perform multiple operations depending on <code>rax</code>; but apart from this, the rest of the kernel seems untouched.
 				</p>
 				
 				<p>
@@ -713,7 +861,7 @@ if (error)
 				</p>
 				
 				<p>
-					With FreeBSD 10 being out, it's unlikely that anyone is stashing away any private exploits for FreeBSD 9, so unless a new one is suddenly released, we're stuck with what is currently available.
+					And with FreeBSD 10 being out, it's unlikely that anyone is stashing away any private exploits for FreeBSD 9, so unless a new one is suddenly released, we're stuck with what is currently available.
 				</p>
 				
 				<p>
@@ -721,8 +869,25 @@ if (error)
 				</p>
 				
 				<p>
+					The best approach from here seems to be reverse engineering all of the modules which can be dumped, in order to document as many of Sony's custom system calls as possible; I have a hunch that we will have more luck targeting these, than the FreeBSD system calls.
+				</p>
+				
+				<p>
 					Recently <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">Jaicrab has discovered two UART ports on the PS4</a> which shows us that there are hardware hackers interested in the PS4. Although the role of hardware hackers has traditionally been to dump the RAM of a system, <a href="http://farm4.static.flickr.com/3441/3869187499_da1665050d.jpg">like with the DSi</a>, which we can already do thanks to the WebKit exploit, there's also the possibility of a hardware triggered kernel vulnerability being found, like <a href="http://rdist.root.org/2010/01/27/how-the-ps3-hypervisor-was-hacked/">geohot's original PS3 hypervisor hack</a>. It remains most likely that a kernel exploit will be found on the PS4 through system call vulnerabilities though.
 				</p>
+				
+				<br>
+				
+				<h2>Thanks</h2>
+				<ul>
+					<li>nas</li>
+					<li>Proxima</li>
+					<li>Takezo</li>
+					<li>Hunger</li>
+					<li>Xerpi</li>
+					<li>droogie</li>
+					<li>SKFU</li>
+				</ul>
 			</div>
 		</div>
 	</body>
