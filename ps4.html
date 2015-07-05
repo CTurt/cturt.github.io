@@ -570,6 +570,10 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				<pre><code>doDump(codeBase, ((codeSize + dataSize) / 0x1000), 0x1000);</code></pre>
 				
 				<p>
+					I tediously tried loading and dumping every single library from within the Internet Browser, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>.
+				</p>
+				
+				<p>
 					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the module:
 				</p>
 				
