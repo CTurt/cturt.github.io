@@ -389,7 +389,21 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				
 				<h2>System calls</h2>
 				<p>
-					Using the following JuSt-ROP method, we can try to perform any system call:
+					Interestingly, the PS4 uses the same <a href="https://www.freebsd.org/doc/en/books/developers-handbook/x86-system-calls.html#x86-alternate-calling-convention">calling convention as Linux and MS-DOS for system calls</a>, with arguments stored in registers, rather than the traditional UNIX way (which FreeBSD uses by default), with arguments stored in the stack:
+				</p>
+				
+				<ul>
+					<li><code>rax</code> - System call number</li>
+					<li><code>rdi</code> - Argument 1</li>
+					<li><code>rsi</code> - Argument 2</li>
+					<li><code>rdx</code> - Argument 3</li>
+					<li><code>rcx</code> - Argument 4</li>
+					<li><code>r8</code> - Argument 5</li>
+					<li><code>r9</code> - Argument 6</li>
+				</ul>
+				
+				<p>
+					We can try to perform any system call with the following JuSt-ROP method:
 				</p>
 				
 				<pre><code>this.syscall = function(name, systemCallNumber, arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -408,6 +422,36 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				
 				<p>
 					Using system calls can tell us a huge amount about the PS4 kernel. Not only that, but using system calls is most likely the only way that we can interact with the kernel, and thus potentially trigger a kernel exploit.
+				</p>
+				
+				<p>
+					If you are reverse engineering modules to identify some of Sony's custom system calls, you may be confused by the calling convention which Sony uses.
+				</p>
+				
+				<p>
+					Sony performs all system calls through regular system call 0 (which usually does nothing in FreeBSD), with the first argument (<code>rdi</code>) controlling the system call to be executed. So the calling convention Sony uses for system calls is as follows:
+				</p>
+				
+				<ul>
+					<li><code>rax</code> - 0</li>
+					<li><code>rdi</code> - System call number</li>
+					<li><code>rsi</code> - Argument 1</li>
+					<li><code>rdx</code> - Argument 2</li>
+					<li><code>rcx</code> - Argument 3</li>
+					<li><code>r8</code> - Argument 4</li>
+					<li><code>r9</code> - Argument 5</li>
+				</ul>
+				
+				<p>
+					It is unclear why Sony does this, but either convention will work:
+				</p>
+				
+				<pre><code>// Both will get the current process ID:
+chain.syscall("getpid", 20);
+chain.syscall("getpid", 0, 20);</code></pre>
+				
+				<p>
+					The option to use different registers can be extremely handy in ROP where we have a limited amount of gadgets.
 				</p>
 				
 				<br>
@@ -474,34 +518,16 @@ chain.add(stack_base + return_va + 0x480);</code></pre>
 				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
 				
 				<p>
-					This should return <code>0</code> on success. To confirm that the module was loaded correctly, we can use one of Sony's custom system calls, number <code>592</code>, to read the list of loaded modules.
-				</p>
-				
-				<p>
-					Sony's system calls are all accessed through regular system call 0 (which usually does nothing in FreeBSD), with the first system call argument controlling which operation should be executed. So the calling convention for a Sony system call is as follows:
-				</p>
-				
-				<ul>
-					<li><code>rax</code> - 0</li>
-					<li><code>rdi</code> - Sony system call number</li>
-					<li><code>rsi</code> - Argument 1</li>
-					<li><code>rdx</code> - Argument 2</li>
-					<li><code>rcx</code> - Argument 3</li>
-					<li><code>r8</code> - Argument 4</li>
-					<li><code>r9</code> - Argument 5</li>
-				</ul>
-				
-				<p>
-					The following code will print a list of currently loaded modules:
+					This should return <code>0</code> on success. To confirm that the module was loaded correctly, we can use one of Sony's custom system calls, number <code>592</code>, to read get a list of currently loaded modules:
 				</p>
 				
 				<pre><code>var data = stack_base + return_va + 0x480;
 var countAddress = data;
 var modulesAddress = data + 8;
 
-// Sony system call 592, sceGetLoadedModules(int *moduleIDs, int max, int *count);
+// System call 592, sceGetLoadedModules(int *moduleIDs, int max, int *count);
 // returns 0 on success
-chain.syscall("sceGetLoadedModules", 0, 592, modulesAddress, 256, countAddress);
+chain.syscall("sceGetLoadedModules", 592, modulesAddress, 256, countAddress);
 
 var count = getU64from(countAddress);
 for(var index = 0; index &lt; count; index++) {
@@ -527,11 +553,11 @@ for(var index = 0; index &lt; count; index++) {
 				</p>
 				
 				<pre><code>setU64to(moduleInfoAddress, 0x160);
-chain.syscall("sceKernelGetModuleInfo", 0, 593, 0x65, moduleInfoAddress);
+chain.syscall("sceKernelGetModuleInfo", 593, 0x65, moduleInfoAddress);
 logAdd(hexDump(moduleInfoAddress, 0x160));</code></pre>
 				
 				<p>
-					It will return <code>0</code> upon success, and fill the buffer with a struct. The struct can be read as follows:
+					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
 				</p>
 				
 				<pre><code>var name = readString(moduleInfoAddress + 0x8);
@@ -547,7 +573,7 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				<pre><code>doDump(codeBase, ((codeSize + dataSize) / 0x1000), 0x1000);</code></pre>
 				
 				<p>
-					I tediously tried loading and dumping every single library from within the Internet Browser, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>.
+					I tediously tried loading and dumping every single library from within the Internet Browser manually, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>.
 				</p>
 				
 				<p>
@@ -555,7 +581,7 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				</p>
 				
 				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
-chain.syscall("sceKernelGetModuleInfo2", 0, 608, 0x65, 0, moduleInfoAddress);
+chain.syscall("sceKernelGetModuleInfo2", 608, 0x65, 0, moduleInfoAddress);
 logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<br>
@@ -830,7 +856,7 @@ if (error)
 				</p>
 				
 				<p>
-					Importantly, the differences that <i>are</i> present appear to be from standard <a href="https://www.freebsd.org/doc/handbook/kernelconfig-custom-kernel.html">kernel configuration</a> changes (such as disabling SCTP sockets), rather than from custom code. All of Sony's custom kernel code seems to be contained within system call <code>0</code>, which can perform multiple operations depending on <code>rax</code>; but apart from this, the rest of the kernel seems untouched.
+					Importantly, the differences that <i>are</i> present appear to be from standard <a href="https://www.freebsd.org/doc/handbook/kernelconfig-custom-kernel.html">kernel configuration</a> changes (such as disabling SCTP sockets), rather than from modified code. Sony have also added several of their own custom system calls to the kernel, but apart from this, the rest of the kernel seems fairly untouched.
 				</p>
 				
 				<p>
@@ -850,7 +876,7 @@ if (error)
 				</p>
 				
 				<p>
-					The best approach from here seems to be reverse engineering all of the modules which can be dumped, in order to document as many of Sony's custom system calls as possible; I have a hunch that we will have more luck targeting these, than the FreeBSD system calls.
+					The best approach from here seems to be reverse engineering all of the modules which can be dumped, in order to document as many of Sony's custom system calls as possible; I have a hunch that we will have more luck targeting these, than the standard FreeBSD system calls.
 				</p>
 				
 				<p>
