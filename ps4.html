@@ -573,6 +573,47 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				<pre><code>doDump(codeBase, ((codeSize + dataSize) / 0x1000), 0x1000);</code></pre>
 				
 				<p>
+					Since the dumping code that came with the original PoC has a tendency crash the browser halfway through. You should replace the loop starting from:
+				</p>
+				
+				<pre><code>for(var bb=0;bb&lt;maxiters;bb++) {</code></pre>
+				
+				<p>
+					With this:
+				</p>
+				
+				<pre><code>function du(bb) {
+	var dump_data = "";
+	
+	for(var aa=0; aa &lt; (maxsize-1); aa++) {
+		dump_data += u32[(bb*maxsize)+aa].toString(16) +",";
+	}
+	
+	dump_data += u32[(maxsize-1)].toString(16);
+	
+	fname = "dump.php?name=dump-0x" + xx.toString(16) + "-" + bb;
+	$.ajax({
+		async : false,
+		url : fname,
+		type: "POST",
+		data : dump_data,
+		success: function(data, textStatus, jqXHR) {
+			logAdd("upload: success");
+			
+			if(bb &lt; maxiters) {
+				bb++;
+				du(bb);
+			}
+		},
+		error: function (jqXHR, textStatus, errorThrown) {
+			logAdd("upload fail: " + textStatus);
+		}
+	});
+}
+
+du(0);</code></pre>
+				
+				<p>
 					I tediously tried loading and dumping every single library from within the Internet Browser manually, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>.
 				</p>
 				
