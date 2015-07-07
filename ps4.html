@@ -592,23 +592,23 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					Through trial and error, I have found that system call number <code>617</code> is the last Sony system call.
+					Invoking any of Sony's custom system calls without the correct arguments will return error <code>0x16</code>, <code>"Invalid argument"</code>. Any compatibility or unimplemented system calls will report the "There is not enough free system memory" error.
 				</p>
 				
 				<p>
-					Invoking any system calls within this range (<code>548 - 617</code>) without the correct arguments will return error <code>0x16</code>, <code>"Invalid argument"</code>, but anything higher than this will just give the "There is not enough free system memory" error (the same result as trying to call an unimplemented or compatibility FreeBSD system call).
+					Through trial and error, I have found that system call number <code>617</code> is the last Sony system call, anything higher is unimplemented.
 				</p>
 				
 				<p>
-					So, we can conclude that there are 70 custom Sony system calls in the PS4's kernel.
+					From this, we can conclude that there are 70 custom Sony system calls in the PS4's kernel (617 - 547).
 				</p>
 				
 				<p>
-					Note that some of these may only be callable from development units.
+					This is significantly less than the PS3, which had <a href="http://www.ps3devwiki.com/ps3/LV2_Functions_and_Syscalls">almost 1000 system calls</a> in total. This indicates that we have fewer possible attack vectors, but that it may be easier to document all of the system calls.
 				</p>
 				
 				<p>
-					This is significantly less than the PS3, which had <a href="http://www.ps3devwiki.com/ps3/LV2_Functions_and_Syscalls">over 900 system calls</a>.
+					Furthermore, since I haven't tried all of them, I can't confirm that they are all accessible to us; some may only be callable from development units for example.
 				</p>
 				
 				<br>
