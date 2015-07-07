@@ -586,6 +586,33 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<br>
 				
+				<h2>How many custom system calls are there?</h2>
+				<p>
+					The <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L988">last standard FreeBSD system call</a> is <code>utimensat</code>, number <code>547</code>; anything higher than this must be a custom Sony system call.
+				</p>
+				
+				<p>
+					Through trial and error, I have found that system call number <code>617</code> is the last Sony system call.
+				</p>
+				
+				<p>
+					Invoking any system calls within this range (<code>548 - 617</code>) without the correct arguments will return error <code>0x16</code>, <code>"Invalid argument"</code>, but anything higher than this will just give the "There is not enough free system memory" error (the same result as trying to call an unimplemented or compatibility FreeBSD system call).
+				</p>
+				
+				<p>
+					So, we can conclude that there are 70 custom Sony system calls in the PS4's kernel.
+				</p>
+				
+				<p>
+					Note that some of these may only be callable from development units.
+				</p>
+				
+				<p>
+					This is significantly less than the PS3, which had <a href="http://www.ps3devwiki.com/ps3/LV2_Functions_and_Syscalls">over 900 system calls</a>.
+				</p>
+				
+				<br>
+				
 				<h2>Browsing the filesystem</h2>
 				<p>
 					We can use the <code>open</code> and <code>read</code> system calls on the <code>/dev/</code> directory to list everything it contains:
