@@ -522,16 +522,15 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
 				
 				<p>
-					This should return <code>0</code> on success. To confirm that the module was loaded correctly, we can use one of Sony's custom system calls, number <code>592</code>, to read get a list of currently loaded modules:
+					Like most system calls, this should return <code>0</code> on success. To see the loaded module ID that was allocated, we can use one of Sony's custom system calls, number <code>592</code>, to get a list of currently loaded modules:
 				</p>
 				
 				<pre><code>var data = stack_base + return_va + 0x480;
 var countAddress = data;
 var modulesAddress = data + 8;
 
-// System call 592, sceGetLoadedModules(int *moduleIDs, int max, int *count);
-// returns 0 on success
-chain.syscall("sceGetLoadedModules", 592, modulesAddress, 256, countAddress);
+// System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
+chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
 
 var count = getU64from(countAddress);
 for(var index = 0; index &lt; count; index++) {
@@ -545,7 +544,7 @@ for(var index = 0; index &lt; count; index++) {
 				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
 				
 				<p>
-					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Note that module ID is <i>not</i> the same as loaded module ID.
+					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module ID.
 				</p>
 				
 				<p>
@@ -557,7 +556,7 @@ for(var index = 0; index &lt; count; index++) {
 				</p>
 				
 				<pre><code>setU64to(moduleInfoAddress, 0x160);
-chain.syscall("sceKernelGetModuleInfo", 593, 0x65, moduleInfoAddress);
+chain.syscall("getModuleInfo", 593, 0x65, moduleInfoAddress);
 logAdd(hexDump(moduleInfoAddress, 0x160));</code></pre>
 				
 				<p>
@@ -651,6 +650,86 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				<p>
 					Furthermore, since I haven't tried all of them, I can't confirm that they are all accessible to us; some may only be callable from development units for example.
 				</p>
+				
+				<br>
+				
+				<h2>Brute forcing system calls</h2>
+				<p>
+					Although reverse engineering <code>libkernel.sprx</code> is the most reliable way to identify system calls, we can also use brute forcing as a quicker but less reliable method.
+				</p>
+				
+				<p>
+					Most of Sony's system calls will just return error <code>0x16</code>, <code>"Invalid argument"</code>; for these, the system call could be for almost anything. But other system calls may return more useful errors which could indicate what their purpose is, or something totally different altogether; we can use brute forcing to identify these functions.
+				</p>
+				
+				<p>
+					Firstly, we will need to execute the ROP chain as soon as the page loads. A rather hacky way to do this is just to call the function after a timeout:
+				</p>
+				
+				<pre><code>setTimeout(function() {
+	btnClick();
+}, 10);</code></pre>
+				
+				<p>
+					We can use now use PHP to perform a specific system call depending on an HTTP GET value:
+				</p>
+				
+				<pre><code>var Sony = 548;
+chain.syscall("Sony system call", Sony + &lt;?php print($_GET["b"]); ?&gt;, 0, 0, 0, 0, 0, 0);
+chain.write_rax_ToVariable(0);</code></pre>
+				
+				<p>
+					Once the system call has executed, we can check the return value, and if it isn't interesting, redirect the page to the next system call:
+				</p>
+				
+				<pre><code>if(chain.getVariable(0) == 0x16) window.location.assign("ps4_rop3.php?b=" + (&lt;?php print($_GET["b"]); ?&gt; + 1).toString());</code></pre>
+				
+				<p>
+					Running the page with <code>?b=0</code> appended to the end will start the brute force from the first Sony system call.
+				</p>
+				
+				<p>
+					The very first system call will return <code>0x0</code>, <code>"OK"</code>. This isn't very helpful, so let's skip it for now and go to <code>?b=1</code> to continue.
+				</p>
+				
+				<p>
+					The next few system calls (550, 552, 556, and 558), all returned <code>0x3</code>, <code>"No such process"</code>; also not particularly helpful.
+				</p>
+				
+				<p>
+					But some system calls returned <code>0xe</code>, <code>"Bad address"</code>. This is more useful because it indicates that at least one of its parameters should be a pointer (usually the first).
+				</p>
+				
+				<p>
+					By passing different values to some of these system calls and analysing the new return values, I was able to partially identify system call number <code>557</code>.
+				</p>
+				
+				<br>
+				
+				<h2>System call 557</h2>
+				<p>
+					These are the return values depending on what is passed as the first argument:
+				</p>
+				
+				<ul>
+					<li>0 - <code>0x16</code>, <code>"Invalid argument"</code></li>
+					<li>1 - <code>0xe</code>, <code>"Bad address"</code></li>
+					<li>Valid pointer - <code>0x64</code> initially, but each time the page is refreshed this value increases by 1</li>
+				</ul>
+				
+				<p>
+					Since none of the other arguments had any impact on the return value, it is safe to assume that this system call only takes 1 argument.
+				</p>
+				
+				<p>
+					I am not sure what the purpose of the pointer is. Looking at the data before and after performing the system call, there is absolutely no change. And putting different values into the data before performing the system call also has no affect on the return value.
+				</p>
+				
+				<p>
+					Regardless, the return value when passed a valid pointer is very interesting. While it is impossible to know for certain, I'd guess that this system call is returning thread number. So I'd give it this declaration:
+				</p>
+				
+				<pre><code>getThreadNumber(void *unknown);</code></pre>
 				
 				<br>
 				
