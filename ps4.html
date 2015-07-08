@@ -617,12 +617,16 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 du(0);</code></pre>
 				
 				<p>
-					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the module:
+					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the loaded module:
 				</p>
 				
 				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
-chain.syscall("sceKernelGetModuleInfo2", 608, 0x65, 0, moduleInfoAddress);
+chain.syscall("getDifferentModuleInfo", 608, 0x65, 0, moduleInfoAddress);
 logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
+				
+				<p>
+					It's not clear what this information is.
+				</p>
 				
 				<br>
 				
