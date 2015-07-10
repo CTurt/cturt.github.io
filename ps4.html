@@ -836,7 +836,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				
 				<p>
-					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the memory still isn't actually executable and will trigger a segfault if you try:
+					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the <code>PROT_EXEC</code> flag is ignored, and any attempt to execute the memory will trigger a segfault:
 				</p>
 				
 				<pre><code>chain.syscall("mmap", 477, 0, 4096, 1 | 2 | 4, 4096, -1, 0);
@@ -848,7 +848,7 @@ chain.add("mov rax, rdi");
 chain.add("jmp rax");</code></pre>
 				
 				<p>
-					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so this means that the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
+					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
 				</p>
 				
 				<br>
