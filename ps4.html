@@ -663,16 +663,18 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					Most of Sony's system calls will just return error <code>0x16</code>, <code>"Invalid argument"</code>; for these, the system call could be for almost anything. But other system calls may return more useful errors which could indicate what their purpose is, or something totally different altogether; we can use brute forcing to identify these functions.
+					When we attempt one of Sony's system calls with all arguments as 0, most will just return error <code>0x16</code>, <code>"Invalid argument"</code>, for these, the system call could be for almost anything.
 				</p>
 				
 				<p>
-					Firstly, we will need to execute the ROP chain as soon as the page loads. A rather hacky way to do this is just to call the function after a timeout:
+					But other system calls may return more useful errors which could indicate what their purpose is, or something totally different entirely; we can use brute forcing to identify these.
 				</p>
 				
-				<pre><code>setTimeout(function() {
-	btnClick();
-}, 10);</code></pre>
+				<p>
+					Firstly, we will need to execute the ROP chain as soon as the page loads. We can do this by attaching our function to the <code>body</code> element's <code>onload</code>:
+				</p>
+				
+				<pre><code>&lt;body onload="exploit()"&gt;</code></pre>
 				
 				<p>
 					We can use now use PHP to perform a specific system call depending on an HTTP GET value:
@@ -686,7 +688,7 @@ chain.write_rax_ToVariable(0);</code></pre>
 					Once the system call has executed, we can check the return value, and if it isn't interesting, redirect the page to the next system call:
 				</p>
 				
-				<pre><code>if(chain.getVariable(0) == 0x16) window.location.assign("ps4_rop3.php?b=" + (&lt;?php print($_GET["b"]); ?&gt; + 1).toString());</code></pre>
+				<pre><code>if(chain.getVariable(0) == 0x16) window.location.assign("index.php?b=" + (&lt;?php print($_GET["b"]); ?&gt; + 1).toString());</code></pre>
 				
 				<p>
 					Running the page with <code>?b=0</code> appended to the end will start the brute force from the first Sony system call.
