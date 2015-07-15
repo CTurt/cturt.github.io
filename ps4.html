@@ -466,7 +466,7 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				</p>
 				
 				<p>
-					So, we automatically have a <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master">list of system calls in the PS4 kernel</a> to try.
+					So, we automatically have a <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9">list of system calls in the PS4 kernel</a> to try.
 				</p>
 				
 				<p>
@@ -632,11 +632,11 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<h2>How many custom system calls are there?</h2>
 				<p>
-					The <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L988">last standard FreeBSD system call</a> is <code>utimensat</code>, number <code>547</code>; anything higher than this must be a custom Sony system call.
+					The <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L952">last standard FreeBSD 9 system call</a> is <code>wait6</code>, number <code>532</code>; anything higher than this must be a custom Sony system call.
 				</p>
 				
 				<p>
-					Invoking any of Sony's custom system calls without the correct arguments will return error <code>0x16</code>, <code>"Invalid argument"</code>. Any compatibility or unimplemented system calls will report the "There is not enough free system memory" error.
+					Invoking most of Sony's custom system calls without the correct arguments will return error <code>0x16</code>, <code>"Invalid argument"</code>; however, any compatibility or unimplemented system calls will report the "There is not enough free system memory" error.
 				</p>
 				
 				<p>
@@ -644,7 +644,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					From this, we can conclude that there are 70 custom Sony system calls in the PS4's kernel (617 - 547).
+					From this, we can conclude that there are 85 custom Sony system calls in the PS4's kernel (617 - 532).
 				</p>
 				
 				<p>
@@ -652,7 +652,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					Furthermore, since I haven't tried all of them, I can't confirm that they are all accessible to us; some may only be callable from development units for example.
+					Furthermore, some of these system calls always return <code>0x4e</code>, ENOSYS, which suggests that they may only be callable from development units.
 				</p>
 				
 				<br>
@@ -820,7 +820,7 @@ chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028)
 				</p>
 				
 				<p>
-					Compatibilty system calls are disabled. If you are trying to call <code>mmap</code> for example, you must use <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L854">system call number 447</a>, not <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L172">71</a> or <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master#L379">197</a>; otherwise a segfault will be triggered.
+					Compatibilty system calls are disabled. If you are trying to call <code>mmap</code> for example, you must use <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L851">system call number 477</a>, not <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L172">71</a> or <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L379">197</a>; otherwise a segfault will be triggered.
 				</p>
 				
 				<p>
