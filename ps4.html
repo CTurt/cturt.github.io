@@ -265,16 +265,16 @@ ret</code></pre>
 					For example, trying to execute code on the stack, which is mapped as read and write only:
 				</p>
 				
-				<pre><code>setU8to(stack_base + return_va + 0x480 + 0, 0xeb);
-setU8to(stack_base + return_va + 0x480 + 1, 0xfe);
+				<pre><code>setU8to(chain.data + 0, 0xeb);
+setU8to(chain.data + 1, 0xfe);
 
-chain.add(stack_base + return_va + 0x480);</code></pre>
+chain.add(chain.data);</code></pre>
 				
 				<p>
 					And trying to write to code, which is mapped as read and execute only:
 				</p>
 				
-				<pre><code>setU8to(wk_base, 0);</code></pre>
+				<pre><code>setU8to(moduleBases[webkit], 0);</code></pre>
 				
 				<p>
 					If a segmentation fault occurs, a message saying "There is not enough free system memory" will appear, and the page will fail to load:
@@ -525,9 +525,8 @@ chain.syscall("getpid", 0, 20);</code></pre>
 					Like most system calls, this should return <code>0</code> on success. To see the loaded module ID that was allocated, we can use one of Sony's custom system calls, number <code>592</code>, to get a list of currently loaded modules:
 				</p>
 				
-				<pre><code>var data = stack_base + return_va + 0x480;
-var countAddress = data;
-var modulesAddress = data + 8;
+				<pre><code>var countAddress = chain.data;
+var modulesAddress = chain.data + 8;
 
 // System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
 chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
@@ -744,12 +743,12 @@ chain.write_rax_ToVariable(0);</code></pre>
 					We can use the <code>open</code> and <code>read</code> system calls on the <code>/dev/</code> directory to list everything it contains:
 				</p>
 				
-				<pre><code>writeString(stack_base + return_va + 0x480, "/dev/");
-chain.syscall("open", 5, stack_base + return_va + 0x480, 0, 0);
+				<pre><code>writeString(chain.data, "/dev/");
+chain.syscall("open", 5, chain.data, 0, 0);
 chain.write_rax_ToVariable(0);
 
 chain.read_rdi_FromVariable(0);
-chain.syscall("read", 3, undefined, stack_base + return_va + 0x480 + 0x10, 1028);</code></pre>
+chain.syscall("read", 3, undefined, chain.data + 0x10, 1028);</code></pre>
 				
 				<p>
 					This is the resultant memory:
@@ -952,7 +951,7 @@ if (error)
 					So, let's try copying some kernel memory into an unused part of userland memory:
 				</p>
 				
-				<pre><code>chain.syscall("getlogin", 49, stack_base + return_va + 0x480, 17);</code></pre>
+				<pre><code>chain.syscall("getlogin", 49, chain.data, 17);</code></pre>
 				
 				<p>
 					Unfortunately 17 bytes is the most data we can get, since:
