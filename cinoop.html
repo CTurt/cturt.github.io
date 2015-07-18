@@ -513,7 +513,7 @@ VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
 				</p>
 				
 				<p>
-					I revised the code to use the DS' native tile rendering. It ran faster than the framebuffer renderer, but it had some minor graphical glitches on some tiles (happened on real hardware and emulators):
+					I revised the code to use the DS' native tile rendering. It ran faster than the framebuffer renderer, but it had some minor graphical glitches on some tiles (happened on real hardware as well as on emulators):
 				</p>
 				
 				<img src="images/cinoop/dsTiles.png" />
@@ -547,7 +547,7 @@ void updateTile(unsigned short address, unsigned char value) {
 				</p>
 				
 				<p>
-					Finally, I wrote a plain black tile into VRAM, and used it for the border. With the finalised tile rendering system in place, the emulator ran noticeably faster (but still not full speed).
+					Finally, I wrote a plain black tile into VRAM, and used it for the border. With the finalised tile rendering system in place, the emulator had no graphical artifacts, and ran noticeably faster (but still not full speed).
 				</p>
 				
 				<img src="images/cinoop/ds.png" />
