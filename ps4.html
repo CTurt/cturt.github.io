@@ -37,11 +37,15 @@
 				</p>
 				
 				<p>
-					I will explain some security concepts that generally apply to all modern systems, and my discoveries that I made from running tests on the PS4.
+					I will explain some security concepts that generally apply to all modern systems, and the discoveries that I have made from running ROP tests on my PS4.
 				</p>
 				
 				<p>
 					If you are not particularly familiar with exploitation, you should read my article about <a href="DS-exploit-finding.html">exploiting DS games through stack smash vulnerabilities in save files</a> first.
+				</p>
+				
+				<p>
+					You may download my complete setup <a href="https://github.com/CTurt/PS4-playground">here</a> to run these tests yourself; it is currently for firmware 1.76 only at the moment.
 				</p>
 				
 				<br>
@@ -139,14 +143,18 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					ROP chains aren't limited to just a list of addresses; assuming that from <code>0xa0000</code> contains these instructions:
+					ROP chains aren't just limited to a list of addresses though; assuming that from <code>0xa0000</code> contains these instructions:
 				</p>
 				
 				<pre><code>pop rax
 ret</code></pre>
 				
 				<p>
-					We can set the first item in the chain to <code>0xa0000</code> and the next item to any desired value for <code>rax</code>. This means that with sufficient gadgets, ROP can do basically anything.
+					We can set the first item in the chain to <code>0xa0000</code> and the next item to any desired value for <code>rax</code>.
+				</p>
+				
+				<p>
+					It is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality. ROP is a viable method of bypassing DEP since it will still let us execute almost anything we want.
 				</p>
 				
 				<br>
@@ -210,7 +218,7 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					Luckily for us, x86_64 instructions have variable lengths, just like words. And also like words, x86_64 instructions can mean something entirely different if decoded from an unintended location.
+					x86_64 instructions are similar to words in that they variable lengths, and can mean something entirely different depending on where decoding starts.
 				</p>
 				
 				<div class="quote">
@@ -234,7 +242,7 @@ ret</code></pre>
 000000000052BE17                 ret</code></pre>
 				
 				<p>
-					Now take a look at what the code looks like if we start decoding from 0x52be14:
+					Now take a look at what the code looks like if we start decoding from <code>0x52be14</code>:
 				</p>
 				
 				<pre><code>000000000052BE14                 cmp     [rax], r12
@@ -245,14 +253,10 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					Of course, it would be incredibily time consuming to look at every possible way of interpreting code before every single <code>ret</code> instruction manually; and that's why tools exist to do this for you. The one that I use to search for ROP gadgets is <a href="https://github.com/0vercl0k/rp/">rp++</a>; to generate a text file filled with gadgets, just use:
+					Of course, it would be incredibily time consuming to look at every possible way of interpreting code before every single <code>ret</code> instruction manually; and that's why tools exist to do this for you. The one which I use to search for ROP gadgets is <a href="https://github.com/0vercl0k/rp/">rp++</a>; to generate a text file filled with gadgets, just use:
 				</p>
 				
 				<pre><code>rp-win-x64 -f mod14.bin --raw=x64 --rop=1 --unique > mod14.txt</code></pre>
-				
-				<p>
-					It is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality. So ROP is a viable method of bypassing DEP which will still let us execute almost anything we want.
-				</p>
 				
 				<br>
 				
@@ -306,7 +310,7 @@ chain.add(chain.data);</code></pre>
 				</p>
 				
 				<p>
-					Luckily for us, if we read the modules table with JavaScript to get the base addresses of all loaded modules, we can calculate the addresses of our gadgets before we trigger ROP execution, bypassing ASLR.
+					Luckily for us, we aren't limited to just writing static ROP chains. We can use JavaScript to read the modules table, which will tell us the base addresses of all loaded modules. Using these bases, we can then calculate the addresses of all our gadgets before we trigger ROP execution, bypassing ASLR.
 				</p>
 				
 				<p>
@@ -516,7 +520,7 @@ chain.syscall("getpid", 0, 20);</code></pre>
 }</code></pre>
 				
 				<p>
-					So, to load module <code>0xb</code>:
+					So, to load <code>libSceAvSetting.sprx</code> (<code>0xb</code>):
 				</p>
 				
 				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
@@ -531,10 +535,14 @@ var modulesAddress = chain.data + 8;
 // System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
 chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
 
-var count = getU64from(countAddress);
-for(var index = 0; index &lt; count; index++) {
-	logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
-}</code></pre>
+chain.execute();
+
+setTimeout(function() {
+	var count = getU64from(countAddress);
+	for(var index = 0; index &lt; count; index++) {
+		logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
+	}
+}, 1);</code></pre>
 				
 				<p>
 					Running this without loading any additional modules will produce the following list:
@@ -556,7 +564,12 @@ for(var index = 0; index &lt; count; index++) {
 				
 				<pre><code>setU64to(moduleInfoAddress, 0x160);
 chain.syscall("getModuleInfo", 593, 0x65, moduleInfoAddress);
-logAdd(hexDump(moduleInfoAddress, 0x160));</code></pre>
+
+chain.execute();
+
+setTimeout(function() {
+	logAdd(hexDump(moduleInfoAddress, 0x160));
+}, 1);</code></pre>
 				
 				<p>
 					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
@@ -610,14 +623,22 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					Furthermore, some of these system calls always return <code>0x4e</code>, ENOSYS, which suggests that they may only be callable from development units.
+					Furthermore, 9 of these 85 system calls always return <code>0x4e</code>, <code>ENOSYS</code>, which suggests that they may only be callable from development units, leaving us with just 76 which are usable.
+				</p>
+				
+				<p>
+					Of these 76, only 45 are referenced by <code>libkernel.sprx</code> (which all non-core applications use to perform system calls), so developers only have 45 custom system calls which they can use.
+				</p>
+				
+				<p>
+					Interestingly, although only 45 are intended to be called (because <code>libkernel.sprx</code> has wrappers for them), some of the other 31 are still callable from the Internet Browser process. It is more likely for these unintended system calls to have vulnerabilities in them, since they have probably had the least amount of testing.
 				</p>
 				
 				<br>
 				
 				<h2>Brute forcing system calls</h2>
 				<p>
-					Although reverse engineering <code>libkernel.sprx</code> is the most reliable way to identify system calls, we can also use brute forcing as a quicker but less reliable method.
+					Although reverse engineering module dumps is the most reliable way to identify system calls, we can also use brute forcing as a quicker but less reliable method.
 				</p>
 				
 				<p>
@@ -665,12 +686,16 @@ chain.write_rax_ToVariable(0);</code></pre>
 				</p>
 				
 				<p>
-					By passing different values to some of these system calls and analysing the new return values, I was able to partially identify system call number <code>557</code>.
+					By passing different values to some of these system calls and analysing the new return values, there are a few system calls which you should be able to identify.
 				</p>
 				
 				<br>
 				
 				<h2>System call 557</h2>
+				<p>
+					As an example, I'll show how I identified system call 557.
+				</p>
+				
 				<p>
 					These are the return values depending on what is passed as the first argument:
 				</p>
@@ -682,6 +707,10 @@ chain.write_rax_ToVariable(0);</code></pre>
 				</ul>
 				
 				<p>
+					Other potential arguments to try would be PID and thread ID.
+				</p>
+				
+				<p>
 					Since none of the other arguments had any impact on the return value, it is safe to assume that this system call only takes 1 argument.
 				</p>
 				
@@ -690,10 +719,10 @@ chain.write_rax_ToVariable(0);</code></pre>
 				</p>
 				
 				<p>
-					Regardless, the return value when passed a valid pointer is very interesting. While it is impossible to know for certain, I'd guess that this system call is returning thread number. So I'd give it this declaration:
+					Regardless, the return value when passed a valid pointer is very interesting. While it is impossible to know for certain, I'd guess that this system call is returning thread ID. So I'd give it this declaration:
 				</p>
 				
-				<pre><code>getThreadNumber(void *unknown);</code></pre>
+				<pre><code>getThreadID(void *unknown);</code></pre>
 				
 				<br>
 				
