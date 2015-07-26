@@ -20,10 +20,6 @@
 						Articles
 					</a>
 					
-					<a href="ds.html" class="header-element">
-						DS
-					</a>
-					
 					<a href="index.html" class="header-element">
 						Home
 					</a>
@@ -429,11 +425,11 @@ chain.add(chain.data);</code></pre>
 				</p>
 				
 				<p>
-					If you are reverse engineering modules to identify some of Sony's custom system calls, you may be confused by the calling convention which Sony uses.
+					If you are reverse engineering modules to identify some of Sony's custom system calls, you may come across an alternative calling convention:
 				</p>
 				
 				<p>
-					Sony performs all system calls through regular system call 0 (which usually does nothing in FreeBSD), with the first argument (<code>rdi</code>) controlling the system call to be executed. So the calling convention Sony uses for system calls is as follows:
+					Sometimes Sony performs system calls through regular system call 0 (which usually does nothing in FreeBSD), with the first argument (<code>rdi</code>) controlling which system call should be executed:
 				</p>
 				
 				<ul>
@@ -447,7 +443,24 @@ chain.add(chain.data);</code></pre>
 				</ul>
 				
 				<p>
-					It is unclear why Sony does this, but either convention will work:
+					It is likely that Sony did this to have easy compatibility with the function calling convention, for example:
+				</p>
+				
+				<pre><code>unsigned long syscall(unsigned long n, ...) {
+	register unsigned long rax asm("rax");
+	
+	asm("mov r10, rcx");
+	rax = 0;
+	asm("syscall");
+	return rax;
+}</code></pre>
+				
+				<p>
+					Using this, they can perform any system call from C.
+				</p>
+				
+				<p>
+					When writing ROP chains, we can use either convention:
 				</p>
 				
 				<pre><code>// Both will get the current process ID:
@@ -455,7 +468,7 @@ chain.syscall("getpid", 20);
 chain.syscall("getpid", 0, 20);</code></pre>
 				
 				<p>
-					The option to use different registers can be extremely handy in ROP where we have a limited amount of gadgets.
+					It's good to be aware of this, because we can use whichever one is more convenient for the gadgets that are available.
 				</p>
 				
 				<br>
@@ -636,17 +649,85 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<br>
 				
+				<h2>Reversing module dumps to analyse system calls</h2>
+				<p>
+					Although this process will vary depending on the system call you are looking up; for some, it is fairly easy to get a vague understanding of the arguments that are passed to it.
+				</p>
+				
+				<p>
+					The system call wrapper will be declared somewhere in <code>libkernel.sprx</code>, and will almost always follow this template:
+				</p>
+				
+				<pre><code>000000000000DB70 syscall_601     proc near
+000000000000DB70                 mov     rax, 259h
+000000000000DB77                 mov     r10, rcx
+000000000000DB7A                 syscall
+000000000000DB7C                 jb      short error
+000000000000DB7E                 retn
+000000000000DB7F
+000000000000DB7F error:
+000000000000DB7F                 lea     rcx, sub_DF60
+000000000000DB86                 jmp     rcx
+000000000000DB86 syscall_601     endp</code></pre>
+				
+				<p>
+					Note that the <code>mov r10, rcx</code> instruction doesn't necessarily mean that the system call takes at least 4 arguments; all system call wrappers have it, even those that take no arguments, such as <code>getpid</code>.
+				</p>
+				
+				<p>
+					Then look up xrefs to the subroutine:
+				</p>
+				
+				<pre><code>0000000000011D50                 mov     edi, 10h
+0000000000011D55                 xor     esi, esi
+0000000000011D57                 mov     edx, 1
+0000000000011D5C                 call    syscall_601
+0000000000011D61                 test    eax, eax
+0000000000011D63                 jz      short loc_11D6A</code></pre>
+				
+				<p>
+					It's good to look up several of these, just to make sure that the registers weren't modified for something unrelated:
+				</p>
+				
+				<pre><code>0000000000011A28                 mov     edi, 9
+0000000000011A2D                 xor     esi, esi
+0000000000011A2F                 xor     edx, edx
+0000000000011A31                 call    syscall_601
+0000000000011A36                 test    eax, eax
+0000000000011A38                 jz      short loc_11A3F</code></pre>
+				
+				<p>
+					Consistently, registers <code>rdi</code>, <code>rsi</code>, and <code>rdx</code> are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
+				</p>
+				
+				<p>
+					For clarity, this is how we would replicate the calls in JuSt-ROP:
+				</p>
+				
+				<pre><code>chain.syscall("unknown", 601, 0x10, 0, 1);
+chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
+				
+				<p>
+					As with most system calls, it will return 0 on success, as seen by the <code>jz</code> conditional after <code>test</code>ing the return value.
+				</p>
+				
+				<p>
+					Looking up anything beyond than the amount of arguments will require a much more in-depth analysis, but this should help you get started.
+				</p>
+				
+				<br>
+				
 				<h2>Brute forcing system calls</h2>
 				<p>
-					Although reverse engineering module dumps is the most reliable way to identify system calls, we can also use brute forcing as a quicker but less reliable method.
+					Although reverse engineering module dumps is the most reliable way to identify system calls, some aren't referenced at all in the dumps we have so we will need to analyse them blindly.
 				</p>
 				
 				<p>
-					When we attempt one of Sony's system calls with all arguments as 0, most will just return error <code>0x16</code>, <code>"Invalid argument"</code>, for these, the system call could be for almost anything.
+					If we guess that a certain system call might take a particular set of arguments, we can brute force all system calls which return a certain value (<code>0</code> for success) with the arguments that we chose, and ignore all which returned an error.
 				</p>
-				
+								
 				<p>
-					But other system calls may return more useful errors which could indicate what their purpose is, or something totally different entirely; we can use brute forcing to identify these.
+					We can also pass 0s for all arguments, and brute force all system calls which return useful errors such as <code>0xe</code>, <code>"Bad address"</code>, which would indicate that they take at least one pointer.
 				</p>
 				
 				<p>
@@ -656,10 +737,10 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				<pre><code>&lt;body onload="exploit()"&gt;</code></pre>
 				
 				<p>
-					We can use now use PHP to perform a specific system call depending on an HTTP GET value:
+					Next we will need to perform a specific system call depending on an HTTP GET value. Although this can be done with JavaScript, I will demonstrate how to do this using PHP for simplicity:
 				</p>
 				
-				<pre><code>var Sony = 548;
+				<pre><code>var Sony = 533;
 chain.syscall("Sony system call", Sony + &lt;?php print($_GET["b"]); ?&gt;, 0, 0, 0, 0, 0, 0);
 chain.write_rax_ToVariable(0);</code></pre>
 				
@@ -674,26 +755,14 @@ chain.write_rax_ToVariable(0);</code></pre>
 				</p>
 				
 				<p>
-					The very first system call will return <code>0x0</code>, <code>"OK"</code>. This isn't very helpful, so let's skip it for now and go to <code>?b=1</code> to continue.
-				</p>
-				
-				<p>
-					The next few system calls (550, 552, 556, and 558), all returned <code>0x3</code>, <code>"No such process"</code>; also not particularly helpful.
-				</p>
-				
-				<p>
-					But some system calls returned <code>0xe</code>, <code>"Bad address"</code>. This is more useful because it indicates that at least one of its parameters should be a pointer (usually the first).
-				</p>
-				
-				<p>
-					By passing different values to some of these system calls and analysing the new return values, there are a few system calls which you should be able to identify.
+					Although this method requires a lot of experimentation, by passing different values to some of the system calls found by brute forcing and analysing the new return values, there are a few system calls which you should be able to partially identify.
 				</p>
 				
 				<br>
 				
-				<h2>System call 557</h2>
+				<h2>System call 538</h2>
 				<p>
-					As an example, I'll show how I identified system call 557.
+					As an example, I'll take a look at system call 538, without relying on any module dumps.
 				</p>
 				
 				<p>
@@ -703,26 +772,65 @@ chain.write_rax_ToVariable(0);</code></pre>
 				<ul>
 					<li>0 - <code>0x16</code>, <code>"Invalid argument"</code></li>
 					<li>1 - <code>0xe</code>, <code>"Bad address"</code></li>
-					<li>Valid pointer - <code>0x64</code> initially, but each time the page is refreshed this value increases by 1</li>
+					<li>Pointer to 0s - <code>0x64</code> initially, but each time the page is refreshed this value increases by 1</li>
 				</ul>
 				
 				<p>
-					Other potential arguments to try would be PID and thread ID.
+					Other potential arguments to try would be PID, thread ID, and file descriptor.
 				</p>
 				
 				<p>
-					Since none of the other arguments had any impact on the return value, it is safe to assume that this system call only takes 1 argument.
+					Although most system calls will return <code>0</code> on success, due to the nature of the return value increasing after each time it is called, it seems like it is allocating a resource number, such as a file descriptor. 
 				</p>
 				
 				<p>
-					I am not sure what the purpose of the pointer is. Looking at the data before and after performing the system call, there is absolutely no change. And putting different values into the data before performing the system call also has no affect on the return value.
+					The next thing to do would be to look at the data before and after performing the system call, to see if it has been written to.
 				</p>
 				
 				<p>
-					Regardless, the return value when passed a valid pointer is very interesting. While it is impossible to know for certain, I'd guess that this system call is returning thread ID. So I'd give it this declaration:
+					Since there is no change in the data, we can assume that it is an input for now.
 				</p>
 				
-				<pre><code>getThreadID(void *unknown);</code></pre>
+				<p>
+					I then tried passing a long string as the first argument. You should always try this with every input you find because there is the possibility of discovering a buffer overflow.
+				</p>
+				
+				<pre><code>writeString(chain.data, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
+				
+				<p>
+					The return value for this is <code>0x3f</code>, <code>ENAMETOOLONG</code>. Unfortunately it seems that this system call correctly limits the name (32 bytes including NULL truncator), but it does tell us that it <i>is</i> expecting a string, rather than a struct.
+				</p>
+				
+				<p>
+					We now have a few possibilities for what this system call is doing, the most obvious being something related to the filesystem (such as a custom <code>mkdir</code> or <code>open</code>), but this doesn't seem particularly likely seeing as a resource was allocated even before we wrote any data to the pointer.
+				</p>
+				
+				<p>
+					To test whether the first parameter is a path, we can break it up with multiple <code>/</code> characters to see if this allows for a longer string:
+				</p>
+				
+				<pre><code>writeString(chain.data, "aaaaaaaaaa/aaaaaaaaaa/aaaaaaaaaa");
+chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
+				
+				<p>
+					Since this also returns <code>0x3f</code>, we can assume that the first argument isn't a path; it is a name for <i>something</i> that gets allocated a sequential identifier.
+				</p>
+				
+				<p>
+					After analysing some more system calls, I found that the following all shared this exact same behaviour:
+				</p>
+				
+				<ul>
+					<li>538</li>
+					<li>557</li>
+					<li>574</li>
+					<li>580</li>
+				</ul>
+				
+				<p>
+					From the information that we have so far, it is almost impossible to pinpoint exactly what these system calls do, but as you run more tests, further information will slowly be revealed.
+				</p>
 				
 				<br>
 				
