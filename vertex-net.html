@@ -20,10 +20,6 @@
 						Articles
 					</a>
 					
-					<a href="ds.html" class="header-element">
-						DS
-					</a>
-					
 					<a href="index.html" class="header-element">
 						Home
 					</a>
@@ -312,7 +308,7 @@ LABEL_4:
 				<h2>Remote commands</h2>
 				
 				<p>
-					In <code>thread2</code> commands are fetched remotely from <code>tasks.php</code> and are then handled by <code>sub_404D50</code>. It is blindingly obvious what all of these commands do since they are sent as strings. Here is a list of all handled commands:
+					In <code>thread2</code> commands are fetched remotely from <code>tasks.php</code> and are then handled by <code>sub_404D50</code>. It is blindingly obvious what all of these commands do since they are sent as strings. After further analysis, I was able to verify their authenticity (they have not been mislabeled as an attempt at obfuscation); so here is a list of all handled commands:
 				</p>
 				
 				<ul>
@@ -340,14 +336,14 @@ LABEL_4:
 				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &ThreadId);</code></pre>
 				
 				<p>
-					Keylogs are stored in the file <code>vnlogs.log</code> which can be read by using the <code>getklogs</code> command.
+					Keylogs are stored in the file <code>vnlogs.log</code> which can be read through the <code>getklogs</code> command.
 				</p>
 				
 				<br>
 				<h2>Summary of analysis</h2>
 				
 				<p>
-					The VertexNet malware has some very basic protections like packing itself with UPX, implementing its own version of standard C library functions, and storing sensitive information as resources, however, this is all fairly standard and can be bypassed without much thought by using freely available tools.
+					The VertexNet malware employs some very basic protections such as packing itself with UPX, implementing its own version of standard C library functions, and storing sensitive information as resources; however, these are all extremely limited approaches which can be bypassed using freely available tools.
 				</p>
 				
 				<p>
