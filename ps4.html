@@ -647,7 +647,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<h2>Finding function offsets from function names</h2>
 				<p>
-					FreeBSD has a system call, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&sektion=2"><code>kldsym</code></a> (337), which can get the location of a function in a module from its name.
+					FreeBSD has a system call, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&sektion=2"><code>kldsym</code></a> (337), which can get the address of a function from its name.
 				</p>
 				
 				<p>
@@ -658,7 +658,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 data.version = sizeof(struct kld_sym_lookup);
 data.symname = "getpid";
 
-if(kldsym(libkernel.sprx, KLDSYM_LOOKUP, &amp;data) == 0) {
+if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
 	printf("%p\n", data.symvalue);
 	printf("%d\n", data.symsize);
 }</pre></code>
