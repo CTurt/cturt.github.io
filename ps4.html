@@ -1157,14 +1157,14 @@ chain.add("jmp rax");</code></pre>
 				<pre><code>chain.syscall("auditon", 446, 0, 0, 0);</code></pre>
 				
 				<p>
-					The first thing the <code>auditon</code> system call does is check <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/security/audit/audit_syscalls.c#L165">here</a>, and if so, return <code>ENOSYS</code>:
+					The first thing the <code>auditon</code> system call does is check <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L164">here</a>, and if so, return <code>ENOSYS</code>:
 				</p>
 				
 				<pre><code>if (jailed(td->td_ucred))
 	return (ENOSYS);</code></pre>
 				
 				<p>
-					Otherwise the system call would most likely return <code>EPERM</code> from the <code>mac_system_check_auditon</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/security/audit/audit_syscalls.c#L169">here</a>:
+					Otherwise the system call would most likely return <code>EPERM</code> from the <code>mac_system_check_auditon</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L169">here</a>:
 				</p>
 				
 				<pre><code>error = mac_system_check_auditon(td->td_ucred, uap->cmd);
@@ -1172,7 +1172,7 @@ if (error)
 	return (error);</code></pre>
 				
 				<p>
-					Or from the <code>priv_check</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/security/audit/audit_syscalls.c#L174">here</a>:
+					Or from the <code>priv_check</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L174">here</a>:
 				</p>
 				
 				<pre><code>error = priv_check(td, PRIV_AUDIT_CONTROL);
@@ -1180,7 +1180,7 @@ if (error)
 	return (error);</code></pre>
 				
 				<p>
-					The absolute furthest that the system call could reach would be immediately after the <code>priv_check</code>, <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/security/audit/audit_syscalls.c#L178">here</a>, before returning <code>EINVAL</code> due to the length argument being 0:
+					The absolute furthest that the system call could reach would be immediately after the <code>priv_check</code>, <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L178">here</a>, before returning <code>EINVAL</code> due to the length argument being 0:
 				</p>
 				
 				<pre><code>if ((uap->length <= 0) || (uap->length > sizeof(union auditon_udata)))
@@ -1195,7 +1195,7 @@ if (error)
 				</p>
 				
 				<p>
-					This tells us that whatever sandbox system the PS4 uses is at least based on jails because <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/054f9cab595b222f85a975c8e12658ce0856c346/sys/kern/kern_jail.c#L3518">returns 1</a> when called by the kernel.
+					This tells us that whatever sandbox system the PS4 uses is at least based on jails because the <code>jailed</code> check passes.
 				</p>
 				
 				<br>
