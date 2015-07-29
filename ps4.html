@@ -659,7 +659,7 @@ jz      loc_21A6C</code></pre>
 0000000000011A38                 jz      short loc_11A3F</code></pre>
 				
 				<p>
-					Consistently, the first three registers of the system call convention (<code>rdi</code>, <code>rsi</code>, and <code>rdx</code>) are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
+					Consistently, the first three registers of the system call convention (<code>rdi</code>, <code>rsi</code>, and <code>rdx</code>) are modified before invoking the call, so we can conclude with reasonable confidence that it takes 3 arguments.
 				</p>
 				
 				<p>
@@ -855,6 +855,7 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				</p>
 				
 				<ul>
+					<li>533</li>
 					<li>538</li>
 					<li>557</li>
 					<li>574</li>
@@ -863,6 +864,14 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				
 				<p>
 					From the information that we have so far, it is almost impossible to pinpoint exactly what these system calls do, but as you run more tests, further information will slowly be revealed.
+				</p>
+				
+				<p>
+					To save you some time, system call 538 is allocating an event flag (and it doesn't just take a name).
+				</p>
+				
+				<p>
+					Using general knowledge of how a kernel works, you can guess, and then verify, what the system calls are allocating (semaphores, mutexes, etc).
 				</p>
 				
 				<br>
