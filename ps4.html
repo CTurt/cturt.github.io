@@ -548,14 +548,12 @@ var modulesAddress = chain.data + 8;
 // System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
 chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
 
-chain.execute();
-
-setTimeout(function() {
+chain.execute(function() {
 	var count = getU64from(countAddress);
 	for(var index = 0; index &lt; count; index++) {
 		logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
 	}
-}, 1);</code></pre>
+});</code></pre>
 				
 				<p>
 					Running this without loading any additional modules will produce the following list:
@@ -578,11 +576,9 @@ setTimeout(function() {
 				<pre><code>setU64to(moduleInfoAddress, 0x160);
 chain.syscall("getModuleInfo", 593, 0x65, moduleInfoAddress);
 
-chain.execute();
-
-setTimeout(function() {
+chain.execute(function() {
 	logAdd(hexDump(moduleInfoAddress, 0x160));
-}, 1);</code></pre>
+});</code></pre>
 				
 				<p>
 					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
