@@ -296,6 +296,49 @@ chain.add(chain.data);</code></pre>
 				
 				<br>
 				
+				<h2>Reading memory protection</h2>
+				<p>
+					We can use 2 of Sony's custom system calls, 547 and 572 to read the properties of a memory page (16KB), including its protection:
+				</p>
+				
+				<pre><code>function getStackProtection() {
+	var info = chain.data;
+	
+	chain.syscall("getMemoryInfo", 547, stack_base, info);
+	
+	chain.execute(function() {
+		var base = getU64from(info + 0x0);
+		var size = getU64from(info + 0x8) - base;
+		var protection = getU32from(info + 0x10);
+		
+		logAdd("Stack base: 0x" + base.toString(16));
+		logAdd("Stack size: 0x" + size.toString(16));
+		logAdd("Stack protection: 0x" + protection.toString(16));
+	});
+}
+
+function getStackName() {
+	var info = chain.data;
+	
+	chain.syscall("getOtherMemoryInfo", 572, stack_base, 0, info, 0x40);
+	
+	chain.execute(function() {
+		var base = getU64from(info + 0x0);
+		var size = getU64from(info + 0x8) - base;
+		var name = readString(info + 0x20);
+		
+		logAdd("Stack base: 0x" + base.toString(16));
+		logAdd("Stack size: 0x" + size.toString(16));
+		logAdd("Stack name: " + name);
+	});
+}</code></pre>
+				
+				<p>
+					The stack's name is "main stack" and its protection is 3 (RW).
+				</p>
+				
+				<br>
+				
 				<h2>ASLR</h2>
 				<p>
 					<a href="https://en.wikipedia.org/wiki/Address_space_layout_randomization">Address Space Layout Randomization (ASLR)</a> is a security technique which causes the base addresses of modules to be different every time you start the PS4.
@@ -1089,7 +1132,7 @@ chain.syscall("read", 3, undefined, chain.data + 0x10, 1028);</code></pre>
 chain.syscall("socket", 97, 2, 1, 132);</code></pre>
 				
 				<p>
-					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the <code>PROT_EXEC</code> flag is ignored, and any attempt to execute the memory will trigger a segfault:
+					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the <code>PROT_EXEC</code> flag is ignored. Reading its protection will return 3 (RW), and any attempt to execute the memory will trigger a segfault:
 				</p>
 				
 				<pre><code>chain.syscall("mmap", 477, 0, 4096, 1 | 2 | 4, 4096, -1, 0);
