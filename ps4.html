@@ -646,6 +646,149 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<br>
 				
+				<h2>libkernel.sprx</h2>
+				<p>
+					To identify how custom system calls are used by libkernel, you must first remember that it is just a modification of the standard FreeBSD 9.0 libraries.
+				</p>
+				
+				<p>
+					Here's an extract of <code>_libpthread_init</code> from <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/lib/libthr/thread/thr_init.c#L297">here</a>:
+				</p>
+				
+				<pre><code>/*
+ * Check for the special case of this process running as
+ * or in place of init as pid = 1:
+ */
+if ((_thr_pid = getpid()) == 1) {
+	/*
+	 * Setup a new session for this process which is
+	 * assumed to be running as root.
+	 */
+	if (setsid() == -1)
+		PANIC("Can't set session ID");
+	if (revoke(_PATH_CONSOLE) != 0)
+		PANIC("Can't revoke console");
+	if ((fd = __sys_open(_PATH_CONSOLE, O_RDWR)) &lt; 0)
+		PANIC("Can't open console");
+	if (setlogin("root") == -1)
+		PANIC("Can't set login to root");
+	if (_ioctl(fd, TIOCSCTTY, (char *) NULL) == -1)
+		PANIC("Can't set controlling terminal");
+}</code></pre>
+				
+				<p>
+					The same function can be found at offset <code>0x215F0</code> from <code>libkernel.sprx</code>. This is how the above extract looks from within a libkernel dump (with additional newlines added for clarity):
+				</p>
+				
+				<pre><code>call    getpid
+mov     cs:dword_5B638, eax
+cmp     eax, 1
+jnz     short loc_2169F
+
+call    setsid
+cmp     eax, 0FFFFFFFFh
+jz      loc_21A0C
+
+lea     rdi, aDevConsole ; "/dev/console"
+call    revoke
+test    eax, eax
+jnz     loc_21A24
+
+lea     rdi, aDevConsole ; "/dev/console"
+mov     esi, 2
+xor     al, al
+call    open
+
+mov     r14d, eax
+test    r14d, r14d
+js      loc_21A3C
+lea     rdi, aRoot       ; "root"
+call    setlogin
+cmp     eax, 0FFFFFFFFh
+jz      loc_21A54
+
+mov     edi, r14d
+mov     esi, 20007461h
+xor     edx, edx
+xor     al, al
+call    ioctl
+cmp     eax, 0FFFFFFFFh
+jz      loc_21A6C</code></pre>
+				
+				<br>
+				
+				<h2>Reversing module dumps to analyse system calls</h2>
+				<p>
+					libkernel isn't completely open source though; there's also a lot of custom code which can help disclose some of Sony's system calls.
+				</p>
+				
+				<p>
+					Although this process will vary depending on the system call you are looking up; for some, it is fairly easy to get a basic understanding of the arguments that are passed to it.
+				</p>
+				
+				<p>
+					The system call wrapper will be declared somewhere in <code>libkernel.sprx</code>, and will almost always follow this template:
+				</p>
+				
+				<pre><code>000000000000DB70 syscall_601     proc near
+000000000000DB70                 mov     rax, 259h
+000000000000DB77                 mov     r10, rcx
+000000000000DB7A                 syscall
+000000000000DB7C                 jb      short error
+000000000000DB7E                 retn
+000000000000DB7F
+000000000000DB7F error:
+000000000000DB7F                 lea     rcx, sub_DF60
+000000000000DB86                 jmp     rcx
+000000000000DB86 syscall_601     endp</code></pre>
+				
+				<p>
+					Note that the <code>mov r10, rcx</code> instruction doesn't necessarily mean that the system call takes at least 4 arguments; all system call wrappers have it, even those that take no arguments, such as <code>getpid</code>.
+				</p>
+				
+				<p>
+					Once you've found the wrapper, you can look up xrefs to it:
+				</p>
+				
+				<pre><code>0000000000011D50                 mov     edi, 10h
+0000000000011D55                 xor     esi, esi
+0000000000011D57                 mov     edx, 1
+0000000000011D5C                 call    syscall_601
+0000000000011D61                 test    eax, eax
+0000000000011D63                 jz      short loc_11D6A</code></pre>
+				
+				<p>
+					It's good to look up several of these, just to make sure that the registers weren't modified for something unrelated:
+				</p>
+				
+				<pre><code>0000000000011A28                 mov     edi, 9
+0000000000011A2D                 xor     esi, esi
+0000000000011A2F                 xor     edx, edx
+0000000000011A31                 call    syscall_601
+0000000000011A36                 test    eax, eax
+0000000000011A38                 jz      short loc_11A3F</code></pre>
+				
+				<p>
+					Consistently, registers <code>rdi</code>, <code>rsi</code>, and <code>rdx</code> are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
+				</p>
+				
+				<p>
+					For clarity, this is how we would replicate the calls in JuSt-ROP:
+				</p>
+				
+				<pre><code>chain.syscall("unknown", 601, 0x10, 0, 1);
+chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
+				
+				<p>
+					As with most system calls, it will return 0 on success, as seen by the <code>jz</code> conditional after <code>test</code>ing the return value.
+				</p>
+				
+				<p>
+					Looking up anything beyond than the amount of arguments will require a much more in-depth analysis of the code before and after the call to understand the context, but this should help you get started.
+				</p>
+				
+				<br>
+				
 				<h2>Finding function offsets from function names</h2>
 				<p>
 					FreeBSD has a system call, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&sektion=2"><code>kldsym</code></a> (337), which can get the address of a function from its name.
@@ -703,72 +846,16 @@ chain.execute(function() {
 000000000000BBC6                 jmp     rcx
 000000000000BBC6 getpid          endp</code></pre>
 				
-				<br>
-				
-				<h2>Reversing module dumps to analyse system calls</h2>
 				<p>
-					Although this process will vary depending on the system call you are looking up; for some, it is fairly easy to get a vague understanding of the arguments that are passed to it.
+					To get function names to try, you should use the strings view (or just search <code>sce</code> in a hex editor). You'll find that Sony left some useful error messages in <code>libkernel.sprx</code> such as <code>"verify_header: sceKernelPread failed %x\n"</code>.
 				</p>
 				
 				<p>
-					The system call wrapper will be declared somewhere in <code>libkernel.sprx</code>, and will almost always follow this template:
-				</p>
-				
-				<pre><code>000000000000DB70 syscall_601     proc near
-000000000000DB70                 mov     rax, 259h
-000000000000DB77                 mov     r10, rcx
-000000000000DB7A                 syscall
-000000000000DB7C                 jb      short error
-000000000000DB7E                 retn
-000000000000DB7F
-000000000000DB7F error:
-000000000000DB7F                 lea     rcx, sub_DF60
-000000000000DB86                 jmp     rcx
-000000000000DB86 syscall_601     endp</code></pre>
-				
-				<p>
-					Note that the <code>mov r10, rcx</code> instruction doesn't necessarily mean that the system call takes at least 4 arguments; all system call wrappers have it, even those that take no arguments, such as <code>getpid</code>.
+					Once you have identified a few function names, such as <code>sceKernelPread</code>, you can estimate others, like <code>sceKernelPwrite</code> and so on.
 				</p>
 				
 				<p>
-					Then look up xrefs to the subroutine:
-				</p>
-				
-				<pre><code>0000000000011D50                 mov     edi, 10h
-0000000000011D55                 xor     esi, esi
-0000000000011D57                 mov     edx, 1
-0000000000011D5C                 call    syscall_601
-0000000000011D61                 test    eax, eax
-0000000000011D63                 jz      short loc_11D6A</code></pre>
-				
-				<p>
-					It's good to look up several of these, just to make sure that the registers weren't modified for something unrelated:
-				</p>
-				
-				<pre><code>0000000000011A28                 mov     edi, 9
-0000000000011A2D                 xor     esi, esi
-0000000000011A2F                 xor     edx, edx
-0000000000011A31                 call    syscall_601
-0000000000011A36                 test    eax, eax
-0000000000011A38                 jz      short loc_11A3F</code></pre>
-				
-				<p>
-					Consistently, registers <code>rdi</code>, <code>rsi</code>, and <code>rdx</code> are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
-				</p>
-				
-				<p>
-					For clarity, this is how we would replicate the calls in JuSt-ROP:
-				</p>
-				
-				<pre><code>chain.syscall("unknown", 601, 0x10, 0, 1);
-chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
-				
-				<p>
-					As with most system calls, it will return 0 on success, as seen by the <code>jz</code> conditional after <code>test</code>ing the return value.
-				</p>
-				
-				<p>
-					Looking up anything beyond than the amount of arguments will require a much more in-depth analysis, but this should help you get started.
+					Unfortunately, <code>sceKernelPread</code> isn't very interesting; it is just a wrapper for the regular FreeBSD <code>read</code> system call. It seems like all of Sony's file related functions are like this.
 				</p>
 				
 				<br>
