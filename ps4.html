@@ -501,120 +501,6 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				
 				<br>
 				
-				<h2>Dumping additional modules</h2>
-				<p>
-					We can dump additional modules by following these stages:
-				</p>
-				
-				<ul>
-					<li>Load the module</li>
-					<li>Get the module's base address</li>
-					<li>Dump the module</li>
-				</ul>
-				
-				<p>
-					I tediously tried loading and dumping every single module from within the Internet Browser manually, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>. All modules with <i>Yes</i> next to them can be dumped with this method.
-				</p>
-				
-				<p>
-					To load a module we will need to use the <code>sceSysmoduleLoadModule</code> function from <code>libSceSysmodule.sprx + 0x1850</code>. The first parameter is the module ID to load, and the other 3 should just be passed 0.
-				</p>
-				
-				<p>
-					The following JuSt-ROP method can be used to perform a function call:
-				</p>
-				
-				<pre><code>this.call = function(name, module, address, arg1, arg2, arg3, arg4, arg5, arg6) {
-	console.log("call " + name);
-	
-	if(typeof(arg1) !== "undefined") this.add("pop rdi", arg1);
-	if(typeof(arg2) !== "undefined") this.add("pop rsi", arg2);
-	if(typeof(arg3) !== "undefined") this.add("pop rdx", arg3);
-	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
-	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
-	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
-	this.add("pop rbp", stack_base + return_va - (chainLength + 8) + 0x1480);
-	this.add(module_bases[module] + address);
-}</code></pre>
-				
-				<p>
-					So, to load <code>libSceAvSetting.sprx</code> (<code>0xb</code>):
-				</p>
-				
-				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
-				
-				<p>
-					Like most system calls, this should return <code>0</code> on success. To see the loaded module ID that was allocated, we can use one of Sony's custom system calls, number <code>592</code>, to get a list of currently loaded modules:
-				</p>
-				
-				<pre><code>var countAddress = chain.data;
-var modulesAddress = chain.data + 8;
-
-// System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
-chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
-
-chain.execute(function() {
-	var count = getU64from(countAddress);
-	for(var index = 0; index &lt; count; index++) {
-		logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
-	}
-});</code></pre>
-				
-				<p>
-					Running this without loading any additional modules will produce the following list:
-				</p>
-				
-				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
-				
-				<p>
-					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module ID.
-				</p>
-				
-				<p>
-					We can now use another of Sony's custom system calls, number <code>593</code>, which takes a loaded module ID and a buffer, and fills the buffer with information about the loaded module, including its base address. Since the loaded module ID is always <code>0x65</code>, we can hardcode it into our chain, rather than having to store the result from the module list.
-				</p>
-				
-				<p>
-					The buffer must start with the size of the struct that should be returned, otherwise error <code>0x16</code> will be returned, <code>"Invalid argument"</code>:
-				</p>
-				
-				<pre><code>setU64to(moduleInfoAddress, 0x160);
-chain.syscall("getModuleInfo", 593, 0x65, moduleInfoAddress);
-
-chain.execute(function() {
-	logAdd(hexDump(moduleInfoAddress, 0x160));
-});</code></pre>
-				
-				<p>
-					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
-				</p>
-				
-				<pre><code>var name = readString(moduleInfoAddress + 0x8);
-var codeBase = getU64from(moduleInfoAddress + 0x108);
-var codeSize = getU32from(moduleInfoAddress + 0x110);
-var dataBase = getU64from(moduleInfoAddress + 0x118);
-var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
-				
-				<p>
-					We now have everything we need to dump the module!
-				</p>
-				
-				<pre><code>dump(codeBase, codeSize + dataSize);</code></pre>
-				
-				<p>
-					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the loaded module:
-				</p>
-				
-				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
-chain.syscall("getDifferentModuleInfo", 608, 0x65, 0, moduleInfoAddress);
-logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
-				
-				<p>
-					It's not clear what this information is.
-				</p>
-				
-				<br>
-				
 				<h2>How many custom system calls are there?</h2>
 				<p>
 					The <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L952">last standard FreeBSD 9 system call</a> is <code>wait6</code>, number <code>532</code>; anything higher than this must be a custom Sony system call.
@@ -656,7 +542,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					Here's an extract of <code>_libpthread_init</code> from <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/lib/libthr/thread/thr_init.c#L297">here</a>:
+					Here's an extract of <code>_libpthread_init</code> from <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/lib/libthr/thread/thr_init.c#L297">thr_init.c</a>:
 				</p>
 				
 				<pre><code>/*
@@ -681,7 +567,7 @@ if ((_thr_pid = getpid()) == 1) {
 }</code></pre>
 				
 				<p>
-					The same function can be found at offset <code>0x215F0</code> from <code>libkernel.sprx</code>. This is how the above extract looks from within a libkernel dump (with additional newlines added for clarity):
+					The same function can be found at offset <code>0x215F0</code> from <code>libkernel.sprx</code>. This is how the above extract looks from within a libkernel dump:
 				</p>
 				
 				<pre><code>call    getpid
@@ -773,7 +659,7 @@ jz      loc_21A6C</code></pre>
 0000000000011A38                 jz      short loc_11A3F</code></pre>
 				
 				<p>
-					Consistently, registers <code>rdi</code>, <code>rsi</code>, and <code>rdx</code> are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
+					Consistently, the first three registers of the system call convention (<code>rdi</code>, <code>rsi</code>, and <code>rdx</code>) are modified before invoking the call, so we can conclude with reasonable confidence that this system call takes 3 arguments.
 				</p>
 				
 				<p>
@@ -977,6 +863,120 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				
 				<p>
 					From the information that we have so far, it is almost impossible to pinpoint exactly what these system calls do, but as you run more tests, further information will slowly be revealed.
+				</p>
+				
+				<br>
+				
+				<h2>Dumping additional modules</h2>
+				<p>
+					We can dump additional modules by following these stages:
+				</p>
+				
+				<ul>
+					<li>Load the module</li>
+					<li>Get the module's base address</li>
+					<li>Dump the module</li>
+				</ul>
+				
+				<p>
+					I tediously tried loading and dumping every single module from within the Internet Browser manually, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>. All modules with <i>Yes</i> next to them can be dumped with this method.
+				</p>
+				
+				<p>
+					To load a module we will need to use the <code>sceSysmoduleLoadModule</code> function from <code>libSceSysmodule.sprx + 0x1850</code>. The first parameter is the module ID to load, and the other 3 should just be passed 0.
+				</p>
+				
+				<p>
+					The following JuSt-ROP method can be used to perform a function call:
+				</p>
+				
+				<pre><code>this.call = function(name, module, address, arg1, arg2, arg3, arg4, arg5, arg6) {
+	console.log("call " + name);
+	
+	if(typeof(arg1) !== "undefined") this.add("pop rdi", arg1);
+	if(typeof(arg2) !== "undefined") this.add("pop rsi", arg2);
+	if(typeof(arg3) !== "undefined") this.add("pop rdx", arg3);
+	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
+	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
+	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
+	this.add("pop rbp", stack_base + return_va - (chainLength + 8) + 0x1480);
+	this.add(module_bases[module] + address);
+}</code></pre>
+				
+				<p>
+					So, to load <code>libSceAvSetting.sprx</code> (<code>0xb</code>):
+				</p>
+				
+				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
+				
+				<p>
+					Like most system calls, this should return <code>0</code> on success. To see the loaded module ID that was allocated, we can use one of Sony's custom system calls, number <code>592</code>, to get a list of currently loaded modules:
+				</p>
+				
+				<pre><code>var countAddress = chain.data;
+var modulesAddress = chain.data + 8;
+
+// System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
+chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
+
+chain.execute(function() {
+	var count = getU64from(countAddress);
+	for(var index = 0; index &lt; count; index++) {
+		logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
+	}
+});</code></pre>
+				
+				<p>
+					Running this without loading any additional modules will produce the following list:
+				</p>
+				
+				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
+				
+				<p>
+					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module ID.
+				</p>
+				
+				<p>
+					We can now use another of Sony's custom system calls, number <code>593</code>, which takes a loaded module ID and a buffer, and fills the buffer with information about the loaded module, including its base address. Since the loaded module ID is always <code>0x65</code>, we can hardcode it into our chain, rather than having to store the result from the module list.
+				</p>
+				
+				<p>
+					The buffer must start with the size of the struct that should be returned, otherwise error <code>0x16</code> will be returned, <code>"Invalid argument"</code>:
+				</p>
+				
+				<pre><code>setU64to(moduleInfoAddress, 0x160);
+chain.syscall("getModuleInfo", 593, 0x65, moduleInfoAddress);
+
+chain.execute(function() {
+	logAdd(hexDump(moduleInfoAddress, 0x160));
+});</code></pre>
+				
+				<p>
+					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
+				</p>
+				
+				<pre><code>var name = readString(moduleInfoAddress + 0x8);
+var codeBase = getU64from(moduleInfoAddress + 0x108);
+var codeSize = getU32from(moduleInfoAddress + 0x110);
+var dataBase = getU64from(moduleInfoAddress + 0x118);
+var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
+				
+				<p>
+					We now have everything we need to dump the module!
+				</p>
+				
+				<pre><code>dump(codeBase, codeSize + dataSize);</code></pre>
+				
+				<p>
+					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the loaded module:
+				</p>
+				
+				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
+chain.syscall("getDifferentModuleInfo", 608, 0x65, 0, moduleInfoAddress);
+logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
+				
+				<p>
+					It's not clear what this information is.
 				</p>
 				
 				<br>
