@@ -722,77 +722,6 @@ chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
 				
 				<br>
 				
-				<h2>Finding function offsets from function names</h2>
-				<p>
-					FreeBSD has a system call, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&sektion=2"><code>kldsym</code></a> (337), which can get the address of a function from its name.
-				</p>
-				
-				<p>
-					In C, it can be used like this:
-				</p>
-				
-				<pre><code>struct kld_sym_lookup data;
-data.version = sizeof(struct kld_sym_lookup);
-data.symname = "getpid";
-
-if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
-	printf("%p\n", data.symvalue);
-	printf("%d\n", data.symsize);
-}</pre></code>
-				
-				<p>
-					However, in the PS4 kernel, this function has been disabled, and will always return <code>0x4e</code>, <code>ENOSYS</code>.
-				</p>
-				
-				<p>
-					This is because Sony created their own custom module related system calls. Instead, we can use 591, which works similarly to <code>kldsym</code> but is slightly simpler:
-				</p>
-				
-				<pre><code>var result = chain.data;
-var name = chain.data + 8;
-
-writeString(name, "getpid");
-chain.syscall("getFunctionAddressByName", 591, libKernel, name, result);
-
-chain.execute(function() {
-	logAdd(readString(name) + " libKernel offset = 0x" + (getU64from(result) - moduleBases[libKernel]).toString(16));
-});</code></pre>
-				
-				<p>
-					This will get the offset of the <code>getpid</code> wrapper within <code>libkernel.sprx</code>. For firmware 1.76, this is <code>0xbbb0</code>.
-				</p>
-				
-				<p>
-					We can verify this offset from our <code>libkernel.sprx</code> dump (<code>0x14 = 20</code>, <code>getpid</code> system call number):
-				</p>
-				
-				<pre><code>000000000000BBB0 getpid          proc near
-000000000000BBB0                 mov     rax, 14h
-000000000000BBB7                 mov     r10, rcx
-000000000000BBBA                 syscall
-000000000000BBBC                 jb      short loc_BBBF
-000000000000BBBE                 retn
-000000000000BBBF ; ---------------------------------------------------------------------------
-000000000000BBBF
-000000000000BBBF loc_BBBF:
-000000000000BBBF                 lea     rcx, sub_DF60
-000000000000BBC6                 jmp     rcx
-000000000000BBC6 getpid          endp</code></pre>
-				
-				<p>
-					To get function names to try, you should use the strings view (or just search <code>sce</code> in a hex editor). You'll find that Sony left some useful error messages in <code>libkernel.sprx</code> such as <code>"verify_header: sceKernelPread failed %x\n"</code>.
-				</p>
-				
-				<p>
-					Once you have identified a few function names, such as <code>sceKernelPread</code>, you can estimate others, like <code>sceKernelPwrite</code> and so on.
-				</p>
-				
-				<p>
-					Unfortunately, <code>sceKernelPread</code> isn't very interesting; it is just a wrapper for the regular FreeBSD <code>read</code> system call. It seems like all of Sony's file related functions are like this.
-				</p>
-				
-				<br>
-				
 				<h2>Brute forcing system calls</h2>
 				<p>
 					Although reverse engineering module dumps is the most reliable way to identify system calls, some aren't referenced at all in the dumps we have so we will need to analyse them blindly.
@@ -1202,7 +1131,7 @@ if (error)
 				
 				<h2>FreeBSD 9.0 kernel exploits</h2>
 				<p>
-					It makes little sense trying to look for new kernel vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/release/9.0.0/sys/kern">FreeBSD 9.0 kernel source code</a> because since its release in 2012, <a href="https://www.exploit-db.com/platform/?p=freebsd">several kernel exploits have already been found</a>, which the PS4 could potentially be vulnerable to.
+					It makes little sense trying to look for new vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/release/9.0.0/sys/kern">FreeBSD 9.0 kernel source code</a> because since its release in 2012, <a href="https://www.exploit-db.com/platform/?p=freebsd">several kernel exploits have already been found</a>, which the PS4 could potentially be vulnerable to.
 				</p>
 				
 				<p>
