@@ -154,7 +154,29 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					It is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality. ROP is a viable method of bypassing DEP since it will still let us execute almost anything we want.
+					Gadgets also don't have to end in a <code>ret</code> instruction; we can use gadgets ending in a <code>jmp</code>:
+				</p>
+				
+				<pre><code>add rax, 8
+jmp rcx</code></pre>
+				
+				<p>
+					By making the <code>rcx</code> point to a <code>ret</code> instruction, the chain will continue as normal:
+				</p>
+				
+				<pre><code>chain.add("pop rcx", "ret");
+chain.add("add rax, 8; jmp rcx");</code></pre>
+				
+				<p>
+					Sometimes you won't be able to find the exact gadget that you need on its own, but with other instructions after it. For example, if you want to set <code>r8</code> to something, but only have this gadget, you will have to set <code>r9</code> to some dummy value:
+				</p>
+				
+				<pre><code>pop r8
+pop r9
+ret</code></pre>
+				
+				<p>
+					Although you may have to be creative with how you write ROP chains, it is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality; this makes ROP a viable method of bypassing DEP.
 				</p>
 				
 				<br>
@@ -465,7 +487,7 @@ function getStackName() {
 	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
 	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
 	this.add("pop rbp", stackBase + returnAddress - (chainLength + 8) + 0x1480);
-	this.add("mov r10, rcx and syscall");
+	this.add("mov r10, rcx; syscall");
 }</code></pre>
 				
 				<p>
