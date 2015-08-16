@@ -986,7 +986,15 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				
 				<h2>Browsing the filesystem</h2>
 				<p>
-					We can use the <code>open</code> and <code>read</code> system calls on the <code>/dev/</code> directory to list everything it contains:
+					The PS4 uses the standard FreeBSD 9.0 system calls for reading files and directories.
+				</p>
+				
+				<p>
+					However, whilst using <code>read</code> for some directories such as <code>/dev/</code> will work, others, such as <code>/</code> will fail.
+				</p>
+				
+				<p>
+					I'm not sure why this is, but if we use <code>gendents</code> instead of <code>read</code> for directories, it will work much more reliably:
 				</p>
 				
 				<pre><code>writeString(chain.data, "/dev/");
@@ -994,7 +1002,7 @@ chain.syscall("open", 5, chain.data, 0, 0);
 chain.write_rax_ToVariable(0);
 
 chain.read_rdi_FromVariable(0);
-chain.syscall("read", 3, undefined, chain.data + 0x10, 1028);</code></pre>
+chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 				
 				<p>
 					This is the resultant memory:
@@ -1046,11 +1054,25 @@ chain.syscall("read", 3, undefined, chain.data + 0x10, 1028);</code></pre>
 00002c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................</code></pre>
 				
 				<p>
-					You can change the <code>writeString</code> call to read some of the devices listed, for example: reading <code>/dev/urandom</code> will fill the memory with random data.
+					You can read some of these devices, for example: reading <code>/dev/urandom</code> will fill the memory with random data.
 				</p>
 				
 				<p>
-					Unfortunately, I was unable to read any directories other than <code>/dev/</code> due to sandboxing. Trying to read files and directories that <a href="http://www.psdevwiki.com/ps4/Talk:Files_on_the_PS4">do exist</a> but are restricted will give you error 2, <code>ENOENT</code>, <code>"No such file or directory"</code>.
+					It is also possible to parse this memory to create a clean list of entries; look at <code>browser.html</code> in the repository for a complete file browser:
+				</p>
+				
+				<div class="center">
+					<img src="images/ps4/browser.jpg" /></img>
+				</div>
+				
+				<br>
+				
+				<p>
+					Unfortunately, due to sandboxing we don't have complete access to the file system. Trying to read files and directories that <a href="http://www.psdevwiki.com/ps4/Talk:Files_on_the_PS4">do exist</a> but are restricted will give you error 2, <code>ENOENT</code>, <code>"No such file or directory"</code>.
+				</p>
+				
+				<p>
+					We do have access to a lot of interesting stuff though including encrypted save data, trophies, and account information. I will go over more of the filesystem in my next article.
 				</p>
 				
 				<br>
