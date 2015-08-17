@@ -41,7 +41,7 @@
 				</p>
 				
 				<p>
-					You may download my complete setup <a href="https://github.com/CTurt/PS4-playground">here</a> to run these tests yourself; it is currently for firmware 1.76 only at the moment.
+					You may download my complete setup <a href="https://github.com/CTurt/PS4-playground">here</a> to run these tests yourself; it is currently for firmware 1.76 only.
 				</p>
 				
 				<br>
@@ -314,49 +314,6 @@ chain.add(chain.data);</code></pre>
 				
 				<p>
 					There are other possible reasons for this message to be displayed, such as executing an invalid instruction or an unimplemented system call, but a segmentation fault is the most common.
-				</p>
-				
-				<br>
-				
-				<h2>Reading memory protection</h2>
-				<p>
-					We can use 2 of Sony's custom system calls, 547 and 572 to read the properties of a memory page (16KB), including its protection:
-				</p>
-				
-				<pre><code>function getStackProtection() {
-	var info = chain.data;
-	
-	chain.syscall("getMemoryInfo", 547, stack_base, info);
-	
-	chain.execute(function() {
-		var base = getU64from(info + 0x0);
-		var size = getU64from(info + 0x8) - base;
-		var protection = getU32from(info + 0x10);
-		
-		logAdd("Stack base: 0x" + base.toString(16));
-		logAdd("Stack size: 0x" + size.toString(16));
-		logAdd("Stack protection: 0x" + protection.toString(16));
-	});
-}
-
-function getStackName() {
-	var info = chain.data;
-	
-	chain.syscall("getOtherMemoryInfo", 572, stack_base, 0, info, 0x40);
-	
-	chain.execute(function() {
-		var base = getU64from(info + 0x0);
-		var size = getU64from(info + 0x8) - base;
-		var name = readString(info + 0x20);
-		
-		logAdd("Stack base: 0x" + base.toString(16));
-		logAdd("Stack size: 0x" + size.toString(16));
-		logAdd("Stack name: " + name);
-	});
-}</code></pre>
-				
-				<p>
-					The stack's name is "main stack" and its protection is 3 (RW).
 				</p>
 				
 				<br>
@@ -1062,7 +1019,7 @@ chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 				</p>
 				
 				<div class="center">
-					<img src="images/ps4/browser.jpg" /></img>
+					<img src="images/PS4/browser.jpg" /></img>
 				</div>
 				
 				<br>
