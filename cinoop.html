@@ -45,7 +45,7 @@
 				</p>
 				
 				<p>
-					Cinoop is written in C and is <a href="https://github.com/CTurt/Cinoop">open source</a>. It can be run on Windows, DS, GameCube, 3DS, Linux based OSes, and PSP.
+					Cinoop is written in C and is <a href="https://github.com/CTurt/Cinoop">open source</a>. It can be run on Windows, DS, GameCube, 3DS, Linux based OSes, PSP, and PS4.
 				</p>
 				
 				<div class="center">
@@ -784,9 +784,60 @@ gcc main.o -o main
 				
 				<br>
 				
+				<h3>PS4</h3>
+				<p>
+					The PlayStation 4 port is probably the most interesting one since homebrew is not yet commonplace on it; only a few people have code execution on the PS4, and with the access that we have as of writing, homebrew on this console suffers from some severe limitations.
+				</p>
+				
+				<p>
+					The first problem is the controller. I'm not sure what's wrong, but <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/pad/source/main.c">using the official <code>libScePad.sprx</code> module</a> doesn't work. Maybe it is because the controller is already in use and that connecting a second controller would work, but I only have 1 controller to test with.
+				</p>
+				
+				<p>
+					There are two workarounds for this: use the USB library to receive input from a third party controller, or just use any WiFi compatible device with buttons to send input over a UDP socket. I opted for using a Nintendo DS wirelessly.
+				</p>
+				
+				<p>
+					The second problem is the <code>libSceVideoOut.sprx</code> module not working for us. I'll explain in more detail everything I tried doing to get video output in my next article on the PS4, but the solution I found is to create an HTML5 canvas, and render to that instead. 
+				</p>
+				
+				<p>
+					With these two workarounds I was able to make a mini Pong game on the PS4:
+				</p>
+				
+				<div class="center">
+					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/aNqKyuTDbjE" frameborder="0" allowfullscreen></iframe>
+				</div>
+				
+				<p>
+					The final limitation is that we don't have permission to mount USB flash drives and read them as normal.
+				</p>
+				
+				<p>
+					We do however have access to the <code>libUsbd.sprx</code> module (basically just <a href="http://libusb.info/">libusb</a>) which allows us to communicate directly with USB devices.
+				</p>
+				
+				<p>
+					Whilst it may be possible in the future to port a full FAT implementation based on raw USB commands, for now I just wrote my Tetris ROM as the raw image of the USB flash drive using <a href="http://sourceforge.net/projects/win32diskimager/">Win32 Disk Imager</a>.
+				</p>
+				
+				<p>
+					With these three workarounds in place, I was able to port Cinoop to PS4 using the <a href="https://github.com/CTurt/PS4-SDK">PS4-SDK</a>!
+				</p>
+				
+				<div class="center">
+					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/94Q91xDJatE" frameborder="0" allowfullscreen></iframe>
+				</div>
+				
+				<br>
+				
 				<h2>Final thoughts</h2>
 				<p>
-					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>. Although Tetris is probably the only game that is playable, I have still learnt a lot from this project, and I hope to improve on it in time.
+					Feel free to browse through the <a href="https://github.com/CTurt/Cinoop">source code of Cinoop</a>; it's gotten quite cluttered with all of the ports being together, but the core interpreter is still rather clean and it shouldn't be too difficult to fix bugs in it.
+				</p>
+				
+				<p>
+					Although Tetris is probably the only game that is playable, I have still learnt a lot from this project, and I hope to improve on it in time.
 				</p>
 				
 				<p>
