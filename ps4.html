@@ -97,7 +97,7 @@
 				
 				<h2>What is ROP?</h2>
 				<p>
-					Unlike in primitive devices like the <a href="exploits.html">DS</a> and PSP, the PS4 has a kernel which controls the properties of different areas of memory. Pages of memory which are marked as executable cannot be overwritten, and pages of memory which are marked as writable cannot be executed; this is known as <a href="https://en.wikipedia.org/wiki/Data_Execution_Prevention">Data Execution Prevention (DEP)</a>.
+					Unlike in primitive devices like the <a href="exploits.html">DS</a>, the PS4 has a kernel which controls the properties of different areas of memory. Pages of memory which are marked as executable cannot be overwritten, and pages of memory which are marked as writable cannot be executed; this is known as <a href="https://en.wikipedia.org/wiki/Data_Execution_Prevention">Data Execution Prevention (DEP)</a>.
 				</p>
 				
 				<p>
@@ -514,7 +514,15 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				</p>
 				
 				<p>
-					Secondly, by calling <code>getpid()</code>, restarting the browser, and calling it again, we get a return value 1 higher than the previous value. Although FreeBSD has supported <a href="http://security.stackexchange.com/questions/88692/do-randomized-pid-bring-more-security">PID randomisation</a> since 4.0, sequential PID allocation is the default behaviour.
+					Secondly, by calling <code>getpid()</code>, restarting the browser, and calling it again, we get a return value 2 higher than the previous value.
+				</p>
+				
+				<p>
+					This tells us that the Internet Browser app actually consists of 2 separate processes: the WebKit core, which handles parsing HTML, and executing JavaScript (which we take over), and another one to handle everything else: displaying graphics, receiving controller input, managing history and bookmarks, etc.
+				</p>
+				
+				<p>
+					Also, although FreeBSD has supported <a href="http://security.stackexchange.com/questions/88692/do-randomized-pid-bring-more-security">PID randomisation</a> since 4.0, sequential PID allocation is the default behaviour.
 				</p>
 				
 				<p>
