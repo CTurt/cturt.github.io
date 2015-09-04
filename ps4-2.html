@@ -1,0 +1,937 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>PS4 security article follow up</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>PS4 security article follow up</h1>
+				<hr>
+				
+				<p>
+					Since <a href="ps4.html">my first article on the PS4's security</a>, I have made some more discoveries, aided by the fact that I now have code execution within the WebKit process.
+				</p>
+				
+				<p>
+					Whilst I don't want to release my code execution solution yet, I have made my <a href="https://github.com/CTurt/PS4-SDK">PS4-SDK</a> open source, and will try to explain everything I have managed to do with it.
+				</p>
+				
+				<p>
+					This article is less focused on exploitation, and more on what is actually possible at the moment.
+				</p>
+				
+				<br>
+				
+				<h2>Code execution</h2>
+				<p>
+					As explained in my last article, ROP is just executing existing code loaded in memory in a smart way; whilst ROP can technically be <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a>, it really isn't practical for anything more complex than some basic tests.
+				</p>
+				
+				<p>
+					With the help of flatz, I've been able to leverage ROP to setup memory in such a way that I can write my own code into it, and execute it.
+				</p>
+				
+				<p>
+					Simply, this means that I can compile C code, such as the <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples">PS4-SDK examples</a>, and execute them as native x86_64 code.
+				</p>
+				
+				<p>
+					Whilst this is big progress, we are still running within the Internet Browser, and have the same restrictions as before (like sandboxing).
+				</p>
+				
+				<p>
+					As a little side note; with the recent <a href="http://llvm.org/releases/download.html">release of LLVM 3.7</a>, if we specify <code>-target x86_64-scei-ps4</code> to <code>clang</code>, we can compile code with the exact same options that Sony uses to compile official code for the PS4.
+				</p>
+				
+				<br>
+				
+				<h2>WebKit process limitations</h2>
+				<p>
+					As stated in my previous article, the Internet Browser actually consists of 2 separate processes. The one which we hijack for code execution is the core WebKit process (which handles parsing HTML and CSS, decoding images, and executing JavaScript for example).
+				</p>
+				
+				<p>
+					This can be proven further by dumping all memory which we have access to:
+				</p>
+				
+				<pre><code>struct memoryRegionInfo info;
+struct otherMemoryRegionInfo otherInfo;
+
+void *m = NULL;
+
+int i;
+
+// Iterate over first 107 memory mappings
+for(i = 0; i &lt; 107; i++) {
+	// Find base of next mapping
+	getOtherMemoryInfo(m, 1, &amp;otherInfo);
+	
+	// Get more info about this mapping
+	getMemoryInfo(otherInfo.base, &amp;info);
+	
+	// If readable, dump it
+	if(info.flags &amp; PROT_CPU_READ) {
+		sceNetSend(sock, info.base, info.end - info.base, 0);
+	}
+	
+	m = info.end;
+}</code></pre>
+				
+				<p>
+					Within this dump, you won't be able to find strings used by the other process, such as "Options", "Close Window", "Refresh", or "There is not enough free system memory".
+				</p>
+				
+				<br>
+				
+				<h2>Graphics</h2>
+				<p>
+					One of the main implications of this is clear: if the other process handles displaying graphics, we can't easily hijack the active <code>libSceVideoOut</code> handle.
+				</p>
+				
+				<p>
+					I've been working with <a href="https://github.com/xerpi">xerpi</a> to try to reinitialise <code>libSceVideoOut</code>, but even though all functions are returning good values, we can't get the screen to change from the browser view.
+				</p>
+				
+				<p>
+					Just to be certain that our process can't access any existing video handles created by the other process, we tried brute forcing all positive integers to see if any were valid.
+				</p>
+				
+				<br>
+				
+				<h2>Brute forcing with code execution</h2>
+				<p>
+					Brute forcing things with the ROP framework was very impractical. I relied on redirecting the page after each test, and since the exploit isn't 100% reliable, the brute forcer would get stuck after left for just a minute or so.
+				</p>
+				
+				<p>
+					With real code execution, we can try to brute force more ambitious things, such as a video handle that the Internet Browser has opened. And we can use sockets to track the progress remotely from a PC.
+				</p>
+				
+				<p>
+					<code>sceVideoOutWaitVblank</code> will return an error if it is given an invalid handle, and 0 if it's given a valid handle:
+				</p>
+				
+				<pre><code>int i;
+for(i = 0; i &lt; 0x7FFFFFFF; i++) {
+	if(!sceVideoOutWaitVblank(i)) return i;
+	if(i % 0x10000 == 0) debug(sock, "At %08x\n", i);
+}
+
+sceNetSocketClose(sock);
+
+return 0;</code></pre>
+				
+				<p>
+					After running this for several hours it returned 0, confirming that our process has no access to the other process' video handle.
+				</p>
+				
+				<br>
+				
+				<h2>Canvas</h2>
+				<p>
+					There is a partial solution to this though. If we create an HTML5 canvas and fill it with a single colour, we can find the address of its framebuffer in RAM, and create a new thread to render to it from native code, leaving the original thread to update the canvas as normal.
+				</p>
+				
+				<p>
+					I've added <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/canvas/source/main.c">an example of this</a> to the PS4-SDK.
+				</p>
+				
+				<p>
+					If the canvas has too high of a resolution, it is harder to locate its address, and will often have a poor refresh rate. However, we can stretch a low resolution image to be fullscreen, and it will work fine:
+				</p>
+				
+				<pre><code>var body = document.getElementsByTagName("body")[0];
+
+// Create canvas
+var canvas = document.createElement("canvas");
+
+canvas.id = "canvas";
+canvas.width = 160;
+canvas.height = 144;
+canvas.style.zIndex = 1;
+canvas.style.position = "absolute";
+canvas.style.border = "1px solid";
+
+// Centered
+//canvas.style.left = ((window.screen.width - canvas.width) / 2).toString() + "px";
+//canvas.style.top = ((window.screen.height - canvas.height) / 2).toString() + "px";
+
+// Fullscreen
+canvas.style.left = "0px";
+canvas.style.top = "0px";
+canvas.style.width = "100%";
+canvas.style.height = "100%";
+
+body.appendChild(canvas);</code></pre>
+				
+				<p>
+					Another thing you may want to do is remove all other elements before creating the canvas, as a slight performance boost, but also to prevent being able to scroll:
+				</p>
+				
+				<pre><code>while(body.firstChild) {
+	body.removeChild(body.firstChild);
+}</code></pre>
+				
+				<p>
+					And finally, you will want to hide the cursor:
+				</p>
+				
+				<pre><code>document.body.style.cursor = "none";</code></pre>
+				
+				<br>
+				
+				<h2>Controller</h2>
+				<p>
+					The <code>libScePad</code> module is similar to <code>libSceVideoOut</code> in that it isn't used by our process, and so I wasn't able to get it working.
+				</p>
+				
+				<p>
+					Calling <code>scePadOpen</code> will give an error, unless you call <code>scePadInit</code> beforehand. From this, we can tell that separate processes' modules each have their own internal state, and that our process wasn't using <code>libScePad</code> (since it wasn't already initialised).
+				</p>
+				
+				<p>
+					So, like with graphics, we won't be able to hijack any handles already open, and <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/pad/source/main.c">trying to create new handles</a> won't work either.
+				</p>
+				
+				<p>
+					Maybe we can't read from the controller because it is already in use, and we would be able to read from a second controller, but unfortunately I can't test this since I only have 1 controller.
+				</p>
+				
+				<p>
+					There are two workarounds for this: use the USB library to receive input from a third party controller, or just use any WiFi compatible device with buttons to send input over a UDP socket. I opted for using a Nintendo DS wirelessly. 
+				</p>
+				
+				<br>
+				
+				<h2>USB flash drives</h2>
+				<p>
+					When you insert a USB into the PS4, a new device is listed under <code>/dev/</code>: <code>ugen0.4</code> for the first slot, and <code>ugen0.5</code> for the second slot.
+				</p>
+				
+				<p>
+					Unfortunately, we can't mount the device since the <code>mount</code> system call (and variations like <code>nmount</code>) always return 1, <code>EPERM</code>.
+				</p>
+				
+				<p>
+					However, we can access USB flash drives using the <code>libSceUsbd.sprx</code> module; it is very similar to <a href="http://www.freebsd.org/cgi/man.cgi?format=html&query=libusb%283%29"><code>libusb</code></a>, but with the Sony naming convention, and the removal of contexts.
+				</p>
+				
+				<p>
+					For example, the following <code>libusb</code> code:
+				</p>
+				
+				<pre><code>libusb_context *context;
+libusb_init(&amp;context);
+libusb_exit(context);</code></pre>
+				
+				<p>
+					Would translate to this <code>libSceUsbd</code> code:
+				</p>
+				
+				<pre><code>sceUsbdInit();
+sceUsbdExit();</code></pre>
+				
+				<p>
+					This is a very low level library for sending direct commands to USB devices, so it isn't really ideal to use, but with the help of xerpi, I was able to port one of the <code>libusb</code> examples to PS4, and <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/usb/storage/source/main.c">read the raw image of a USB flash drive</a>.
+				</p>
+				
+				<p>
+					Whilst it may be possible in the future to port a full FAT implementation based on direct USB commands, for now I am just writing my data as the raw image of a USB flash drive using <a href="http://sourceforge.net/projects/win32diskimager/">Win32 Disk Imager</a> (similar to <code>dd</code> for Linux). 
+				</p>
+				
+				<br>
+				
+				<h2>Cinoop</h2>
+				<p>
+					<a href="cinoop.html">Cinoop</a> is a GameBoy emulator I wrote a while ago. Whilst it isn't one of the best GameBoy emulators out there, I thought it would be a fun project to port to PS4 to show what code execution within the Internet Browser is capable of (using all of the workarounds explained above).
+				</p>
+				
+				<div class="center">
+					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/94Q91xDJatE" frameborder="0" allowfullscreen></iframe>
+				</div>
+				
+				<br>
+				
+				<h2>More on processes</h2>
+				<p>
+					I've tried to think of ways interact with other processes, so that we could potentially hijack one with more access, but have not been able to.
+				</p>
+				
+				<p>
+					The <code>fork</code> (2) system call is disabled, so we can't create new processes.
+				</p>
+				
+				<p>
+					The <code>execve</code> (59) system call is allowed, and there is also a function called <code>sceSystemServiceLoadExec</code> in <code>libSceSystemService.sprx</code>, but we have no way of testing either of these since the filesystem is read only, and we can't mount USB flash drives. I've also been told that they only accept encrypted files anyway.
+				</p>
+				
+				<p>
+					The <code>libc</code> function <code>getprocname</code> returns an empty string.
+				</p>
+				
+				<p>
+					I was not able to find any <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libprocstat</code></a> functions.
+				</p>
+				
+				<p>
+					The <code>chroot</code> (61) system call is also disabled.
+				</p>
+				
+				<br>
+				
+				<h2>Root confusion</h2>
+				<p>
+					I mentioned in my last article that <code>getlogin</code> returns <code>"root"</code>. Whilst the username may be <code>"root"</code>, I'm not convinced that it is the conventional <code>root</code> that one would expect.
+				</p>
+				
+				<p>
+					For example, <code>getuid</code> should always return 0 for the <code>root</code> user, but instead, it returns 1.
+				</p>
+				
+				<p>
+					I've also demonstrated in my last article that our process is running in a FreeBSD jail, which I'm not sure is possible for a process running as <code>root</code>.
+				</p>
+				
+				<p>
+					I don't understand enough about FreeBSD users and jails to really understand what is going on, but I like to think that Sony somehow named a <code>non-root</code> user as <code>"root"</code> just to tease us.
+				</p>
+				
+				<br>
+				
+				<h2>Loading modules from their name</h2>
+				<p>
+					We can load modules from their name using <code>sceKernelLoadStartModule</code> from <code>libkernel</code>:
+				</p>
+				
+				<pre><code>int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
+				
+				<p>
+					With the module loaded in memory, we can read its base and size, and dump it like before.
+				</p>
+				
+				<p>
+					This method of loading modules is preferable to the one explained in my last article since it will initialise the imports table, so that you can actually call functions in it, and follow xrefs to other modules like <code>libc</code> and <code>libkernel</code> in your dump.
+				</p>
+				
+				<p>
+					This function also lets us dump a few modules that <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">would cause a segmentation fault using the old method</a>.
+				</p>
+				
+				<br>
+				
+				<h2>Finding function offsets from function names</h2>
+				<p>
+					FreeBSD uses system call 337, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&sektion=2"><code>kldsym</code></a>, to locate the address of a function in a dynamic library from its name.
+				</p>
+				
+				<p>
+					In C, it can be used like this:
+				</p>
+				
+				<pre><code>struct kld_sym_lookup data;
+data.version = sizeof(struct kld_sym_lookup);
+data.symname = "getpid";
+
+if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
+	printf("%p\n", data.symvalue);
+	printf("%d\n", data.symsize);
+}</pre></code>
+				
+				<p>
+					However, in the PS4 kernel, this function has been disabled, and will always return <code>0x4e</code>, <code>ENOSYS</code>.
+				</p>
+				
+				<p>
+					This is because Sony created their own custom module related system calls. Instead of <code>kldsym</code>, we can use system call 591, which works similarly, but is slightly simpler.
+				</p>
+				
+				<p>
+					This system call has become the basis of the PS4-SDK; once we've loaded a module and got its handle, we can call any functions which we know the name and parameters of.
+				</p>
+				
+				<p>
+					The following ROP chain will get the offset of the <code>getpid</code> wrapper within <code>libkernel</code>:
+				</p>
+				
+				<pre><code>var result = chain.data;
+var name = chain.data + 8;
+
+writeString(name, "getpid");
+chain.syscall("getFunctionAddressByName", 591, LIBKERNEL, name, result);
+
+chain.execute(function() {
+	logAdd(readString(name) + " libkernel offset = 0x" + (getU32from(result) - module_infos[LIBKERNEL].image_base).toString(16));
+});</code></pre>
+				
+				<p>
+					For firmware 1.76, the result is <code>0xbbb0</code>.
+				</p>
+				
+				<p>
+					We can verify this offset from our <code>libkernel</code> dump (20 is the <code>getpid</code> system call number):
+				</p>
+				
+				<pre><code>000000000000BBB0 getpid          proc near
+000000000000BBB0                 mov     rax, 20
+000000000000BBB7                 mov     r10, rcx
+000000000000BBBA                 syscall
+000000000000BBBC                 jb      short loc_BBBF
+000000000000BBBE                 retn
+000000000000BBBF ; ---------------------------------------------------------------------------
+000000000000BBBF
+000000000000BBBF loc_BBBF:
+000000000000BBBF                 lea     rcx, sub_DF60
+000000000000BBC6                 jmp     rcx
+000000000000BBC6 getpid          endp</code></pre>
+				
+				<p>
+					To get other function names to try, you should use the strings view of your disassembler (or just search for <code>sce</code> in a hex editor); you'll find that Sony left some useful debug messages in many of the modules.
+				</p>
+				
+				<p>
+					For example, <code>libkernel</code> contains the string <code>"verify_header: sceKernelPread failed %x\n"</code>. Now that we've identified a <code>sceKernelPread</code> function, we can guess others that may exist, such as <code>sceKernelPwrite</code>, and so on.
+				</p>
+				
+				<p>
+					Unfortunately, <code>sceKernelPread</code> and <code>sceKernelPwrite</code> aren't very interesting; they are just wrappers for the regular FreeBSD file related system calls.
+				</p>
+				
+				<p>
+					Since Sony has used a fairly consistent naming convention over the years, you can also try using some <a href="http://psp.jim.sh/pspsdk-doc/group__ModuleMgrKern.html">PSP function names</a>; many of them also exist in some of the PS4's modules.
+				</p>
+				
+				<br>
+				
+				<h2>Threads</h2>
+				<p>
+					The <code>libkernel</code> module contains an implementation of <a href="http://www.freebsd.org/cgi/man.cgi?query=pthread&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libpthread</code></a>, but with the Sony naming convention; <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/threads/source/main.c">an example of using threads</a> has been added to the PS4-SDK.
+				</p>
+				
+				<p>
+					An interesting thing to note is that the threads we create will continue to run in background whilst other applications are active.
+				</p>
+				
+				<p>
+					To demonstrate this, we can create a thread which will launch the Internet Browser after an arbitrary timeout:
+				</p>
+				
+				<pre><code>int (*sceSystemServiceLaunchWebBrowser)(const char *uri, void *);
+
+void *t(void *n) {
+	sceKernelSleep(10);
+	
+	sceSystemServiceLaunchWebBrowser("http://google.com/", NULL);
+	
+	return NULL;
+}
+
+int _main(void) {
+	initKernel();
+	
+	initLibc();
+	initPthread();
+	
+	int libSceSystemService;
+	loadModule("libSceSystemService.sprx", &amp;libSceSystemService);
+	
+	RESOLVE(libSceSystemService, sceSystemServiceLaunchWebBrowser);
+	
+	ScePthread thread;
+	scePthreadCreate(&amp;thread, NULL, t, NULL, "t");
+	
+	return 0;
+}</code></pre>
+				
+				<div class="center">
+					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/tBev5h8vOtg" frameborder="0" allowfullscreen></iframe>
+				</div>
+				
+				<br>
+				
+				<h2>Reading memory protection</h2>
+				<p>
+					We can use 2 of Sony's custom system calls, 547 and 572, to read the properties of a memory page (16KB), including its protection:
+				</p>
+				
+				<pre><code>function getStackProtection() {
+	var info = chain.data;
+	
+	chain.syscall("getMemoryInfo", 547, stack_base, info);
+	
+	chain.execute(function() {
+		var base = getU64from(info + 0x0);
+		var size = getU64from(info + 0x8) - base;
+		var protection = getU32from(info + 0x10);
+		
+		logAdd("Stack base: 0x" + base.toString(16));
+		logAdd("Stack size: 0x" + size.toString(16));
+		logAdd("Stack protection: 0x" + protection.toString(16));
+	});
+}
+
+function getStackName() {
+	var info = chain.data;
+	
+	chain.syscall("getOtherMemoryInfo", 572, stack_base, 0, info, 0x40);
+	
+	chain.execute(function() {
+		var base = getU64from(info + 0x0);
+		var size = getU64from(info + 0x8) - base;
+		var name = readString(info + 0x20);
+		
+		logAdd("Stack base: 0x" + base.toString(16));
+		logAdd("Stack size: 0x" + size.toString(16));
+		logAdd("Stack name: " + name);
+	});
+}</code></pre>
+				
+				<p>
+					The above code shows us that the stack's name is "main stack" and its protection is 3 (read and write).
+				</p>
+				
+				<br>
+				
+				<h2>Listing all memory pages</h2>
+				<p>
+					As you know from my last article, it is difficult to map out all of the PS4's memory due to ASLR (everything is always randomly arranged).
+				</p>
+				
+				<p>
+					Luckily for us, there is something we can do to partially get around this: if the second argument of system call 572 is set to 1 and we specify an address which isn't mapped, the next mapped memory page will be used.
+				</p>
+				
+				<p>
+					This means that we can specify any arbitrary address, and always find a valid memory page. For example, specifying 0 as the address will tell us information about the first mapped memory page:
+				</p>
+				
+				<pre><code>var info = chain.data;
+
+chain.syscall("getOtherMemoryInfo", 572, 0, 1, info, 0x40);
+
+chain.execute(function() {
+	var base = getU64from(info + 0x0);
+	var size = getU64from(info + 0x8) - base;
+	var name = readString(info + 0x20);
+	
+	logAdd("First page base: 0x" + base.toString(16));
+	logAdd("First page size: 0x" + size.toString(16));
+	logAdd("First page name: " + name);
+});</code></pre>
+				
+				<p>
+					Using this, we can extract a complete list of memory pages accessible from our process:
+				</p>
+				
+				<pre><code>Name                            Address         Size        Protection
+executable          	        0x65620000      0x4000      0x5
+executable          	        0x65624000      0x4000      0x3
+anon:000819401c98   	        0x200578000     0x4000      0x3
+anon:00081baf2243   	        0x20057c000     0x8000      0x3
+anon:00081add693a   	        0x200584000     0x8000      0x3
+anon:00081baf22d6   	        0x20058c000     0x8000      0x3
+anon:00081add739e   	        0x200594000     0x100000    0x3
+anon:00081add6ad2   	        0x200694000     0x8000      0x3
+anon:00081add6ad2   	        0x20069c000     0x8000      0x3
+anon:000815405218   	        0x2006a4000     0x4000      0x3
+anon:00081ac4f19e   	        0x2006a8000     0x8000      0x3
+anon:00081add739e   	        0x2006b0000     0x100000    0x3
+anon:00081ba08107   	        0x2007b0000     0x4000      0x3
+anon:00081ad834f7   	        0x2007b4000     0x4000      0x1
+anon:00081add739e   	        0x2007b8000     0x300000    0x3
+stack guard         	        0x7ef788000     0x4000      0x0
+JavaScriptCore::BlockFree       0x7ef78c000     0x10000     0x3
+stack guard                     0x7ef79c000     0x4000      0x0
+RscHdlMan:Worker                0x7ef7a0000     0x10000     0x3
+stack guard                     0x7ef7b0000     0x4000      0x0
+SceWebReceiveQueue              0x7ef7b4000     0x10000     0x3
+stack guard                     0x7ef7c4000     0x4000      0x0
+SceFastMalloc                   0x7ef7c8000     0x10000     0x3
+stack guard                     0x7ef7d8000     0x4000      0x0
+sceVideoCoreServerIFThread      0x7ef7dc000     0x10000     0x3
+(NoName)WebProcess.self         0x7ef7ec000     0x4000      0x0
+main stack                      0x7ef7f0000     0x200000    0x3
+                                0x7ef9f0000     0x4000      0x5
+libSceRtc.sprx                  0x802ccc000     0x4000      0x5
+libSceRtc.sprx                  0x802cd0000     0x4000      0x3
+libSceSystemService.sprx        0x803468000     0x14000     0x5
+libSceSystemService.sprx        0x80347c000     0x4000      0x3
+libSceSystemService.sprx        0x803480000     0x8000      0x3
+libSceSysmodule.sprx            0x8049bc000     0x4000      0x5
+libSceSysmodule.sprx            0x8049c0000     0x4000      0x3
+libkernel.sprx                  0x808774000     0x34000     0x5
+libkernel.sprx                  0x8087a8000     0x2c000     0x3
+libSceRegMgr.sprx               0x80a520000     0x4000      0x5
+libSceRegMgr.sprx               0x80a524000     0x4000      0x3
+libSceSsl.sprx                  0x80d1c0000     0x48000     0x5
+libSceSsl.sprx                  0x80d208000     0x8000      0x3
+libSceOrbisCompat.sprx          0x80f648000     0x15c000    0x5
+libSceOrbisCompat.sprx          0x80f7a4000     0x38000     0x3
+libSceOrbisCompat.sprx          0x80f7dc000     0x4000      0x3
+libSceLibcInternal.sprx         0x8130dc000     0xd0000     0x5
+libSceLibcInternal.sprx         0x8131ac000     0x8000      0x3
+libSceLibcInternal.sprx         0x8131b4000     0x18000     0x3
+libScePigletv2VSH.sprx          0x815404000     0x74000     0x5
+libScePigletv2VSH.sprx          0x815478000     0x2c000     0x3
+libSceVideoCoreServerInterface. 0x819400000     0xc000      0x5
+libSceVideoCoreServerInterface. 0x81940c000     0x4000      0x3
+libSceWebKit2.sprx              0x81ac44000     0x2414000   0x5
+libSceWebKit2.sprx              0x81d058000     0x148000    0x3
+libSceWebKit2.sprx              0x81d1a0000     0xbc000     0x3
+libSceIpmi.sprx                 0x81da60000     0x14000     0x5
+libSceIpmi.sprx                 0x81da74000     0x14000     0x3
+libSceMbus.sprx                 0x8288a0000     0x8000      0x5
+libSceMbus.sprx                 0x8288a8000     0x4000      0x3
+libSceCompositeExt.sprx         0x829970000     0x8000      0x5
+libSceCompositeExt.sprx         0x829978000     0x44000     0x3
+libSceNet.sprx                  0x82ccdc000     0x1c000     0x5
+libSceNet.sprx                  0x82ccf8000     0x14000     0x3
+libSceNetCtl.sprx               0x833f1c000     0x8000      0x5
+libSceNetCtl.sprx               0x833f24000     0x4000      0x3
+libScePad.sprx                  0x835958000     0x8000      0x5
+libScePad.sprx                  0x835960000     0x8000      0x3
+libSceVideoOut.sprx             0x83afe4000     0xc000      0x5
+libSceVideoOut.sprx             0x83aff0000     0x4000      0x3
+libSceSysCore.sprx              0x83cdf4000     0x8000      0x5
+libSceSysCore.sprx              0x83cdfc000     0x4000      0x3
+SceLibcInternalHeap             0x880984000     0x10000     0x3
+SceKernelPrimaryTcbTls          0x880994000     0x4000      0x3
+SceVideoCoreServerInterface     0x880998000     0x4000      0x3
+SceLibcInternalHeap             0x88099c000     0xc0000     0x3
+SceLibcInternalHeap             0x880a5c000     0x20000     0x3
+SceLibcInternalHeap             0x880a7c000     0x490000    0x3
+SceLibcInternalHeap             0x880f0c000     0x470000    0x3
+anon:00080f64a807               0x912000000     0x100000    0x3
+anon:00080f64a98d               0x912100000     0x10000000  0x3
+anon:00080f64aaa5               0x922100000     0x4000000   0x5
+CompositorClient                0x1100000000    0x200000    0x33
+CompositorClient                0x1100200000    0x200000    0x33
+CompositorClient                0x1100400000    0x200000    0x33
+CompositorClient                0x1100600000    0x200000    0x33
+CompositorClient                0x1180000000    0x200000    0x33
+CompositorClient                0x1180200000    0x200000    0x33
+CompositorClient                0x1180400000    0x200000    0x33
+CompositorClient                0x1180600000    0x200000    0x33
+CompositorClient                0x1180800000    0x200000    0x33
+CompositorClient                0x1180a00000    0x200000    0x33
+CompositorClient                0x1180c00000    0x200000    0x33
+CompositorClient                0x1180e00000    0x200000    0x33
+CompositorClient                0x1181000000    0x200000    0x33
+CompositorClient                0x1181200000    0x200000    0x33
+CompositorClient                0x1181400000    0x200000    0x33
+CompositorClient                0x1181600000    0x200000    0x33
+CompositorClient                0x1181800000    0x200000    0x33
+CompositorClient                0x1181a00000    0x200000    0x33
+CompositorClient                0x1181c00000    0x200000    0x33
+CompositorClient                0x1181e00000    0x200000    0x33
+CompositorClient                0x1182000000    0x200000    0x33
+CompositorClient                0x1184000000    0x200000    0x33
+CompositorClient                0x1186000000    0x200000    0x33
+CompositorClient                0x1188000000    0x200000    0x33
+CompositorClient                0x118a000000    0x200000    0x33
+CompositorClient                0x118c000000    0x200000    0x33
+CompositorClient                0x118e000000    0x200000    0x33</code></pre>
+				
+				<p>
+					<code>CompositorClient</code> is always based at <code>0x1100000000</code>, but all other addresses will be different each time.
+				</p>
+				
+				<p>
+					This list is almost exactly what we expected, a bunch of modules each with their own data and code pages, the stack, some stack guards, and some other miscellaneous mappings.
+				</p>
+				
+				<p>
+					There is something peculiar though, <code>CompositorClient</code> is mapped as <code>0x33</code>, which is definitely not a standard FreeBSD memory protection!
+				</p>
+				
+				<br>
+				
+				<h2>GPU</h2>
+				
+				<p>
+					Since the CPU and GPU share a unified memory pool, Sony added their own protection flags to control what the GPU can access as well as keeping the standard FreeBSD protections for the CPU.
+				</p>
+				
+				<p>
+					These can be found by either reversing the <code>libSceGnmDriver</code> module, or just by running some tests and thinking logically:
+				</p>
+				
+				<ul>
+					<li>CPU Read - 1</li>
+					<li>CPU Write - 2</li>
+					<li>CPU Execute - 4</li>
+					<li>GPU Execute - 8</li>
+					<li>GPU Read - 16</li>
+					<li>GPU Write - 32</li>
+				</ul>
+				
+				<p>
+					<code>CompositorClient</code> is marked as <code>0x33</code> (<code>1 | 2 | 16 | 32</code>), CPU RW and GPU RW.
+				</p>
+				
+				<p>
+					Sony handled the GPU protection system very cleverly; we can only give a processor as much access as the other one has, for example:
+				</p>
+				
+				<pre><code>// Give GPU read and write access to stack:
+chain.syscall("mprotect", 74, stack_base, 16 * 1024 * 1024, 1 | 2 | 16 | 32);
+
+// Give GPU read and execute access to WebKit2 module:
+chain.syscall("mprotect", 74, module_infos[WEBKIT2].image_base, 16 * 1024 * 1024, 1 | 4 | 16 | 8);</code></pre>
+				
+				<p>
+					But trying to bypass DEP will fail:
+				</p>
+				
+				<pre><code>// Give GPU read and execute access to stack:
+chain.syscall("mprotect", 74, stack_base, 16 * 1024 * 1024, 1 | 2 | 16 | 8);
+
+// Give GPU read and write access to WebKit2 module:
+chain.syscall("mprotect", 74, module_infos[WEBKIT2].image_base, 16 * 1024 * 1024, 1 | 4 | 16 | 32);</code></pre>
+				
+				<br>
+				
+				<h2>Registry</h2>
+				<p>
+					There is a module called <code>libSceRegMgr.sprx</code>, which indicates that Sony added some kind of registry system to the PS4, since FreeBSD doesn't come with one.
+				</p>
+				
+				<p>
+					All functions in this module are wrappers for system call 532, which was previously thought to be <a href="http://fxr.watson.org/fxr/source/kern/syscalls.master?v=FREEBSD9#L952">wait6</a>; the first argument is a command.
+				</p>
+				
+				<p>
+					The fact that <code>wait6</code> has been overwritten with a custom Sony system call suggests that the system call numbers are not as similar to standard FreeBSD 9.0 as I initially believed.
+				</p>
+				
+				<p>
+					Although this module is loaded and used by the Internet Browser, it is restricted from our process; all function calls return <code>0x80020001</code>, the Sony equivalent of <code>EPERM</code>.
+				</p>
+				
+				<br>
+				
+				<h2>More proof of the lack of kernel ASLR</h2>
+				<p>
+					System call 617 takes at least 1 argument, and returns a kernel pointer; I don't know anything more about this system call, but since the kernel pointer is always the same, we can use it as further evidence that there is no kernel ASLR on firmware 1.76.
+				</p>
+				
+				<br>
+				
+				<h2>Dumping files</h2>
+				<p>
+					Recently, I added a <a href="https://github.com/CTurt/PS4-playground/blob/gh-pages/browser.html">File Browser</a> to PS4-Playground, although I didn't add a way to dump files.
+				</p>
+				
+				<p>
+					With code execution, files can be dumped very easily. I've added <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/filesystem/files/source/main.c">an example</a> to PS4-SDK which shows how to do it.
+				</p>
+				
+				<p>
+					It is also possible to do using only ROP, but it is a bit more hassle, and must be done in multiple stages.
+				</p>
+				
+				<p>
+					By using PS4 File Browser, you should be able to find some interesting things to dump; I'll be dumping <code>/sandboxDir/common/font/DFHEI5-SONY.ttf</code>.
+				</p>
+				
+				<p>
+					If the path to the file you want to dump starts with 10 random characters (the sandbox directory), you should note that this path will change each time you reboot the PS4. You can use the ROP chain below to find it:
+				</p>
+
+				<pre><code>setU64to(chain.data, 11);
+chain.syscall("getSandboxDirectory", 602, 0, chain.data + 8, chain.data);
+chain.write_rax_ToVariable(0);
+
+chain.execute(function() {
+	var name = readString(chain.data + 8);
+	logAdd(name);
+});</pre></code>
+				
+				<p>
+					For me, it was <code>AaQj0xlzjX</code>.
+				</p>
+				
+				<p>
+					For very small files, you can simply read into <code>chain.data</code>, but for larger files, you will need to allocate your own memory.
+				</p>
+				
+				<p>
+					We can do this through the standard <code>mmap</code> system call. Refresh the page, and use this chain:
+				</p>
+				
+				<pre><code>chain.syscall("mmap", 477, 0, 0x1000000, 1 | 2, 4096, -1, 0);
+chain.write_rax_ToVariable(0);
+chain.execute(function() {
+	chain.logVariable(0);
+});
+</pre></code>
+				
+				<p>
+					In this example, the address returned was <code>0x200744000</code>.
+				</p>
+				
+				<p>
+					Refresh the page again, and use this chain to read the file and get its size, replace <code>AaQj0xlzjX</code> with your sandbox directory and <code>0x200744000</code> with whatever address the above chain printed:
+				</p>
+				
+				<pre><code>writeString(chain.data, "/AaQj0xlzjX/common/font/DFHEI5-SONY.ttf");
+chain.syscall("open", 5, chain.data, 0, 0);
+chain.write_rax_ToVariable(0);
+chain.read_rdi_FromVariable(0);
+chain.syscall("read", 3, undefined, 0x200744000, 0x1000000);
+chain.syscall("fstat", 189, undefined, chain.data);
+chain.execute(function() {
+	chain.logVariable(0);
+	logAdd("Size: " + getU32from(chain.data + 0x48).toString());
+});</pre></code>
+				
+				<p>
+					The font I am dumping is 8312744 bytes.
+				</p>
+				
+				<p>
+					Now open whatever proxy or network tool you use to intercept traffic on your computer. I created a simple C server called <a href="https://github.com/CTurt/TCP-Dump">TCP-Dump</a> which you can use if you wish.
+				</p>
+				
+				<p>
+					Refresh the page, and use this chain to send the buffer; replace the IP, port, address, and file size with the appropriate values:
+				</p>
+				
+				<pre><code>sendBuffer("192.168.0.4", 9023, 0x200744000, 8312744);
+chain.execute(function() {
+	logAdd("Dumped");
+});
+</pre></code>
+				
+				<p>
+					Using cookies, you can pass information to subsequent stages automatically, but I won't go into it now.
+				</p>
+				
+				<p>
+					You should also note that the filesystem is read only; for example, <a href="https://twitter.com/CTurtE/status/633332237346426880">attempting to overwrite a font will crash your PS4</a> (but it'll be fine afterwards).
+				</p>
+				
+				<p>
+					We can also dump the modules located at <code>/sandboxDir/common/lib/</code>, but they are encrypted.
+				</p>
+				
+				<br>
+				
+				<h2>Encryption</h2>
+				<p>
+					The most common questions I am asked pertain to encryption. It is a huge part of the PS4's security which prevents us from analysing firmware updates, games, saves and more.
+				</p>
+				
+				<p>
+					The reason I didn't mention encryption in my last article is because trying to defeat it would be a complete waste of time. The PS4 probably uses <a href="https://en.wikipedia.org/wiki/Advanced_Encryption_Standard">AES</a> (like the <a href="http://www.ps3devwiki.com/ps3/Keys">PS3</a> and PS Vita), which is the same type of encryption used by the U.S. government.
+				</p>
+				
+				<p>
+					People also don't seem to realise that there are multiple encryption keys used within the PS4; even if we found a way to decrypt save data, we still wouldn't be able to decrypt PUP updates for example.
+				</p>
+				
+				<p>
+					With the current level of access we have to the PS4 there is no way to get any keys: brute forcing them would take longer than the lifetime of the universe even under ideal conditions, and I doubt any of the few engineers at Sony trusted with them would want to lose their job by leaking them.
+				</p>
+				
+				<p>
+					The only exception to this is would be for implementation mistakes such as the PS3's infamous use of the constant 4 instead of what should have been a random number.
+				</p>
+				
+				<p>
+					Whilst it is unlikely that Sony has made another mistake like this in the core of the PS4's encryption, it is not uncommon for other companies to accidentally give us access to unencrypted content. If you snoop around various games' update servers, you might find some debug ELFs for example.
+				</p>
+				
+				<br>
+				
+				<h2>Saves</h2>
+				<p>
+					Save data is stored at the following location:
+				</p>
+				
+				<pre><code>/user/home/[userID]/savedata/[titleID]/</code></pre>
+				
+				<p>
+					For example:
+				</p>
+				
+				<pre><code>/user/home/10000000/savedata/CUSA00455/FFXIVSYSTEM.bin</code></pre>
+				
+				<p>
+					We can dump these files, but they are encrypted, and are identical to the files copied from using the PS4's official USB save export feature.
+				</p>
+				
+				<p>
+					It is unlikely that developers directly deal with this encryption; I assume that the <code>libSceSaveData</code> module handles it all.
+				</p>
+				
+				<p>
+					I was able to load and initialise this module successfully:
+				</p>
+				
+				<pre><code>int libSave = sceKernelLoadStartModule("libSceSaveData.sprx", 0, NULL, 0, 0, 0);
+
+int (*sceSaveDataInitialize)(void *);
+RESOLVE(libSave, sceSaveDataInitialize);
+
+sceSaveDataInitialize(NULL);</code></pre>
+				
+				<p>
+					But I just received error codes when attempting to mount or read/write save data.
+				</p>
+				
+				<br>
+				
+				<h2>Summary</h2>
+				<p>
+					With the current level of access that code execution has, it is possible to run <i>some</i> types of userland homebrew, such as a GameBoy emulator.
+				</p>
+				
+				<p>
+					However, not being able to use official controllers makes it impractical for standardising any kind of input method; combined with not being able to use the official graphics library, it is clear that homebrew is not yet ready for a full release.
+				</p>
+				
+				<p>
+					It may not be impossible for our process to read official controllers and to hijack the <code>libSceVideoOut</code> module, but it wouldn't be trivial.
+				</p>
+				
+				<p>
+					I will continue to run tests in the current environment, and add everything I find to the PS4-SDK, but from what I've seen so far, I don't believe that heavily restricted userland code execution is going to provide a suitable homebrew solution for the masses; a kernel exploit would definitely be the way forward.
+				</p>
+				
+				<br>
+				
+				<h2>Thanks</h2>
+				<ul>
+					<li>flatz</li>
+					<li>SKFU</li>
+					<li>droogie</li>
+					<li>Xerpi</li>
+					<li>bigboss</li>
+					<li>Hunger</li>
+					<li>Takezo</li>
+					<li>Proxima</li>
+				</ul>
+			</div>
+		</div>
+	</body>
+</html>
