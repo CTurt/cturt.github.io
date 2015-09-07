@@ -380,7 +380,7 @@ writeString(name, "getpid");
 chain.syscall("getFunctionAddressByName", 591, LIBKERNEL, name, result);
 
 chain.execute(function() {
-	logAdd(readString(name) + " libkernel offset = 0x" + (getU32from(result) - module_infos[LIBKERNEL].image_base).toString(16));
+	logAdd(readString(name) + " libkernel offset = 0x" + (getU64from(result) - module_infos[LIBKERNEL].image_base).toString(16));
 });</code></pre>
 				
 				<p>
