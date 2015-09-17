@@ -470,19 +470,26 @@ chain.add(chain.data);</code></pre>
 				</ul>
 				
 				<p>
-					It is likely that Sony did this to have easy compatibility with the function calling convention, for example:
+					It is likely that Sony did this to have easy compatibility with the function calling convention. For example:
 				</p>
 				
-				<pre><code>syscall:
-	mov     r10, rcx
+				<pre><code>.global syscall
+syscall:
 	xor     rax, rax
+	mov     r10, rcx
 	syscall
 	ret
 </code></pre>
 				
 				<p>
-					Using this, they can perform any system call from C.
+					Using this, they can perform system calls from C using the function calling convention:
 				</p>
+				
+				<pre><code>int syscall();
+
+int getpid(void) {
+	return syscall(20);
+}</code></pre>
 				
 				<p>
 					When writing ROP chains, we can use either convention:
