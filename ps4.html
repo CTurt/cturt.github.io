@@ -473,14 +473,12 @@ chain.add(chain.data);</code></pre>
 					It is likely that Sony did this to have easy compatibility with the function calling convention, for example:
 				</p>
 				
-				<pre><code>unsigned long syscall(unsigned long n, ...) {
-	register unsigned long rax asm("rax");
-	
-	asm("mov r10, rcx");
-	rax = 0;
-	asm("syscall");
-	return rax;
-}</code></pre>
+				<pre><code>syscall:
+	mov     r10, rcx
+	xor     rax, rax
+	syscall
+	ret
+</code></pre>
 				
 				<p>
 					Using this, they can perform any system call from C.
