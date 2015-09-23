@@ -443,9 +443,14 @@ chain.add(chain.data);</code></pre>
 	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
 	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
 	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
-	this.add("pop rbp", stackBase + returnAddress - (chainLength + 8) + 0x1480);
 	this.add("mov r10, rcx; syscall");
 }</code></pre>
+				
+				<p>
+					Just make sure to set the stack base to some free memory beforehand:
+				</p>
+				
+				<pre><code>this.add("pop rbp", stackBase + returnAddress + 0x1400);</code></pre>
 				
 				<p>
 					Using system calls can tell us a huge amount about the PS4 kernel. Not only that, but using system calls is most likely the only way that we can interact with the kernel, and thus potentially trigger a kernel exploit.
@@ -872,7 +877,6 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 	if(typeof(arg4) !== "undefined") this.add("pop rcx", arg4);
 	if(typeof(arg5) !== "undefined") this.add("pop r8", arg5);
 	if(typeof(arg6) !== "undefined") this.add("pop r9", arg6);
-	this.add("pop rbp", stack_base + return_va - (chainLength + 8) + 0x1480);
 	this.add(module_bases[module] + address);
 }</code></pre>
 				
