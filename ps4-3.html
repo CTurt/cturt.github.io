@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -751,14 +751,8 @@ while(sys_sendto(td, &args) == EINTR);</code></pre>
 				
 				<h2>Analysing the kernel dump</h2>
 				<p>
-					I scanned through the kernel address space and discovered that the kernel was stored in RAM as a <code>0xeac180</code> byte ELF from address <code>0xffffffff80700000</code>, and data was stored from <code>0xffffffff82cfc000</code> onwards.
+					I scanned through the kernel address space and discovered that the kernel was stored in RAM as a <code>0xeac180</code> byte ELF from address <code>0xffffffff80700000</code>, and data was stored from <code>0xffffffff82cfc000</code> onwards. This ELF can be loaded into IDA Pro with all symbols.
 				</p>
-				
-				<p>
-					This ELF can be loaded into IDA Pro with all symbols.
-				</p>
-				
-				<br>
 				
 				<p>
 					We can now easily find the addresses needed to call other kernel functions, restore kernel state, hook other kernel function pointers, and much more.
@@ -967,7 +961,6 @@ for(offset = mappingAddress; offset < mappingAddress + mappingSize; offset += DU
 				</p>
 				
 				<ul>
-					<li>flatz (<a href="https://twitter.com/flat_z">@flat_z</a>)</li>
 					<li>Michael Coppola (<a href="https://twitter.com/mncoppola">@mncoppola</a>)</li>
 					<li>Adam Zabrocki (<a href="https://twitter.com/Adam_pi3">@Adam_pi3</a>)</li>
 					<li>Takezo</li>
