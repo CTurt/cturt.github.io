@@ -5,7 +5,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<title>Analysis of PS4's security and the state of hacking</title>
+		<title>Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</title>
 	</head>
 	
 	<body>
@@ -25,9 +25,24 @@
 					</a>
 				</div>
 				
-				<h1>Analysis of PS4's security and the state of hacking</h1>
+				<h1>Hacking the PS4, part 1</h1>
+				<h2>Introduction to PS4's security, and userland ROP</h2>
+				
 				<hr>
 				
+				<p>
+					<b>Note</b>: This article is part of a 3 part series:
+				</p>
+				
+				<ul>
+					<li><b><a href="ps4.html">Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</a></b></li>
+					<li><a href="ps4-2.html">Hacking the PS4, part 2 - Userland code execution</a></li>
+					<li><a href="ps4-3.html">Hacking the PS4, part 3 - Kernel exploitation</a></li>
+				</ul>
+				
+				<br>
+				
+				<h2>Introduction</h2>
 				<p>
 					Since there haven't been any major public announcements regarding PS4 hacking for a long time now, I wanted to explain a bit about how far PS4 hacking has come, and what is preventing further progression.
 				</p>
@@ -161,7 +176,7 @@ ret</code></pre>
 jmp rcx</code></pre>
 				
 				<p>
-					By making the <code>rcx</code> point to a <code>ret</code> instruction, the chain will continue as normal:
+					By making <code>rcx</code> point to a <code>ret</code> instruction, the chain will continue as normal:
 				</p>
 				
 				<pre><code>chain.add("pop rcx", "ret");
