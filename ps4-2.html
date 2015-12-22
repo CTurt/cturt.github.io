@@ -12,6 +12,10 @@
 		<div class="page">
 			<div class="container">
 				<div class="header">
+					<a href="contact.html" class="header-element">
+						Contact
+					</a>
+					
 					<a href="skills.html" class="header-element">
 						Skills
 					</a>
@@ -289,7 +293,7 @@ sceUsbdExit();</code></pre>
 				
 				<h2>More on processes</h2>
 				<p>
-					I've tried to think of ways interact with other processes, so that we could potentially hijack one with more access, but have not been able to.
+					Our environment has been restricted such that we there are very few ways to interact with other processes meaningfully; I experimented with potential methods of hijacking another process to gain more access but have had little success:
 				</p>
 				
 				<p>
@@ -297,7 +301,7 @@ sceUsbdExit();</code></pre>
 				</p>
 				
 				<p>
-					The <code>execve</code> (59) system call is allowed, and there is also a function called <code>sceSystemServiceLoadExec</code> in <code>libSceSystemService.sprx</code>, but we have no way of testing either of these since the filesystem is read only, and we can't mount USB flash drives. I've also been told that they only accept encrypted files anyway.
+					The <code>chroot</code> (61) system call is disabled.
 				</p>
 				
 				<p>
@@ -305,11 +309,11 @@ sceUsbdExit();</code></pre>
 				</p>
 				
 				<p>
-					I was not able to find any <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libprocstat</code></a> functions.
+					The <code>execve</code> (59) system call is allowed, and there is also a function called <code>sceSystemServiceLoadExec</code> in <code>libSceSystemService.sprx</code>, but we have no way of testing either of these since the filesystem is read only, and we can't mount USB flash drives. It's most likelt that they would only accept encrypted files anyway.
 				</p>
 				
 				<p>
-					The <code>chroot</code> (61) system call is also disabled.
+					We can copy some of the functions from <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libprocstat</code></a>, but this functionality is mostly useless since we only have permission to target our own process.
 				</p>
 				
 				<br>
