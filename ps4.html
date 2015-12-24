@@ -876,7 +876,7 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				</ul>
 				
 				<p>
-					I tediously tried loading and dumping every single module from within the Internet Browser manually, and posted the results on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>. All modules with <i>Yes</i> next to them can be dumped with this method.
+					I've extracted and posted a list of all module names on <a href="http://www.psdevwiki.com/ps4/Libraries#Libraries_on_firmware_1.76">psdevwiki</a>.
 				</p>
 				
 				<p>
@@ -906,19 +906,23 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
 				
 				<p>
+					Unforunately, a segmentation fault will be triggered when trying to load certain modules; this is because the <code>sceSysmoduleLoadModule</code> function doesn't load dependencies, so you will need to manually load them first.
+				</p>
+				
+				<p>
 					Like most system calls, this should return <code>0</code> on success. To see the loaded module ID that was allocated, we can use one of Sony's custom system calls, number <code>592</code>, to get a list of currently loaded modules:
 				</p>
 				
 				<pre><code>var countAddress = chain.data;
 var modulesAddress = chain.data + 8;
 
-// System call 592, getLoadedModules(int *destinationModuleIDs, int max, int *count);
+// System call 592, getLoadedModules(int *destinationModuleHandles, int max, int *count);
 chain.syscall("getLoadedModules", 592, modulesAddress, 256, countAddress);
 
 chain.execute(function() {
 	var count = getU64from(countAddress);
 	for(var index = 0; index &lt; count; index++) {
-		logAdd("Module: 0x" + getU32from(modulesAddress + index * 4).toString(16));
+		logAdd("Module handle: 0x" + getU32from(modulesAddress + index * 4).toString(16));
 	}
 });</code></pre>
 				
@@ -929,11 +933,11 @@ chain.execute(function() {
 				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
 				
 				<p>
-					But if we run it after loading module <code>0xb</code>, we seen an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module ID.
+					But if we run it after loading module <code>0xb</code>, we will see an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module handle.
 				</p>
 				
 				<p>
-					We can now use another of Sony's custom system calls, number <code>593</code>, which takes a loaded module ID and a buffer, and fills the buffer with information about the loaded module, including its base address. Since the loaded module ID is always <code>0x65</code>, we can hardcode it into our chain, rather than having to store the result from the module list.
+					We can now use another of Sony's custom system calls, number <code>593</code>, which takes a module handle and a buffer, and fills the buffer with information about the loaded module, including its base address. Since the next available handle is always <code>0x65</code>, we can hardcode this value into our chain, rather than having to store the result from the module list.
 				</p>
 				
 				<p>
