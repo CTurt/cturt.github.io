@@ -106,6 +106,10 @@ memcpy(writableAddress, loop, sizeof(loop));
 ((void (*)())executableAddress)();</code></pre>
 				
 				<p>
+					The one limitation to this is that the <code>syscall</code> instruction will trigger a segfault if it is executed within JIT shared memory. To perform system calls we just do a jump to the <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls from ROP.
+				</p>
+				
+				<p>
 					The ROP chain to setup memory, copy WiFi-Loader, and execute it was too long to be done in a single stage, so I had to store the current stage in a cookie, and reload the page after each stage to start the next one:
 				</p>
 				
