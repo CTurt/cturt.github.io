@@ -991,7 +991,7 @@ logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
 				</p>
 				
 				<p>
-					I'm not sure why this is, but if we use <code>gendents</code> instead of <code>read</code> for directories, it will work much more reliably:
+					I'm not sure why this is, but if we use <code>getdents</code> instead of <code>read</code> for directories, it will work much more reliably:
 				</p>
 				
 				<pre><code>writeString(chain.data, "/dev/");
