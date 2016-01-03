@@ -486,7 +486,11 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 				<pre><code>#SS exception -> Corrupt #PF handler -> #PF exception -> Our payload</code></pre>
 				
 				<p>
-					In x86 <a href="https://en.wikipedia.org/wiki/Triple_fault">a triple fault</a> will cause a reboot. We need to take precautions to prevent any further faults from occurring and crashing the system. Mainly, we need to ensure that any user memory we access in the payload is already pre-faulted (and will not cause a page fault). We achieve this by simply performing a read to these memory locations before performing the exploit: 
+					In x86 <a href="https://en.wikipedia.org/wiki/Triple_fault">a triple fault</a> will cause a reboot. We need to take precautions to prevent any further faults from occurring and crashing the system. Mainly, we need to ensure that any user memory we access in the payload won't cause a further page fault.
+				</p>
+				
+				<p>
+					There are two ways to achieve this: you can prefault over all memory which you intend to use in your payload by simply performing a read to these memory locations before performing the exploit: 
 				</p>
 				
 				<pre><code>void prefault(void *address, size_t size) {
@@ -498,6 +502,10 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 		c = ((char *)address)[i];
 	}
 }</code></pre>
+				
+				<p>
+					Or, you can use the <a href="https://www.freebsd.org/cgi/man.cgi?query=mlock&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=default&format=html"><code>mlock</code></a> system call to make sure that memory pages intended to be accessed from the payload won't be paged out of physical memory.
+				</p>
 				
 				<p>
 					In general, it's best to keep the payload code to the bare minimum before returning to userland.
