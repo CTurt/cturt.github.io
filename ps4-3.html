@@ -774,6 +774,10 @@ while(sys_sendto(td, &args) == EINTR);</code></pre>
 					We can now easily find the addresses needed to call other kernel functions, restore kernel state, hook other kernel function pointers, and much more.
 				</p>
 				
+				<p>
+					You can also extract the DualShock 4 firmware from <code>0xFFFFFFFF82A0BBF0</code>, size: <code>0x38000</code> bytes. It is ARM code, based at <code>0x8000</code>.
+				</p>
+				
 				<br>
 				
 				<h2>Restoring kernel state</h2>
