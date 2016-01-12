@@ -863,6 +863,44 @@ int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 				
 				<br>
 				
+				<h2>Disabling CPU write protection</h2>
+				<p>
+					To make patches to kernel code, bit 16 of the <code>cr0</code> register should be cleared. This disables write protection on the CPU so that we can freely write to memory mapped as read only:
+				</p>
+				
+				<pre><code>#define X86_CR0_WP (1 << 16)
+
+static inline uint64_t readCr0(void) {
+	uint64_t cr0;
+	
+	asm volatile (
+		"movq %%cr0, %0"
+		: "=r" (cr0)
+		: : "memory"
+ 	);
+	
+	return cr0;
+}
+
+static inline void writeCr0(uint64_t cr0) {
+	asm volatile (
+		"movq %0, %%cr0"
+		: : "r" (cr0)
+		: "memory"
+	);
+}
+
+// Disable write protection
+uint64_t cr0 = read_cr0();
+writeCr0(cr0 & ~X86_CR0_WP);
+
+// Patch something
+
+// Restore write protection
+writeCr0(cr0);</code></pre>
+				
+				<br>
+				
 				<h2>Filesystem</h2>
 				<p>
 					After completely breaking out of the sandbox and patching our process with the highest rights, our process has unrestricted access to the entire filesystem.
