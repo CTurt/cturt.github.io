@@ -891,7 +891,7 @@ static inline void writeCr0(uint64_t cr0) {
 }
 
 // Disable write protection
-uint64_t cr0 = read_cr0();
+uint64_t cr0 = readCr0();
 writeCr0(cr0 & ~X86_CR0_WP);
 
 // Patch something
