@@ -419,7 +419,7 @@ munmap(mapping + mappingSize, PAGE_SIZE);</code></pre>
 				</p>
 				
 				<p>
-					For instance, when trying to allocate <code>0x100000000</code> bytes with <code>rtld_malloc</code>, since the size will truncate to 0, and a special case occurs: the start of the heap (<code>0xffffff8000400000</code>) will always be returned. This could be used to target the start of the heap if it contained a viable attack vector.
+					For instance, when trying to allocate <code>0x100000000</code> bytes with <code>rtld_malloc</code>, since the size will truncate to 0, a special case occurs: the start of the heap (<code>0xffffff8000400000</code>) will always be returned. This could be used to target the start of the heap if it contained a viable attack vector.
 				</p>
 				
 				<p>
