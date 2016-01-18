@@ -660,7 +660,7 @@ if(sock != fd) {
 				</p>
 				
 				<p>
-					To achieve kernel code execution, there is no actually no need to gain arbitrary kernel write first. If you look at <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/sys/event.h#L138"><code>struct knlist</code></a> itself, it is filled with function pointers:
+					To achieve kernel code execution, there is actually no need to gain arbitrary kernel write first. If you look at <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/sys/event.h#L138"><code>struct knlist</code></a> itself, it is filled with function pointers:
 				</p>
 				
 				<pre><code>struct knlist {
