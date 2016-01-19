@@ -212,7 +212,7 @@ else {
 				</p>
 				
 				<p>
-					When a count of <code>0x400000000 + X</code> is specified, the calculated size will be <code>(0x400000000 + X) * 4 = 0x1000000000 + X * 4</code> bytes.
+					When a count of <code>0x40000000 + X</code> is specified, the calculated size will be <code>(0x40000000 + X) * 4 = 0x100000000 + X * 4</code> bytes.
 				</p>
 				
 				<p>
@@ -313,7 +313,7 @@ while(1) {
 				</p>
 				
 				<p>
-					At first this looks like it could lead to some very juicy use after free behaviour because only <code>X * 4</code> bytes will have been allocated, but the system call will try to free <code>0x1000000000 + X * 4</code> bytes. Unfortunately, although the <code>rtld_free</code> function is passed the full size, the code doesn't appear to use the size argument at all, so this isn't a possible attack vector.
+					At first this looks like it could lead to some very juicy use after free behaviour because only <code>X * 4</code> bytes will have been allocated, but the system call will try to free <code>0x100000000 + X * 4</code> bytes. Unfortunately, although the <code>rtld_free</code> function is passed the full size, the code doesn't appear to use the size argument at all, so this isn't a possible attack vector.
 				</p>
 				
 				<br>
@@ -328,11 +328,11 @@ while(1) {
 copyin(uap->buffer, allocation, 4 * count);</code></pre>
 				
 				<p>
-					Once again, if we supply a count of <code>0x400000000 + X</code>, the size for the allocation will be truncated by <code>uma_large_malloc</code>, resulting in an allocation of only <code>X * 4</code> bytes.
+					Once again, if we supply a count of <code>0x40000000 + X</code>, the size for the allocation will be truncated by <code>uma_large_malloc</code>, resulting in an allocation of only <code>X * 4</code> bytes.
 				</p>
 				
 				<p>
-					However, the size parameter for <code>copyin</code> is treated as 64bit, so the full size will be used. This gives us a heap overflow of <code>copyLength - bufferSize = ((0x400000000 + X) * 4) - (X * 4) = 0x1000000000</code> bytes.
+					However, the size parameter for <code>copyin</code> is treated as 64bit, so the full size will be used. This gives us a heap overflow of <code>copyLength - bufferSize = ((0x40000000 + X) * 4) - (X * 4) = 0x100000000</code> bytes.
 				</p>
 				
 				<p>
