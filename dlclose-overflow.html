@@ -611,6 +611,12 @@ while(sock != fd) {
 					However, there is a <code>sysctl</code> name, <code>"kern.maxfiles"</code>, which limits the amount of descriptors we can create (set to <code>0x3680</code> on PS4), meaning that there is also a limit on the size of the allocations we can perform with this primitive.
 				</p>
 				
+				<p>
+					You can also take advantage of the fact that page allocations will round up to <code>PAGE_SIZE</code>, so you can calculate the minimum <code>size</code> needed to allocate a given number of pages as follows:
+				</p>
+				
+				<pre><code>size = (pages - 1) * PAGE_SIZE + 0x800;</code></pre>
+				
 				<br>
 				
 				<h3>File descriptor target number</h3>
