@@ -598,37 +598,18 @@ int main(void) {
 				</p>
 				
 				<p>
-					One solution to this would be to simply keep creating files (like sockets or pipes) until we reach the desired file descriptor number. However, there is a <code>sysctl</code> name, <code>"kern.maxfiles"</code>, which limits the amount of descriptors we can create (set to <code>0x3680</code> on PS4); this would place a limit on the size of the allocations we could perform.
-				</p>
-				
-				<p>
-					Fortunately, there is a slight difference between how file descriptors are allocated on FreeBSD and PS4 which renders the protection of <code>dup2</code> moot. Consider the below example:
-				</p>
-				
-				<pre><code>int sock = socket(AF_INET, SOCK_STREAM, 0);
-printf("sock: %d\n", sock);
-close(sock);
-sock = socket(AF_INET, SOCK_STREAM, 0);
-printf("sock: %d\n", sock);</code></pre>
-				
-				<p>
-					On FreeBSD, (ignoring the possibilities of multi-threading), the two values of <code>sock</code> would be the same. But on the PS4, we will keep getting higher file descriptor numbers, even after closing them (the second value of <code>sock</code> will be 1 higher than the first).
-				</p>
-				
-				<p>
-					So to achieve high file descriptor numbers, without using the blocked <code>dup2</code>, we can simply do:
+					One solution to this is to simply keep creating files (like sockets or pipes) until we reach the desired file descriptor number:
 				</p>
 				
 				<pre><code>static int sock = 0;
 
-if(sock != fd) {
-	while(1) {
-		sock = socket(AF_INET, SOCK_STREAM, 0);
-		if(sock == fd) break;
-		
-		close(sock);
-	}
+while(sock != fd) {
+	sock = socket(AF_INET, SOCK_STREAM, 0);
 }</code></pre>
+				
+				<p>
+					However, there is a <code>sysctl</code> name, <code>"kern.maxfiles"</code>, which limits the amount of descriptors we can create (set to <code>0x3680</code> on PS4), meaning that there is also a limit on the size of the allocations we can perform with this primitive.
+				</p>
 				
 				<br>
 				
