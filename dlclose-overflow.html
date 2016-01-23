@@ -619,17 +619,6 @@ while(sock != fd) {
 				
 				<br>
 				
-				<h3>File descriptor target number</h3>
-				<p>
-					For FreeBSD, the target file descriptor needed for an allocation of <code>size</code> bytes is equal to <code>(size - 0x800) / 8</code>.
-				</p>
-				
-				<p>
-					Attempting to use the same calculation for PS4 will allocate sizes approximately 4 times larger than desired. It is possible to discover the correct calculation for target file descriptor just by experimentation, without a kernel dump.
-				</p>
-				
-				<br>
-				
 				<h3>Event queue differences on PS4</h3>
 				<p>
 					Although <code>struct kevent</code> is 32 bytes for both systems, some of the offsets of the members are different due to struct padding (<code>filter</code> has offset 8 on FreeBSD, but 4 on PS4).
