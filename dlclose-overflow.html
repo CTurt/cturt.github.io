@@ -663,7 +663,7 @@ while(sock != fd) {
 				
 				<h2>Conclusion</h2>
 				<p>
-					Kernel code execution gives almost complete control over the system. I've described in <a href="ps4-3.html">my previous article</a> a few things you can experiment with: dumping the kernel, disabling CPU write protection to make patches to kernel code, reading and writing memory of other processes, privilege escalation, breaking out of FreeBSD jail, escaping sandbox and gaining full access to the file system, and I've also hinted at a few other things you can try: decrypting saves, and dumping the registry.
+					Kernel code execution gives almost complete control over the system. I've described in <a href="ps4-3.html">my previous article</a> a few things you can experiment with: dumping the kernel, disabling CPU write protection to make patches to kernel code, reading and writing memory of other processes, privilege escalation, breaking out of FreeBSD jail, escaping sandbox and gaining full access to the file system, and I've also hinted at a few other things you can try: dumping and decrypting crash dumps (look into <code>/dev/da0x6</code> and <code>sceSblGetKernelCrashDumpEncKey</code>), decrypting saves (look into <code>sceSblSsDecryptSealedKey</code>), and dumping the registry (look into <code>sys_regmgr_call</code>).
 				</p>
 				
 				<p>
