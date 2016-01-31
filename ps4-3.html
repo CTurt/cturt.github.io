@@ -81,7 +81,7 @@
 				
 				<h2>Code execution</h2>
 				<p>
-					Firstly, I need to reveal the technique used to gain code execution under the WebKit process.
+					Firstly, I need to reveal the technique used to gain code execution under the WebKit process from ROP.
 				</p>
 				
 				<p>
@@ -93,7 +93,7 @@
 				</p>
 				
 				<p>
-					The basic idea is that there is no way to directly map a RWX virtual page. Instead, we need to allocate memory and create an alias of this mapping. We map the first handle as RX, and the alias as RW. This will give us two separate virtual mappings which point to the same physical memory.
+					The basic idea is that there is no way to directly map a RWX virtual page. Instead, we need to request a general memory allocation, and then create an alias of this memory. We map the first handle as RX, and the alias as RW. This will give us two separate virtual mappings which point to the same physical memory.
 				</p>
 				
 				<p>
@@ -106,7 +106,7 @@ memcpy(writableAddress, loop, sizeof(loop));
 ((void (*)())executableAddress)();</code></pre>
 				
 				<p>
-					The one limitation to this is that the <code>syscall</code> instruction will trigger a segfault if it is executed within JIT shared memory. To perform system calls we just do a jump to the <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls from ROP.
+					The one limitation of this is that a segfault will be triggered if a <code>syscall</code> instruction is executed within JIT shared memory. To perform system calls we just do a jump to a <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls from ROP.
 				</p>
 				
 				<p>
@@ -321,7 +321,7 @@ scePthreadCancel(thread);</code></pre>
 				
 				<h3>Brief explanation</h3>
 				<p>
-					The <code>GS</code> register is used by userland processes to access per-thread state data, and by the kernel to access per-processor state data. 
+					The <code>GS</code> segment register is used by userland processes to access per-thread state data, and by the kernel to access per-processor state data. 
 				</p>
 				
 				<p>
@@ -343,7 +343,7 @@ int amd64_set_gsbase(void *base) {
 }</code></pre>
 				
 				<p>
-					Any writes which the kernel performs relative to the <code>GS</code> base can be controlled.
+					Any writes which the kernel performs relative to the <code>GS</code> base can be controlled after the vulnerable <code>swapgs</code>.
  				</p>
 				
 				<p>
@@ -390,11 +390,11 @@ target remote localhost:8864</code></pre>
 				
 				<h3>Optimisation</h3>
 				<p>
-					Exploiting BadIRET relies on the specific configuration of a number of low-level x86 features. The exploit is sensitive to certain compiler optimisations which may generate code that is functionally equivalent to the unoptimised code, but have adverse effects when executed. When writing this kernel exploit, compiler optimisations were disabled to increase reliability and reproducibility across platforms. 
+					Exploiting BadIRET relies on the specific configuration of a number of low-level x86 idioms. The exploit is sensitive to certain compiler optimisations which may generate code that is functionally equivalent to the unoptimised code, but have adverse effects when executed. When writing this kernel exploit, compiler optimisations were disabled to increase reliability and reproducibility across platforms.
 				</p>
 				
 				<p>
-					For example, one problem I encountered when building the exploit with optimisations is the use of segment registers. With optimisations enabled, certain variables would be accessed relative to the <code>cs</code> segment register. However, by the time our kernel payload is executed, the <code>cs</code> register will have been changed by the kernel, meaning that these variables will be incorrectly addressed. 
+					For example, one problem I encountered when building the exploit with optimisations is the use of segment registers. With optimisations enabled, certain variables would be accessed relative to the <code>cs</code> segment register. However, by the time our kernel payload is executed, the <code>cs</code> register will have been changed by the kernel, meaning that these variables will be incorrectly addressed.
 				</p>
 				
 				<br>
@@ -437,7 +437,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 				</p>
 				
 				<p>
-					Our technique will abuse <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_switch.c#L181"><code>critical_enter</code></a>, a routine which increments <code>td->td_critnest</code> to keep count of the number of critical sections the kernel thread is currently in (this count is decremented at <code>critical_exit</code>). The <code>td_critnest</code> value is accessed relative to an address stored in <code>GS</code> (known as <code>td</code>): 
+					Our technique will abuse <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_switch.c#L181"><code>critical_enter</code></a>, a routine which increments <code>td->td_critnest</code> to keep count of the number of critical sections the kernel thread is currently in (this count is decremented at <code>critical_exit</code>). The <code>td_critnest</code> value is accessed relative to an address stored at the <code>GS</code> base (known as <code>td</code>): 
 				</p>
 				
 				<pre><code>critical_enter:
@@ -464,7 +464,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 00 8E <b>B0 80</b> &nbsp;&nbsp;<b>00 00 00 00</b>&nbsp;&nbsp; &nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0x0000000080B03240<br><br></code>
 				
 				<p>
-					Since the PS4 CPU doesn't support SMAP (Supervisor Mode Access Prevention) or SMEP (Supervisor Mode Execution Prevention), the CPU will happily execute userland memory in kernel mode, as long as it is marked as executable. So to achieve kernel code execution, we just need to map and write our payload to <code>0x80B03240</code>, and trigger a page fault.
+					Since FreeBSD 9.0 doesn't have support for SMAP (Supervisor Mode Access Prevention) or SMEP (Supervisor Mode Execution Prevention), the CPU will happily execute userland memory in kernel mode, as long as it is marked as executable. So to achieve kernel code execution, we just need to map and write our payload to <code>0x80B03240</code>, and trigger a page fault.
 				</p>
 				
 				<br>
@@ -494,7 +494,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 				</p>
 				
 				<pre><code>void prefault(void *address, size_t size) {
-	int i;
+	uint64_t i;
 	for(i = 0; i < size; i++) {
 		volatile uint8_t c;
 		(void)c;
@@ -504,7 +504,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 }</code></pre>
 				
 				<p>
-					Or, you can use the <a href="https://www.freebsd.org/cgi/man.cgi?query=mlock&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=default&format=html"><code>mlock</code></a> system call to make sure that memory pages intended to be accessed from the payload won't be paged out of physical memory.
+					Alternatively, you can use the <a href="https://www.freebsd.org/cgi/man.cgi?query=mlock&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=default&format=html"><code>mlock</code></a> system call to make sure that memory pages intended to be accessed from the payload won't be paged out of physical memory.
 				</p>
 				
 				<p>
@@ -515,7 +515,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 				
 				<h3>Privilege escalation</h3>
 				<p>
-					The standard payload for a kernel exploit is to give the current process root privileges:
+					The standard payload for a kernel exploit is to give the current process <code>root</code> privileges:
 				</p>
 				
 				<pre><code>struct thread *td;
@@ -546,25 +546,25 @@ cred->cr_groups[0] = 0;</code></pre>
 				</p>
 				
 				<pre><code>void *td_fdp = *(void **)(((char *)td_proc) + 72);
-uint64_t *td_fdp_fd_rdir = (uint64_t*)(((char *)td_fdp) + 24);
-uint64_t *td_fdp_fd_jdir = (uint64_t*)(((char *)td_fdp) + 32);
+uint64_t *td_fdp_fd_rdir = (uint64_t *)(((char *)td_fdp) + 24);
+uint64_t *td_fdp_fd_jdir = (uint64_t *)(((char *)td_fdp) + 32);
 uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 *td_fdp_fd_rdir = *rootvnode;
 *td_fdp_fd_jdir = *rootvnode;</code></pre>
 				
 				<p>
-					There are also a few other checks which should be bypassed on the PS4. Once you've dumped the kernel, these checks are trivial to bypass, just search for <code>sceSblACMgr</code>.
+					As mentioned earlier, Sony added a few additional privilege checks to the PS4 kernel, such as whether the current process has permission to use the JIT system calls, access the registry, etc. Once you've dumped the kernel, these checks are trivial to bypass, just search for <code>sceSblACMgr</code>.
 				</p>
 				
 				<br>
 				
 				<h3>Restoring kernel state</h3>
 				<p>
-					With GS memory carefully prepared to perform the <code>td->td_critnest++</code> write at a controlled address, we need to perform cleanup of the corruption, as well any other writes performed along the way (at an offset from <code>td</code>). 
+					We need to cleanup the IDT corruption performed by the <code>td->td_critnest++</code> write, as well any other writes performed along the way (at an offset from <code>td</code>). 
 				</p>
 				
 				<p>
-					Obviously, the first thing to restore will be the page fault entry in the IDT which we hijacked. We can write to it directly since we are now executing in kernel mode:
+					We can write to the page fault entry in the IDT directly since we are now executing in kernel mode:
 				</p>
 				
 				<pre><code>*((int *)XpageEntryHi) = 0xffffffff;</code></pre>
@@ -577,7 +577,7 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 *p = 0;</code></pre>
 				
 				<p>
-					If we dump the nearby memory before and after triggering the exploit (<code>(gdb) x /512bx  0xffffffff81183c7c</code>), we will find that a few other bytes were corrupted too. For example:
+					However, if we dump the nearby memory before and after triggering the exploit (<code>(gdb) x /512bx  0xffffffff81183c7c</code>), we will find that a few other bytes were corrupted too. For example:
 				</p>
 								
 				<pre><code>0xffffffff81184048 before: 0xff 0xff 0xff 0xff 0x00 0x00 0x00 0x00
@@ -691,7 +691,8 @@ Found non-zero memory at offset 3d8</code></pre>
 				
 				<h3>Other PS4 quirks</h3>
 				<p>
-					Aside from the fixed offsets and addresses, there are a few other things we need to account for when porting the code to PS4. Since we can't perform <code>PROT_EXEC</code> mappings directly, we need to to use the JIT technique described earlier when mapping the payload.
+					Aside from the fixed offsets and addresses, there are a few other things we need to account for when porting the code to PS4. Since we can't perform <code>PROT_EXEC</code> mappings directly, we need to to use the JIT technique described earlier to map the payload.
+				</p>
 				
 				<p>
 					Fixed mappings must be aligned to <code>PAGE_SIZE</code>, which is 4KB by default on FreeBSD, but 16KB for PS4.
