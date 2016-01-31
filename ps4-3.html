@@ -93,7 +93,7 @@
 				</p>
 				
 				<p>
-					The basic idea is that there is no way to directly map a RWX virtual page. Instead, we need to request a general memory allocation, and then create an alias of this memory. We map the first handle as RX, and the alias as RW. This will give us two separate virtual mappings which point to the same physical memory.
+					The basic idea is that there is no way to directly map a RWX virtual page. Instead, we need to request a shared memory allocation, and then create an alias of this memory. We map the first handle as RX, and the alias as RW. This will give us two separate virtual mappings which point to the same physical memory.
 				</p>
 				
 				<p>
