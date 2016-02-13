@@ -632,31 +632,30 @@ while(sock != fd) {
 				
 				<h2>Targets to overflow into</h2>
 				<p>
-					The beautiful thing about the heap control primitive explained above, is that not only is it useful for performing heap layout manipulations, but its allocations also contain a linked list (<code>kq->kq_knlist</code>) which we can overflow into.
+					The beautiful thing about the heap control primitive explained above, is that not only is it useful for performing heap layout manipulations, but its allocations also contain numerous pointers which can be used to facilitate code execution.
 				</p>
 				
 				<p>
-					To achieve kernel code execution, there is actually no need to gain arbitrary kernel write first. If you look at <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/sys/event.h#L138"><code>struct knlist</code></a> itself, it is filled with function pointers:
+					To achieve kernel code execution, there is actually no need to gain arbitrary kernel write first. The <code>knote</code> structure contains a pointer to a <code>struct filterops</code> (<code>kq->kn_fop</code>), which in turn contains function pointers:
 				</p>
 				
-				<pre><code>struct knlist {
-	struct klist kl_list;
-	void (*kl_lock)(void *);	/* lock function */
-	void (*kl_unlock)(void *);
-	void (*kl_assert_locked)(void *);
-	void (*kl_assert_unlocked)(void *);
-	void *kl_lockarg;		/* argument passed to kl_lockf() */
+				<pre><code>struct filterops {
+	int	f_isfd;		/* true if ident == filedescriptor */
+	int	(*f_attach)(struct knote *kn);
+	void	(*f_detach)(struct knote *kn);
+	int	(*f_event)(struct knote *kn, long hint);
+	void	(*f_touch)(struct knote *kn, struct kevent *kev, u_long type);
 };</code></pre>
 				
 				<p>
-					So, all we need to do is overflow the <code>kn_knlist</code> member of <code>struct knote</code> with a pointer to a controlled list, which contains function pointers aimed at our payload.
+					So, all we need to do is overflow the <code>kn_fop</code> member of <code>struct knote</code> with a pointer to a controlled struct, which contains function pointers aimed at our payload.
 				</p>
 				
 				<br>
 				
 				<h2>Triggering</h2>
 				<p>
-					After the buffers have been overflown, closing the queue will trigger the <code>kl_lock</code> function pointer, resulting in a jump to our payload. Kernel code execution achieved!
+					After the buffers have been overflown, closing the queue will go through <code>kqueue_close</code> (and then <code>kqueue_drain</code> on later versions of FreeBSD), where <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_event.c#L1666">the <code>f_detach</code> function pointer is then triggered</a>, resulting in a jump to our payload. Kernel code execution achieved!
 				</p>
 				
 				<br>
