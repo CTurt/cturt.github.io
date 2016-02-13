@@ -660,7 +660,7 @@ for(i = 0; i &lt; overflowSize / sizeof(struct knote *); i++) {
 	overflow[i] = &amp;kn;
 }
 
-kn.fn_fop = &amp;f;
+kn.fn_fop = &amp;fo;
 
 fo.f_detach = payload;</code></pre>
 				
