@@ -632,11 +632,11 @@ while(sock != fd) {
 				
 				<h2>Targets to overflow into</h2>
 				<p>
-					The beautiful thing about the heap control primitive explained above, is that not only is it useful for performing heap layout manipulations, but its allocations also contain numerous pointers which can be used to facilitate code execution.
+					The beautiful thing about the heap control primitive explained above, is that not only is it useful for performing heap layout manipulations, but its allocations are of type <code>struct klist</code>, a <a href="https://www.freebsd.org/cgi/man.cgi?query=SLIST_HEAD&sektion=3&manpath=FreeBSD%2010.2-RELEASE">singly-linked list</a> of <code>struct knote</code>, a large structure containing numerous pointers which can facilitate code execution.
 				</p>
 				
 				<p>
-					To achieve kernel code execution, there is actually no need to gain arbitrary kernel write first. The <code>knote</code> structure contains a pointer to a <code>struct filterops</code> (<code>kq->kn_fop</code>), which in turn contains function pointers:
+					In particular, <code>struct knote</code> contains a <code>struct filterops *</code> called <code>kn_fop</code>. If targeting the <code>kn_fop</code> member there is actually no need to gain arbitrary kernel write first since <code>struct filterops</code> contains easily triggerable function pointers, such as <code>f_detach</code>:
 				</p>
 				
 				<pre><code>struct filterops {
@@ -648,7 +648,7 @@ while(sock != fd) {
 };</code></pre>
 				
 				<p>
-					So, all we need to do is overflow the <code>kn_fop</code> member of <code>struct knote</code> with a pointer to a controlled struct, which contains function pointers aimed at our payload.
+					So all we need to do is overflow <code>struct klist</code> to point to a carefully crafted userland <code>struct knote</code> who's <code>kn_fop</code> member points to a controlled <code>struct filterops</code>, which contains the <code>f_detach</code> function pointer aimed at our payload.
 				</p>
 				
 				<br>
