@@ -346,8 +346,8 @@ if(registers.pc == 0x282a) {
 				
 				<pre><code>FILE *f = fopen("tile0.txt", "wb");
 int x, y;
-for(y = 0; y < 8; y++) {
-	for(x = 0; x < 8; x++) fprintf(f, "%02x ", tiles[0][x][y]);
+for(y = 0; y &lt; 8; y++) {
+	for(x = 0; x &lt; 8; x++) fprintf(f, "%02x ", tiles[0][x][y]);
 	fprintf(f, "\n");
 }
 fclose(f);
@@ -384,9 +384,9 @@ fclose(f);
 				</p>
 				
 				<pre><code>int i, x, y;
-for(i = 0; i < 8; i++) {
-	for(x = 0; x < 8; x++) {
-		for(y = 0; y < 8; y++) {
+for(i = 0; i &lt; 8; i++) {
+	for(x = 0; x &lt; 8; x++) {
+		for(y = 0; y &lt; 8; y++) {
 			framebuffer[i * 8 + x + y * 160].r = palette[tiles[i][x][y]].r;
 			framebuffer[i * 8 + x + y * 160].g = palette[tiles[i][x][y]].g;
 			framebuffer[i * 8 + x + y * 160].b = palette[tiles[i][x][y]].b;
@@ -403,11 +403,11 @@ for(i = 0; i < 8; i++) {
 				
 				<pre><code>// draw tileset to framebuffer as a test
 int i;
-for(i = 0; i < (144 / 8) * (160 / 8); i++) {
+for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 	int x;
-	for(x = 0; x < 8; x++) {
+	for(x = 0; x &lt; 8; x++) {
 		int y;
-		for(y = 0; y < 8; y++) {
+		for(y = 0; y &lt; 8; y++) {
 			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].r = palette[tiles[i][x][y]].r;
 			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].g = palette[tiles[i][x][y]].g;
 			framebuffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160].b = palette[tiles[i][x][y]].b;
@@ -433,13 +433,13 @@ for(i = 0; i < (144 / 8) * (160 / 8); i++) {
 					I'm not sure if this was caused by a problem with the GPU tutorial that I followed, or my implementation, but changing the following line:
 				</p>
 				
-				<pre><code>mapOffset += ((gpu.scanline + gpu.scrollY) & 255) >> 3;</code></pre>
+				<pre><code>mapOffset += ((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3;</code></pre>
 				
 				<p>
 					to:
 				</p>
 				
-				<pre><code>mapOffset += (((gpu.scanline + gpu.scrollY) & 255) >> 3) << 5;</code></pre>
+				<pre><code>mapOffset += (((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3) &lt;&lt; 5;</code></pre>
 				
 				<p>
 					fixed the problem. My emulator could now reach the copyright screen of Tetris!
@@ -457,7 +457,7 @@ for(i = 0; i < (144 / 8) * (160 / 8); i++) {
 				
 				<pre><code>void writeByte(unsigned short address, unsigned char value) {
 	// Block writes to ff80
-	if(tetrisPatch && address == 0xff80) return;</code></pre>
+	if(tetrisPatch &amp;&amp; address == 0xff80) return;</code></pre>
 				
 				<p>
 					It wasn't my intention to use game specific patches rather than sorting out bugs properly, but I assumed that if I temporarily enabled this patch, the problem would eventually sort its self out as I improved Cinoop (which it did).
