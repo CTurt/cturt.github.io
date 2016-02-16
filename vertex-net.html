@@ -85,10 +85,10 @@
   struct tagMSG Msg; // [sp+4h] [bp-1Ch]@1
 
   sub_406980();
-  while ( GetMessageA(&Msg, NULL, 0, 0) )
+  while ( GetMessageA(&amp;Msg, NULL, 0, 0) )
   {
-	TranslateMessage(&Msg);
-	DispatchMessageA(&Msg);
+	TranslateMessage(&amp;Msg);
+	DispatchMessageA(&amp;Msg);
   }
   return 0;
 }</code></pre>
@@ -105,8 +105,8 @@
 					From here we can see some more function calls which we will come back to later, but the most apparent are the two calls to <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms682453%28v=vs.85%29.aspx">CreateThread</a>:
 				</p>
 				
-				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &ThreadId);
-return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &ThreadId);</pre></code>
+				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &amp;ThreadId);
+return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &amp;ThreadId);</pre></code>
 				
 				<p>
 					I named the two threads' start routines <code>thread1</code> and <code>thread2</code>.
@@ -123,13 +123,13 @@ return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &Threa
 					Initially, this function looked quite daunting:
 				</p>
 				
-				<pre><code>int __usercall sub_4022B0<eax>(unsigned int a1<eax>, int a2<edx>, int a3<ecx>)
+				<pre><code>int __usercall sub_4022B0&lt;eax&gt;(unsigned int a1&lt;eax&gt;, int a2&lt;edx&gt;, int a3&lt;ecx&gt;)
 {
   unsigned int v3; // esi@1
   signed int v4; // eax@5
 
   v3 = a1;
-  if ( a1 < 4 )
+  if ( a1 &lt; 4 )
   {
 LABEL_4:
     if ( !v3 )
@@ -142,19 +142,19 @@ LABEL_4:
       v3 -= 4;
       a3 += 4;
       a2 += 4;
-      if ( v3 < 4 )
+      if ( v3 &lt; 4 )
         goto LABEL_4;
     }
   }
   v4 = *(_BYTE *)a2 - *(_BYTE *)a3;
   if ( *(_BYTE *)a2 != *(_BYTE *)a3 )
     return (v4 >> 31) | 1;
-  if ( v3 <= 1 )
+  if ( v3 &lt;= 1 )
     return 0;
   v4 = *(_BYTE *)(a2 + 1) - *(_BYTE *)(a3 + 1);
   if ( *(_BYTE *)(a2 + 1) != *(_BYTE *)(a3 + 1) )
     return (v4 >> 31) | 1;
-  if ( v3 <= 2 )
+  if ( v3 &lt;= 2 )
     return 0;
   v4 = *(_BYTE *)(a2 + 2) - *(_BYTE *)(a3 + 2);
   if ( *(_BYTE *)(a2 + 2) != *(_BYTE *)(a3 + 2) )
@@ -178,7 +178,7 @@ LABEL_4:
 				<pre><code>int compareStrings(unsigned int length, char *string1, char *string2) {
 	unsigned int i = length;
 	
-	if(length < 4) {
+	if(length &lt; 4) {
 		LABEL_4:
 		if(i == 0) return 0;
 	}
@@ -187,7 +187,7 @@ LABEL_4:
 			i -= 4;
 			string2 += 4;
 			string1 += 4;
-			if(i < 4) goto LABEL_4;
+			if(i &lt; 4) goto LABEL_4;
 		}
 	}
 	
@@ -196,12 +196,12 @@ LABEL_4:
 	difference = (unsigned __int8)string1[0] - (unsigned __int8)string2[0];
 	if(string1[0] != string2[0]) return (difference >> 31) | 1;
 	
-	if(i <= 1) return 0;
+	if(i &lt;= 1) return 0;
 	
 	difference = (unsigned __int8)string1[1] - (unsigned __int8)string2[1];
 	if(string1[1] != string2[1]) return (difference >> 31) | 1;
 	
-	if(i <= 2) return 0;
+	if(i &lt;= 2) return 0;
 	
 	difference = (unsigned __int8)string1[2] - (unsigned __int8)string2[2];
 	if(string1[2] != string2[2]) return (difference >> 31) | 1;
@@ -337,7 +337,7 @@ LABEL_4:
 					When the <code>setkeylogger::</code> command is received, a new thread is created (<code>sub_404300</code>):
 				</p>
 				
-				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &ThreadId);</code></pre>
+				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &amp;ThreadId);</code></pre>
 				
 				<p>
 					Keylogs are stored in the file <code>vnlogs.log</code> which can be read through the <code>getklogs</code> command.
