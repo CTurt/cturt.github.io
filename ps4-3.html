@@ -553,7 +553,7 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 *td_fdp_fd_jdir = *rootvnode;</code></pre>
 				
 				<p>
-					As mentioned earlier, Sony added a few additional privilege checks to the PS4 kernel, such as whether the current process has permission to use the JIT system calls, access the registry, etc. Once you've dumped the kernel, these checks are trivial to bypass, just search for <code>sceSblACMgr</code>.
+					As mentioned earlier, Sony added a few additional privilege checks to the PS4 kernel, such as whether the current process has permission to use the JIT system calls, access the registry, send debug messages over UART, etc. I won't go over how to disable all of these checks, but once you've dumped the kernel, they are trivial to bypass; just search for <code>sceSblACMgr</code>.
 				</p>
 				
 				<br>
@@ -899,6 +899,70 @@ writeCr0(cr0 &amp; ~X86_CR0_WP);
 
 // Restore write protection
 writeCr0(cr0);</code></pre>
+				
+				<br>
+				
+				<h2>Enable UART output</h2>
+				<p>
+					It's been long known that there are two UART ports on the PS4, <a href="http://hackinformer.com/2015/06/24/breaking-news-discovered-two-communication-ports-uart-playstation-4/">which can be read from with some soldering</a>, however the output of these UART ports is replaced with all spaces on retail consoles.
+				</p>
+				
+				<p>
+					With kernel dumped, we can locate the two places where the console output is cleared:
+				</p>
+				
+				<pre><code>int
+ttydisc_write(struct tty *tp, struct uio *uio, int ioflag)
+{
+	...
+	
+	error = uiomove(ob, nlen, uio);
+	if ( !error )
+	{
+		if (bootparam_disable_console_output() &amp;&amp; nlen)
+		{
+			left = -nlen;
+			obp = ob;
+			do
+			{
+				*obp++ = ' ';
+				++left;
+			}
+			while ( left );
+	}
+	error = ENXIO;
+	
+	...
+}
+
+void
+cnputc(int c) {
+	if (bootparam_disable_console_output())
+		c = ' ';
+	...
+}</code></pre>
+				
+				<p>
+					Both places check the value returned from <code>bootparam_disable_console_output</code> before disabling console output, which is implemented as follows:
+				</p>
+				
+				<pre><code>unsigned int
+bootparam_disable_console_output()
+{
+	return (unsigned int)(*(uint16_t *)0xFFFFFFFF833242F6) >> 15;
+}</code></pre>
+				
+				<p>
+					So to disable this check, we just need to clear bit 15 of this variable in our payload:
+				</p>
+				
+				<pre><code>// bootparam_disable_console_output = 0
+uint16_t *bootParams = (uint16_t *)0xFFFFFFFF833242F6;
+(*bootParams) &amp;= ~(1 &lt;&lt; 15);</code></pre>
+				
+				<p>
+					If you search for xrefs to this variable, you'll notice that it's also used in the checks for <code>sceSblRcMgrIsAllowDisablingAslr</code>, <code>sceSblRcMgrIsAllowRegistryAccess</code> and many more.
+				</p>
 				
 				<br>
 				
