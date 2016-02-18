@@ -958,7 +958,7 @@ bootparam_disable_console_output()
 				
 				<pre><code>// bootparam_disable_console_output = 0
 uint16_t *bootParams = (uint16_t *)0xFFFFFFFF833242F6;
-(*bootParams) &amp;= ~(1 &lt;&lt; 15);</code></pre>
+*bootParams &amp;= ~(1 &lt;&lt; 15);</code></pre>
 				
 				<p>
 					If you search for xrefs to this variable, you'll notice that it's also used in the checks for <code>sceSblRcMgrIsAllowDisablingAslr</code>, <code>sceSblRcMgrIsAllowRegistryAccess</code> and many more.
