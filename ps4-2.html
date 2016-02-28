@@ -56,7 +56,18 @@
 				</p>
 				
 				<p>
-					This article is less focused on exploitation, and more on what is actually possible at the moment.
+					This article is less focused on exploitation, and more on what is possible with userland code execution under the WebKit process.
+				</p>
+				
+				<br>
+				
+				<h2>Update</h2>
+				<p>
+					After gaining kernel code execution, I've gone back to this article to update some of the uncertainties I had whilst researching with just userland code execution.
+				</p>
+				
+				<p>
+					I've also since posted the method for gaining userland code execution and a ROP chain to load binaries sent over TCP, it is explained in <a href="ps4-3.html#code-execution">part 3 of this series</a>.
 				</p>
 				
 				<br>
@@ -244,7 +255,7 @@ body.appendChild(canvas);</code></pre>
 				
 				<h2>USB flash drives</h2>
 				<p>
-					When you insert a USB into the PS4, a new device is listed under <code>/dev/</code>: <code>ugen0.4</code> for the first slot, and <code>ugen0.5</code> for the second slot.
+					When you insert a USB into the PS4, a new device is listed under <code>/dev/</code>; <code>ugen0.4</code> for the first slot, and <code>ugen0.5</code> for the second slot.
 				</p>
 				
 				<p>
@@ -280,6 +291,33 @@ sceUsbdExit();</code></pre>
 				
 				<br>
 				
+				<h2>USB findings with kernel access</h2>
+				<p>
+					The PS4 automatically attempts to mount USB flash drives when inserted. Once kernel code execution has been used to enable UART output, the following message is displayed upon insertion of a USB flash drive:
+				</p>
+				
+				<pre><code>ugen0.4: &lt;SanDisk&gt; at usbus0
+umass1: &lt;SanDisk Cruzer Edge, class 0/0, rev 2.00/1.26, addr 4&gt; on usbus0
+umass1:  SCSI over Bulk-Only; quirks = 0x0000
+umass1:2:1:-1: Attached to scbus2
+da1 at umass-sim1 bus 1 scbus2 target 0 lun 0
+da1: &lt;SanDisk Cruzer Edge 1.26&gt; Removable Direct Access SCSI-5 device
+da1: 40.000MB/s transfers
+da1: 3819MB (7821312 512 byte sectors: 255H 63S/T 486C)
+[SceAutoMount] /mnt/usb0 is now available. fstype=exfatfs, device=/dev/da1s1
+MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203):
+                device(/dev/da1s1): exfat(mediaType=0x1001) is mounted at /mnt/usb0.</code></pre>
+				
+				<p>
+					Only devices formatted as FAT32 will be successfully mounted, and after kernel code execution has been used to escape the filesystem sandbox, they may be accessed from <code>/mnt/usb0</code> and <code>/mnt/usb1</code>.
+				</p>
+				
+				<p>
+					However, without a kernel exploit the <code>libSceUsbd</code> module remains the only way to access USBs, which actually gives more control over the device, but is less convenient to use for just reading and writing files.
+				</p>
+				
+				<br>
+				
 				<h2>Cinoop</h2>
 				<p>
 					<a href="cinoop.html">Cinoop</a> is a GameBoy emulator I wrote a while ago. Whilst it isn't one of the best GameBoy emulators out there, I thought it would be a fun project to port to PS4 to show what code execution within the Internet Browser is capable of (using all of the workarounds explained above).
@@ -309,11 +347,22 @@ sceUsbdExit();</code></pre>
 				</p>
 				
 				<p>
-					The <code>execve</code> (59) system call is allowed, and there is also a function called <code>sceSystemServiceLoadExec</code> in <code>libSceSystemService.sprx</code>, but we have no way of testing either of these since the filesystem is read only and we can't mount USB flash drives. It's most likely that they would only accept encrypted files anyway.
+					The <code>execve</code> (59) system call is allowed, and there is also a function called <code>sceSystemServiceLoadExec</code> in <code>libSceSystemService.sprx</code>, but we have no way of testing either of these since the filesystem is read only and we can't mount USB flash drives. Executable files on the PS4 have a custom header, and the contents are encrypted anyway.
 				</p>
 				
 				<p>
 					We can copy some of the functions from <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libprocstat</code></a>, but this functionality is mostly useless since we only have permission to target our own process.
+				</p>
+				
+				<br>
+				
+				<h2>Executable files with kernel access</h2>
+				<p>
+					The following two kernel functions seem to deal with the majority of integrity checks of executable files: <code>sceSblAuthMgrAuthHeader</code> and <code>sceSblAuthMgrIsLoadable</code>.
+				</p>
+				
+				<p>
+					With kernel code execution, executable files can be directly decrypted on the console, however there isn't much benefit to this over just loading the module and dumping it from userland.
 				</p>
 				
 				<br>
