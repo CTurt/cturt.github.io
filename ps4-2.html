@@ -910,7 +910,7 @@ chain.execute(function() {
 				</p>
 				
 				<p>
-					The reason I didn't mention encryption in my last article is because trying to defeat it would be a complete waste of time. The PS4 probably uses <a href="https://en.wikipedia.org/wiki/Advanced_Encryption_Standard">AES</a> (like the <a href="http://www.ps3devwiki.com/ps3/Keys">PS3</a> and PS Vita), which is the same type of encryption used by the U.S. government.
+					The reason I didn't mention encryption in my last article is because trying to defeat it would be a complete waste of time. The PS4 uses <a href="https://en.wikipedia.org/wiki/Advanced_Encryption_Standard">AES</a> (like the <a href="http://www.ps3devwiki.com/ps3/Keys">PS3</a> and PS Vita), which is the same type of encryption used by the U.S. government.
 				</p>
 				
 				<p>
@@ -927,6 +927,10 @@ chain.execute(function() {
 				
 				<p>
 					Whilst it is unlikely that Sony has made another mistake like this in the core of the PS4's encryption, it is not uncommon for other companies to accidentally give us access to unencrypted content. If you snoop around various games' update servers, you might find some debug ELFs for example.
+				</p>
+				
+				<p>
+					Furthermore, encryption on the PS4 is handled by a separate processor, called SAMU, which is very locked down. Even with a kernel exploit, the SAMU processor is one of the few areas which we don't have complete control over. Although we can interact with it to decrypt almost everything, it is impossible to extract any keys so that decryption could be done externally.
 				</p>
 				
 				<br>
