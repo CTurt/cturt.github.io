@@ -791,7 +791,19 @@ while(sys_sendto(td, &amp;args) == EINTR);</code></pre>
 				</p>
 				
 				<p>
-					Rather than inspecting all of the IDT entries manually for corruption, I found the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/amd64/amd64/machdep.c#L1641">IDT initialisation code in FreeBSD</a> and copied it into the PS4 payload using the function addresses from the kernel dump. This re-initialised the IDT to its correct state.
+					Rather than inspecting all of the IDT entries manually for corruption, I found the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/amd64/amd64/machdep.c#L1641">IDT initialisation code in FreeBSD</a> and copied it into the PS4 payload using fixed function addresses taken from the kernel dump. This re-initialised the IDT to its correct state:
+				</p>
+				
+				<pre><code>// Rewrite IDT
+void (*setidt)() = (void *)0xFFFFFFFF82603FA0;
+
+setidt(IDT_DE, 0xFFFFFFFF825FED40, SDT_SYSIGT, SEL_KPL, 0);
+setidt(IDT_DB, 0xFFFFFFFF825FECB0, SDT_SYSIGT, SEL_KPL, 0);
+setidt(IDT_NMI, 0xFFFFFFFF825FF3E0, SDT_SYSIGT, SEL_KPL, 2);
+...</code></pre>
+				
+				<p>
+					However, if you plan to release any kernel code, I would advise you to dynamically resolve these function addresses at runtime as demonstrated by fail0verflow in their <a href="https://github.com/fail0verflow/ps4-kexec/blob/master/kernel.c">kexec system call implementation</a>.
 				</p>
 				
 				<br>
