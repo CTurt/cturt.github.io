@@ -723,7 +723,7 @@ syscall(597, 1, mapping, &amp;count);</code></pre>
 				</p>
 				
 				<p>
-					The <code>dlclose</code> exploit doesn't require any of this, which makes it much easier and more direct to work with than BadIRET. After calling <code>close</code> we immediately gain kernel code execution under a normal context. Secondly, since this exploit doesn't corrupt any global structures; if we perform it in a separate thread, any corruption will be discarded once the thread finishes and so we don't need to cleanup anything manually.
+					The <code>dlclose</code> exploit doesn't require any of this, which makes it much easier and more direct to work with than BadIRET. After calling <code>close</code> we immediately gain kernel code execution under a normal context. Secondly, since this exploit doesn't corrupt any global structures; if we perform it in a separate thread, any corruption will be discarded once the thread finishes and so we don't need to clean up anything manually.
 				</p>
 				
 				<p>
