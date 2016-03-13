@@ -1079,6 +1079,54 @@ for(offset = mappingAddress; offset &lt; mappingAddress + mappingSize; offset +=
 				
 				<br>
 				
+				<h2 id="linux">Booting Linux</h2>
+				<p>
+					I wanted to give a brief overview of how to setup and boot Linux on your PS4.
+				</p>
+				
+				<p>
+					To create your own Linux distro, you'll need to compile <a href="https://github.com/fail0verflow/ps4-linux">fail0verflow's fork of the Linux kernel</a>, and then <a href="https://wiki.gentoo.org/wiki/Custom_Initramfs">create your own initramfs</a>.
+				</p>
+				
+				<p>
+					The easiest way to get these files into RAM is to copy to copy them to a USB flash drive formatted as FAT32, which can then be read from once you've broken out of sandbox as explained earlier. You could also download them over the network if you prefer.
+				</p>
+				
+				<p>
+					You'll also need to compile the <a href="https://github.com/fail0verflow/ps4-kexec">ps4-kexec</a> system call implementation as a relocatable binary and include it in your kernel exploit.
+				</p>
+				
+				<p>
+					For your kernel payload you should copy the system call somewhere into kernel address space (like <code>DT_HASH_SEGMENT</code>), and run <code>kexec_init</code> to install it (which is guaranteed to be at offset 0 from the binary):
+				</p>
+				
+				<pre><code>void *DT_HASH_SEGMENT = (void *)0xffffffff82200160;
+memcpy(DT_HASH_SEGMENT, kexec, kexecSize);
+
+void (*kexec_init)(void *, void *) = DT_HASH_SEGMENT;
+kexec_init(NULL, NULL);</code></pre>
+				
+				<p>
+					Once you return to userland, you can load the kernel and initramfs from USB, load Linux, and finally reboot!
+				</p>
+				
+				<pre><code>char *cmdLine = "panic=0 clocksource=tsc radeon.dpm=0 console=tty0 console=ttyS0,115200n8 "
+	"console=uart8250,mmio32,0xd0340000 video=HDMI-A-1:1920x1080-24@60 "
+	"consoleblank=0 net.ifnames=0 drm.debug=0";
+
+syscall(153, kernel, kernelSize, initramfs, initramfsSize, cmdLine);
+
+free(kernel);
+free(initramfs);
+
+// Reboot
+int evf = syscall(540, "SceSysCoreReboot");
+syscall(546, evf, 0x4000, 0);
+syscall(541, evf);
+syscall(37, 1, 30);</code></pre>
+				
+				<br>
+				
 				<h2>Summary</h2>
 				<p>
 					I'm going to finish the article at this point since I just wanted to provide a few examples of what can be done with the kernel exploit; there's so much else to be explored that I don't think I'll ever get round to everything: the registry, save game encryption, system update process, capturing decrypted SSL traffic, etc.
@@ -1104,6 +1152,7 @@ for(offset = mappingAddress; offset &lt; mappingAddress + mappingSize; offset +=
 					<li>Adam Zabrocki (<a href="https://twitter.com/Adam_pi3">@Adam_pi3</a>)</li>
 					<li>Takezo</li>
 					<li>Yifan Lu (<a href="https://twitter.com/yifanlu">@yifanlu</a>)</li>
+					<li>kR105 (<a href="https://twitter.com/kr105rlz">@kr105rlz</a>)</li>
 				</ul>
 			</div>
 		</div>
