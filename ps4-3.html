@@ -1107,7 +1107,7 @@ void (*kexec_init)(void *, void *) = DT_HASH_SEGMENT;
 kexec_init(NULL, NULL);</code></pre>
 				
 				<p>
-					Once you return to userland, you can load the kernel and initramfs from USB, load Linux, and finally reboot!
+					Once you return to userland, you can load the kernel and initramfs from USB, pass them to <code>kexec</code>, and finally reboot!
 				</p>
 				
 				<pre><code>char *cmdLine = "panic=0 clocksource=tsc radeon.dpm=0 console=tty0 console=ttyS0,115200n8 "
