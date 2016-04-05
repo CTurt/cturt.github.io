@@ -231,7 +231,7 @@ else {
 				
 				<h2>Attack vectors for the first overflow</h2>
 				<p>
-					After allocating a buffer with an overflowed size, the code then goes on to call <code>prepare_dlclose</code> with this buffer and our controlled count <i>before</i> it has overflowed. The situation now is that only <code>X * 4</code> bytes have been allocated for the buffer, but the count passed onto <code>prepare_dlclose</code> will be <code>0x4000000000000000 + X</code>.
+					After allocating a buffer with an overflown size, the code then goes on to call <code>prepare_dlclose</code> with this buffer and our controlled count <i>before</i> it has overflown. The situation now is that only <code>X * 4</code> bytes have been allocated for the buffer, but the count passed onto <code>prepare_dlclose</code> will be <code>0x4000000000000000 + X</code>.
 				</p>
 				
 				<p>
