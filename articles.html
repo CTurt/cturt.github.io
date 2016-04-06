@@ -38,36 +38,14 @@
 				</p>
 				
 				<p>
-					Below is a list of my bug reports, as well as the link to the accepted patch in FreeBSD, where applicable; most of these are not critical since they are only triggerable as <code>root</code>, or have other, similar limitations:
+					A list of my bug reports, as well as the link to the accepted patch in FreeBSD, where applicable can be found <a href="fbsd.html">here</a>; most of these are not critical since they are only triggerable as <code>root</code>, or have other, similar limitations.
 				</p>
-				
-				<ul>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=204097#c0">witness_initialize() does not perform bound checking of witness_count</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206573#c0">Improper userland pointer handling in aacraid</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206585#c2">hpt_set_info buffer overflow</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206648#c0">Fix double strlen in ktrstruct</a> - <a href="https://svnweb.freebsd.org/base?view=revision&revision=294934">Accepted patch</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206581#c3">Use of uninitialised stack data in bxe device</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206626#c0">Integer overflow in nfssvc system call</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206678#c0">OGIO_KEYMAP command does not restore priority level</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206680#c0">kbd race attacks</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206754#c0">Out of bounds negative array index in iicrdwr</a> - <a href="https://svnweb.freebsd.org/base?view=revision&revision=295080">Accepted patch</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206755#c0">Use of initialised stack variables in tdfx_query_update</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206761#c0">Kernel stack overflow in sysctl handler for kern.binmisc.add</a> - <a href="https://svnweb.freebsd.org/base?view=revision&revision=297488">Accepted patch</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207302#c0">Iconv uses strlen directly on user supplied memory</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207626#c0">Memory leak in ctl.c</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207627#c0">Negative array index in ctl.c</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207629#c0">Integer overflow in sysctl_kern_proc_args</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207911#c0">kiconv reference count integer overflow</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208035#c0">IPFW firewall heap overflow</a></li>
-					<li><a href="https://reviews.freebsd.org/D5660">Check for negative lengths in m_pulldown</a></li>
-					<li><a href="https://reviews.freebsd.org/D5662">Fix for improper bound checking on cn_namelen</a></li>
-				</ul>
 				
 				<br>
 				
 				<h2>PS4</h2>
 				<p>
-					Articles:
+					I decided to start researching the PS4's security with almost no prior knowledge of exploitation, and ended up being the first to publicly gain code execution under the WebKit process through the JIT system calls, and then developing the first 2 public kernel exploits for the system. I've documented my experiences in the following articles:
 				</p>
 				
 				<ul>
@@ -84,7 +62,7 @@
 				</p>
 				
 				<ul>
-					<li><a href="https://github.com/CTurt/PS4-playground">Collection of WebKit exploit based experiments, including a file browser</a></li>
+					<li><a href="https://github.com/CTurt/PS4-playground">Collection of WebKit exploit based experiments including a file browser and Linux loader</a></li>
 					<li><a href="https://github.com/CTurt/PS4-SDK">Open source PS4-SDK</a></li>
 					<li><a href="https://github.com/CTurt/PS4-Pong">Native Pong game</a></li>
 					<li><a href="cinoop.html">Port of my GameBoy emulator, Cinoop</a></li>
