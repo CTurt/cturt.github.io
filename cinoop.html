@@ -484,6 +484,28 @@ jr z</code></pre>
 				
 				<br>
 				
+				<h2>Sprites</h2>
+				<p>
+					The final major addition to the core would be sprite support, which isn't too difficult if you've already implemented displaying background maps. The Game Boy can display up to 40 sprites, with the properties of each stored in a basic OAM table, containing the position, tile number, palette number, flip, and priority.
+				</p>
+				
+				<br>
+				
+				<h2>Randomisation</h2>
+				<p>
+					Tetris relies on reading the divider register, at address <code>0xff04</code>, as the source of entropy to determine which random block will be next. Usually this register is a timer which increments linearly until reset to 0 (by writing any value to it).
+				</p>
+				
+				<p>
+					I decided to return <code>rand</code> when attempting to read from this value instead. Since this register is only used as a random number generator for Tetris, this change will provide a better source of entropy, without any adverse effects for this game.
+				</p>
+				
+				<p>
+					When using <code>rand</code>, you should change the seed with <code>srand</code> (usually with the current time), otherwise, if you <code>srand</code> with the same seed, you will play the game with the exact same order of blocks.
+				</p>
+				
+				<br>
+				
 				<h2>Porting</h2>
 				<p>
 					To make Cinoop more useful, I decided to port it to several other systems.
