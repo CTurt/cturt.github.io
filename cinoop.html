@@ -493,7 +493,7 @@ jr z</code></pre>
 				
 				<h2>Randomisation</h2>
 				<p>
-					Tetris relies on reading the divider register, at address <code>0xff04</code>, as the source of entropy to determine which random block will be next. Usually this register is a timer which increments linearly until reset to 0 (by writing any value to it).
+					Tetris relies on reading the divider register, at address <code>0xff04</code>, as the source of entropy to determine which random block will be next. Usually this register is a timer which increments linearly until overflown or reset to 0 (writing any value to it).
 				</p>
 				
 				<p>
