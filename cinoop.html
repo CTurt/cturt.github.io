@@ -758,34 +758,19 @@ struct registers {
 				</p>
 				
 				<p>
-					The PS2 has reasons for being difficult to develop for: it is over 15 years old, and the tools are developed unofficially by hobbyists. Whereas, Mac OS X is an actively maintained operating system, from a major corporation; it has no excuse for being impossible to develop for.
+					I was unable to install a working C compiler and development setup on Mac OS X. All development tools are centralised to Apple, which means that you have to create an account to download them.
 				</p>
 				
 				<p>
-					Mac OS X development suffers from the problems of the opposite end of the spectrum to PS2 development, everything is centralised to Apple, which makes it (in my experience) even harder to develop for than PS2. You have to create an account to download any development tools, and if something doesn't work (which happens a lot), there are no alternatives, you're stuck!
-				</p>
-				
-				<div class="quote">
-					Unlike other platforms, where the Operating System and OpenGL implementations are often updated separately, OpenGL updates are included as part of Mac OS X system updates.
-				</div>
-				
-				<div class="quote-reference">
-					- <a href="https://www.opengl.org/wiki/Getting_Started#Mac_OS_X">OpenGL</a>
-				</div>
-				<br>
-				
-				<br>
-				
-				<p>
-					To install a C compiler (with <code>make</code> and some other tools), you must first install <a href="http://en.wikipedia.org/wiki/Xcode">Xcode</a> (which is a 5GB download), and then click on "Install Command Line tools" which is in the settings somewhere. There is probably a way to install a C compiler without Xcode, but it certainly isn't clear.
+					I had to first install <a href="http://en.wikipedia.org/wiki/Xcode">Xcode</a> (which is a 5GB download), and then click on "Install Command Line tools" which is in the settings somewhere. There is probably a way to install a C compiler without Xcode, but it certainly wasn't clear.
 				</p>
 				
 				<p>
-					The C compiler included with "Command Line Tools" is called <code>gcc</code>; any sane person would assume that this is the <b>G</b>NU <b>C</b>ompiler <b>C</b>ollection, well, stop making assumptions, because it seems that nothing in Mac OS X is intuitive or self explanatory. Despite the name, the "gcc" that Xcode installs is actually <a href="http://en.wikipedia.org/wiki/Clang">Clang</a> from <a href="http://en.wikipedia.org/wiki/LLVM">LLVM</a>, not <a href="http://en.wikipedia.org/wiki/GNU_Compiler_Collection">GCC</a> from <a href="http://en.wikipedia.org/wiki/GNU_Project">GNU</a>!
+					The C compiler included with "Command Line Tools" is called <code>gcc</code>, but despite the name, the "gcc" that Xcode installs is actually Clang...
 				</p>
 				
 				<p>
-					Regardless, let's try compiling and running a simple C template:
+					Regardless, I tried compiling and running a simple C template:
 				</p>
 				
 				<pre><code>gcc main.c -c -o main.o
@@ -793,20 +778,23 @@ gcc main.o -o main
 ./main</code></pre>
 				
 				<p>
-					This gives the output: "cannot execute binary file".
+					This give me the output: "cannot execute binary file".
 				</p>
 				
 				<p>
-					I looked at the file <code>main</code> and it was empty. I tried adding <code>sudo</code> before the commands, and got the same output!
+					I looked at the file <code>main</code> which it generated, and it was completely empty.
 				</p>
 				
 				<p>
-					I understand that this is clang, not gcc, but if they have the nerve to call it gcc, it should at least be compatible with building the most basic C program possible using the same commands as gcc; I received no warnings or errors when trying to compile, it just didn't work.
+					I received no warnings or errors when executing the commands, it just didn't work.
 				</p>
 				
 				<p>
-					The official C compiler doesn't work, what a joke.
+					However, whilst nothing seemed to work on OS X for me, in the sprit of open source, <a href="https://github.com/nsenica">nsenica</a> managed to port to Cinoop to OS X with XQuartz, and submitted a pull request!
 				</p>
+				
+				<img src="images/cinoop/osx.png" />
+				<br>
 				
 				<br>
 				
