@@ -29,10 +29,10 @@
 					</a>
 				</div>
 				
-				<h1>FreeBSD kernel patches and bugs</h1>
+				<h1>FreeBSD kernel bugs and general patches</h1>
 				<hr>
 				
-				<h3>Patched</h3>
+				<h2>Patched</h2>
 				<ul>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206648#c0">Fix double strlen in ktrstruct</a> - <a href="https://svnweb.freebsd.org/base?view=revision&revision=294934">Accepted patch</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206754#c0">Out of bounds negative array index in iicrdwr</a> - <a href="https://svnweb.freebsd.org/base?view=revision&revision=295080">Accepted patch</a></li>
@@ -41,24 +41,43 @@
 				
 				<br>
 				
-				<h3>Unpatched</h3>
+				<h2>Unpatched</h2>
+				<h3>Buffer overflow</h3>
 				<ul>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=204097#c0">witness_initialize() does not perform bound checking of witness_count</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206573#c0">Improper userland pointer handling in aacraid</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206585#c2">hpt_set_info buffer overflow</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208035#c0">IPFW firewall heap overflow</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208808#c0">Heap overflow in nlm system call</a></li>
+				</ul>
+				
+				<br>
+				
+				<h3>Improper memory handling</h3>
+				<ul>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206573#c0">Improper userland pointer handling in aacraid</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206581#c3">Use of uninitialised stack data in bxe device</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206755#c0">Use of initialised stack variables in tdfx_query_update</a></li>
+				</ul>
+				
+				<br>
+				
+				<h3>Integer overflow</h3>
+				<ul>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206626#c0">Integer overflow in nfssvc system call</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=204097#c0">witness_initialize() does not perform bound checking of witness_count</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207629#c0">Integer overflow in sysctl_kern_proc_args</a></li>
+					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207911#c0">kiconv reference count integer overflow</a></li>
+				</ul>
+				
+				<br>
+				
+				<h3>Other</h3>
+				<ul>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206678#c0">OGIO_KEYMAP command does not restore priority level</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206680#c0">kbd race attacks</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206755#c0">Use of initialised stack variables in tdfx_query_update</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207302#c0">Iconv uses strlen directly on user supplied memory</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207626#c0">Memory leak in ctl.c</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207627#c0">Negative array index in ctl.c</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207629#c0">Integer overflow in sysctl_kern_proc_args</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=207911#c0">kiconv reference count integer overflow</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208035#c0">IPFW firewall heap overflow</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208807#c0">DoS in gsstest</a></li>
-					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=208808#c0">Heap overflow in nlm system call</a></li>
 				</ul>
 			</div>
 		</div>
