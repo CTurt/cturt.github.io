@@ -413,8 +413,11 @@ uint64_t copySize = bufferSize + overflowSize;
 uint64_t mappingSize = (copySize + PAGE_SIZE - 1) &amp; ~(PAGE_SIZE - 1);
 
 uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+// Ensure end of mapping is unmapped
 munmap(mapping + mappingSize, PAGE_SIZE);
 
+// buffer + copySize points to unmapped memory
 uint8_t *buffer = mapping + mappingSize - copySize;
 uint8_t *overflow = buffer + bufferSize;
 
