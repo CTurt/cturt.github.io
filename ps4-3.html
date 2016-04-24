@@ -474,7 +474,12 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				<br>
 				
 				<h3>Triggering a page fault</h3>
-				<p>After triggering the bug, the kernel will eventually reach this instruction in <code>_thread_lock_flags</code>:
+				<p>
+					Since we filled most of our userland GS memory with <code>0</code>, after triggering the bug, the kernel will eventually attempt to access an address from GS which will be <code>NULL</code>, and a page fault will be triggered.
+				</p>
+				
+				<p>
+					The exact place where this happens is the following instruction from <code>_thread_lock_flags</code>:
 				</p>
 				
 				<pre><code>FFFFFFFF80823368: mov rax, [r12+18h]</code></pre>
