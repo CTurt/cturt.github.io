@@ -205,7 +205,7 @@ else {
 				
 				<h2>The first integer overflow</h2>
 				<p>
-					Since the size is stored as a 64bit unsigned integer, the most obvious overflow occurs when <code>0x4000000000000000 + X</code> is passed in as count. This would calculate a size of <code>(0x4000000000000000 + X) * 4 = 0x10000000000000000 + X * 4</code> to be passed to <code>rtld_malloc</code>, which overflows to simply <code>X * 4</code> bytes.
+					Since the size is stored as a 64 bit unsigned integer, the most obvious overflow occurs when <code>0x4000000000000000 + X</code> is passed in as count. This would calculate a size of <code>(0x4000000000000000 + X) * 4 = 0x10000000000000000 + X * 4</code> to be passed to <code>rtld_malloc</code>, which overflows to simply <code>X * 4</code> bytes.
 				</p>
 				
 				<p>
@@ -216,7 +216,7 @@ else {
 				
 				<h2>The second integer overflow</h2>
 				<p>
-					Since <code>uma_large_malloc</code> declares the size parameter as <code>vm_size_t</code>, which is a 32bit type, we can get the size to overflow at a later stage of the allocation.
+					Since <code>uma_large_malloc</code> declares the size parameter as <code>vm_size_t</code>, which is a 32 bit type, we can get the size to overflow at a later stage of the allocation.
 				</p>
 				
 				<p>
@@ -224,15 +224,15 @@ else {
 				</p>
 				
 				<p>
-					This can be stored in a 64bit integer, so the size won't have overflown by the time the code path performs the size check for a zone allocation or a physical allocation. This means the <code>uma_large_malloc</code> will always be used.
+					This can be stored in a 64 bit integer, so the size won't have overflown by the time the code path performs the size check for a zone allocation or a physical allocation. This means the <code>uma_large_malloc</code> will always be used.
 				</p>
 				
 				<p>	
-					When this size is passed down to <code>uma_large_malloc</code> it will be truncated to 32bit, and overflow to simply <code>X * 4</code> bytes.
+					When this size is passed down to <code>uma_large_malloc</code> it will be truncated to 32 bit, and overflow to simply <code>X * 4</code> bytes.
 				</p>
 				
 				<p>
-					The <code>uma_zalloc</code> code path also treats size as a 32bit type, but since we are interested in getting a size large enough to overflow when truncated, this isn't reachable by us.
+					The <code>uma_zalloc</code> code path also treats size as a 32 bit type, but since we are interested in getting a size large enough to overflow when truncated, this isn't reachable by us.
 				</p>
 				
 				<br>
@@ -323,7 +323,7 @@ while(1) {
 				
 				<h3><code>rtld_free</code></h3>
 				<p>
-					When the allocation is freed with <code>rtld_free</code> at the end of the system call, the full 64bit size will be passed.
+					When the allocation is freed with <code>rtld_free</code> at the end of the system call, the full 64 bit size will be passed.
 				</p>
 				
 				<p>
@@ -348,7 +348,7 @@ copyin(uap->buffer, allocation, 4 * count);</code></pre>
 				</p>
 				
 				<p>
-					However, the size parameter for <code>copyin</code> is treated as 64bit, so the full size will be used. This gives us a heap overflow of <code>copyLength - bufferSize = ((0x40000000 + X) * 4) - (X * 4) = 0x100000000</code> bytes.
+					However, the size parameter for <code>copyin</code> is treated as 64 bit, so the full size will be used. This gives us a heap overflow of <code>copyLength - bufferSize = ((0x40000000 + X) * 4) - (X * 4) = 0x100000000</code> bytes.
 				</p>
 				
 				<p>
