@@ -499,7 +499,7 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				</p>
 				
 				<p>
-					There are two ways to achieve this: you can prefault over all memory which you intend to use in your payload by simply performing a read to these memory locations before performing the exploit: 
+					There are several ways to achieve this: you can prefault over all memory which you intend to use in your payload by simply performing a read to these memory locations before performing the exploit: 
 				</p>
 				
 				<pre><code>void prefault(void *address, size_t size) {
@@ -512,8 +512,14 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 	}
 }</code></pre>
 				
+				<br>
+				
 				<p>
-					Alternatively, you can use the <a href="https://www.freebsd.org/cgi/man.cgi?query=mlock&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=default&format=html"><code>mlock</code></a> system call to make sure that memory pages intended to be accessed from the payload won't be paged out of physical memory.
+					This is equivilant to passing the <code>MAP_PREFAULT_READ</code> flag to <code>mmap</code>.
+				</p>
+				
+				<p>
+					Alternatively, you can use the <a href="https://www.freebsd.org/cgi/man.cgi?query=mlock&amp;apropos=0&amp;sektion=2&amp;manpath=FreeBSD+9.0-RELEASE&amp;arch=default&amp;format=html"><code>mlock</code></a> system call to make sure that memory pages intended to be accessed from the payload won't be paged out of physical memory.
 				</p>
 				
 				<p>
