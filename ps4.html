@@ -75,7 +75,7 @@
 				</div>
 				
 				<div class="quote-reference">
-					- <a href="http://www.eurasia.nu/modules.php?name=News&file=article&sid=3251&mode=&order=0&thold=0">EurAsia news article 3251</a>
+					- <a href="http://www.eurasia.nu/modules.php?name=News&amp;file=article&amp;sid=3251&amp;mode=&amp;order=0&amp;thold=0">EurAsia news article 3251</a>
 				</div>
 				<br>
 				
@@ -86,7 +86,7 @@
 				</p>
 				
 				<p>
-					Most notably, the PS4's Orbis OS is based on FreeBSD, just like the PS3's OS was (with parts of NetBSD as well); but as well as FreeBSD 9.0, other noticable software used includes <a href="http://www.mono-project.com/docs/advanced/runtime/">Mono VM</a>, and <a href="https://www.webkit.org/">WebKit</a>.
+					Most notably, the PS4's Orbis OS is based on FreeBSD (9.0), just like the PS3's OS was (with parts of NetBSD as well); and includes a wide variety of additional open source software as well, such as <a href="http://www.mono-project.com/docs/advanced/runtime/">Mono VM</a>, and <a href="https://www.webkit.org/">WebKit</a>.
 				</p>
 				
 				<br>
@@ -97,7 +97,7 @@
 				</p>
 				
 				<p>
-					Although so widely used and mature, WebKit does have its share of vulnerabilities; you can learn about most of them by reading <a href="https://en.wikipedia.org/wiki/Pwn2Own#Summary_of_successful_exploits">Pwn2Own write-ups</a>.
+					Although so widely used and mature, WebKit does have its share of vulnerabilities; you can learn about many of them by reading <a href="https://en.wikipedia.org/wiki/Pwn2Own#Summary_of_successful_exploits">Pwn2Own write-ups</a>.
 				</p>
 				
 				<p>
@@ -154,12 +154,16 @@
 				<pre><code>mov rax, 0
 ret</code></pre>
 				
+				<br>
+				
 				<p>
 					And from <code>0x90000</code> may contain instructions:
 				</p>
 				
 				<pre><code>mov rbx, 0
 ret</code></pre>
+				
+				<br>
 				
 				<p>
 					If we overwrite a return address on the stack to contain <code>0x80000</code> followed by <code>0x90000</code>, then as soon as the first <code>ret</code> instruction is reached execution will jump to <code>mov rax, 0</code>, and immediately afterwards, the next <code>ret</code> instruction will pop <code>0x90000</code> off the stack and jump to <code>mov rbx, 0</code>.
@@ -176,6 +180,8 @@ ret</code></pre>
 				<pre><code>pop rax
 ret</code></pre>
 				
+				<br>
+				
 				<p>
 					We can set the first item in the chain to <code>0xa0000</code> and the next item to any desired value for <code>rax</code>.
 				</p>
@@ -187,12 +193,16 @@ ret</code></pre>
 				<pre><code>add rax, 8
 jmp rcx</code></pre>
 				
+				<br>
+				
 				<p>
 					By making <code>rcx</code> point to a <code>ret</code> instruction, the chain will continue as normal:
 				</p>
 				
 				<pre><code>chain.add("pop rcx", "ret");
 chain.add("add rax, 8; jmp rcx");</code></pre>
+				
+				<br>
 				
 				<p>
 					Sometimes you won't be able to find the exact gadget that you need on its own, but with other instructions after it. For example, if you want to set <code>r8</code> to something, but only have this gadget, you will have to set <code>r9</code> to some dummy value:
@@ -201,6 +211,8 @@ chain.add("add rax, 8; jmp rcx");</code></pre>
 				<pre><code>pop r8
 pop r9
 ret</code></pre>
+				
+				<br>
 				
 				<p>
 					Although you may have to be creative with how you write ROP chains, it is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality; this makes ROP a viable method of bypassing DEP.
@@ -251,6 +263,8 @@ pop     r15
 pop     rbp
 ret</code></pre>
 				
+				<br>
+				
 				<p>
 					You'd expect to only be able to find <code>pop</code> gadgets, or more rarely, something like <code>xor rax, rax</code> to set the return value to 0 before returning.
 				</p>
@@ -261,6 +275,8 @@ ret</code></pre>
 				
 				<pre><code>cmp [rax], r12
 ret</code></pre>
+				
+				<br>
 				
 				<p>
 					Wouldn't make any sense since the result of the comparison isn't used by the function. However, there is still a possibility that we can find gadgets like these.
@@ -290,12 +306,16 @@ ret</code></pre>
 000000000052BE13                 or      byte ptr [rsi+39h], 20h
 000000000052BE17                 ret</code></pre>
 				
+				<br>
+				
 				<p>
 					Now take a look at what the code looks like if we start decoding from <code>0x52be14</code>:
 				</p>
 				
 				<pre><code>000000000052BE14                 cmp     [rax], r12
 000000000052BE17                 ret</code></pre>
+				
+				<br>
 				
 				<p>
 					Even though this code was never intended to be executed, it is within an area of memory which has been marked as executable, so it is perfectly valid to use as a gadget.
@@ -323,11 +343,15 @@ setU8to(chain.data + 1, 0xfe);
 
 chain.add(chain.data);</code></pre>
 				
+				<br>
+				
 				<p>
 					And trying to write to code, which is mapped as read and execute only:
 				</p>
 				
 				<pre><code>setU8to(moduleBases[webkit], 0);</code></pre>
+				
+				<br>
 				
 				<p>
 					If a segmentation fault occurs, a message saying "There is not enough free system memory" will appear, and the page will fail to load:
@@ -473,11 +497,15 @@ chain.add(chain.data);</code></pre>
 	this.add("mov r10, rcx; syscall");
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					Just make sure to set the stack base to some free memory beforehand:
 				</p>
 				
 				<pre><code>this.add("pop rbp", stackBase + returnAddress + 0x1400);</code></pre>
+				
+				<br>
 				
 				<p>
 					Using system calls can tell us a huge amount about the PS4 kernel. Not only that, but using system calls is most likely the only way that we can interact with the kernel, and thus potentially trigger a kernel exploit.
@@ -513,6 +541,8 @@ syscall:
 	ret
 </code></pre>
 				
+				<br>
+				
 				<p>
 					Using this, they can perform system calls from C using the function calling convention:
 				</p>
@@ -523,6 +553,8 @@ int getpid(void) {
 	return syscall(20);
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					When writing ROP chains, we can use either convention:
 				</p>
@@ -530,6 +562,8 @@ int getpid(void) {
 				<pre><code>// Both will get the current process ID:
 chain.syscall("getpid", 20);
 chain.syscall("getpid", 0, 20);</code></pre>
+				
+				<br>
 				
 				<p>
 					It's good to be aware of this, because we can use whichever one is more convenient for the gadgets that are available.
@@ -633,6 +667,8 @@ if ((_thr_pid = getpid()) == 1) {
 		PANIC("Can't set controlling terminal");
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					The same function can be found at offset <code>0x215F0</code> from <code>libkernel.sprx</code>. This is how the above extract looks from within a libkernel dump:
 				</p>
@@ -699,6 +735,8 @@ jz      loc_21A6C</code></pre>
 000000000000DB86                 jmp     rcx
 000000000000DB86 syscall_601     endp</code></pre>
 				
+				<br>
+				
 				<p>
 					Note that the <code>mov r10, rcx</code> instruction doesn't necessarily mean that the system call takes at least 4 arguments; all system call wrappers have it, even those that take no arguments, such as <code>getpid</code>.
 				</p>
@@ -714,6 +752,8 @@ jz      loc_21A6C</code></pre>
 0000000000011D61                 test    eax, eax
 0000000000011D63                 jz      short loc_11D6A</code></pre>
 				
+				<br>
+				
 				<p>
 					It's good to look up several of these, just to make sure that the registers weren't modified for something unrelated:
 				</p>
@@ -725,6 +765,8 @@ jz      loc_21A6C</code></pre>
 0000000000011A36                 test    eax, eax
 0000000000011A38                 jz      short loc_11A3F</code></pre>
 				
+				<br>
+				
 				<p>
 					Consistently, the first three registers of the system call convention (<code>rdi</code>, <code>rsi</code>, and <code>rdx</code>) are modified before invoking the call, so we can conclude with reasonable confidence that it takes 3 arguments.
 				</p>
@@ -735,6 +777,8 @@ jz      loc_21A6C</code></pre>
 				
 				<pre><code>chain.syscall("unknown", 601, 0x10, 0, 1);
 chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
+				
+				<br>
 				
 				<p>
 					As with most system calls, it will return 0 on success, as seen by the <code>jz</code> conditional after <code>test</code>ing the return value.
@@ -765,6 +809,8 @@ chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
 				
 				<pre><code>&lt;body onload="exploit()"&gt;</code></pre>
 				
+				<br>
+				
 				<p>
 					Next we will need to perform a specific system call depending on an HTTP GET value. Although this can be done with JavaScript, I will demonstrate how to do this using PHP for simplicity:
 				</p>
@@ -773,11 +819,15 @@ chain.syscall("unknown", 601, 9, 0, 0);</code></pre>
 chain.syscall("Sony system call", Sony + &lt;?php print($_GET["b"]); ?&gt;, 0, 0, 0, 0, 0, 0);
 chain.write_rax_ToVariable(0);</code></pre>
 				
+				<br>
+				
 				<p>
 					Once the system call has executed, we can check the return value, and if it isn't interesting, redirect the page to the next system call:
 				</p>
 				
 				<pre><code>if(chain.getVariable(0) == 0x16) window.location.assign("index.php?b=" + (&lt;?php print($_GET["b"]); ?&gt; + 1).toString());</code></pre>
+				
+				<br>
 				
 				<p>
 					Running the page with <code>?b=0</code> appended to the end will start the brute force from the first Sony system call.
@@ -827,6 +877,8 @@ chain.write_rax_ToVariable(0);</code></pre>
 				<pre><code>writeString(chain.data, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				
+				<br>
+				
 				<p>
 					The return value for this is <code>0x3f</code>, <code>ENAMETOOLONG</code>. Unfortunately it seems that this system call correctly limits the name (32 bytes including NULL truncator), but it does tell us that it <i>is</i> expecting a string, rather than a struct.
 				</p>
@@ -841,6 +893,8 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				
 				<pre><code>writeString(chain.data, "aaaaaaaaaa/aaaaaaaaaa/aaaaaaaaaa");
 chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
+				
+				<br>
 				
 				<p>
 					Since this also returns <code>0x3f</code>, we can assume that the first argument isn't a path; it is a name for <i>something</i> that gets allocated a sequential identifier.
@@ -907,11 +961,15 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 	this.add(module_bases[module] + address);
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					So, to load <code>libSceAvSetting.sprx</code> (<code>0xb</code>):
 				</p>
 				
 				<pre><code>chain.call("sceSysmoduleLoadModule", libSysmodule, 0x1850, 0xb, 0, 0, 0);</code></pre>
+				
+				<br>
 				
 				<p>
 					Unforunately, a segmentation fault will be triggered when trying to load certain modules; this is because the <code>sceSysmoduleLoadModule</code> function doesn't load dependencies, so you will need to manually load them first.
@@ -934,11 +992,15 @@ chain.execute(function() {
 	}
 });</code></pre>
 				
+				<br>
+				
 				<p>
 					Running this without loading any additional modules will produce the following list:
 				</p>
 				
 				<pre><code>0x0, 0x1, 0x2, 0xc, 0xe, 0xf, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1e, 0x37, 0x59</code></pre>
+				
+				<br>
 				
 				<p>
 					But if we run it after loading module <code>0xb</code>, we will see an additional entry, <code>0x65</code>. Remember that module ID is <i>not</i> the same as loaded module handle.
@@ -959,6 +1021,8 @@ chain.execute(function() {
 	logAdd(hexDump(moduleInfoAddress, 0x160));
 });</code></pre>
 				
+				<br>
+				
 				<p>
 					It will return <code>0</code> upon success, and fill the buffer with a struct which can be read like so:
 				</p>
@@ -969,11 +1033,15 @@ var codeSize = getU32from(moduleInfoAddress + 0x110);
 var dataBase = getU64from(moduleInfoAddress + 0x118);
 var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				
+				<br>
+				
 				<p>
 					We now have everything we need to dump the module!
 				</p>
 				
 				<pre><code>dump(codeBase, codeSize + dataSize);</code></pre>
+				
+				<br>
 				
 				<p>
 					There is another Sony system call, number <code>608</code>, which works in a similar way to <code>593</code>, but provides slightly different information about the loaded module:
@@ -982,6 +1050,8 @@ var dataSize = getU32from(moduleInfoAddress + 0x120);</code></pre>
 				<pre><code>setU64to(moduleInfoAddress, 0x1a8);
 chain.syscall("getDifferentModuleInfo", 608, 0x65, 0, moduleInfoAddress);
 logAdd(hexDump(moduleInfoAddress, 0x1a8));</code></pre>
+				
+				<br>
 				
 				<p>
 					It's not clear what this information is.
@@ -1008,6 +1078,8 @@ chain.write_rax_ToVariable(0);
 
 chain.read_rdi_FromVariable(0);
 chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
+				
+				<br>
 				
 				<p>
 					This is the resultant memory:
@@ -1058,6 +1130,8 @@ chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 00002b0: 1000 0a07 7567 656e 302e 3400 0000 0000  ....ugen0.4.....
 00002c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................</code></pre>
 				
+				<br>
+				
 				<p>
 					You can read some of these devices, for example: reading <code>/dev/urandom</code> will fill the memory with random data.
 				</p>
@@ -1101,6 +1175,8 @@ chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 				
 				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
 				
+				<br>
+				
 				<p>
 					Trying to create an SCTP socket will return error <code>0x2b</code>, <code>EPROTONOSUPPORT</code>, indicating that SCTP sockets have been disabled in the PS4 kernel:
 				</p>
@@ -1108,6 +1184,8 @@ chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 				<pre><code>//int socket(int domain, int type, int protocol);
 //socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
 chain.syscall("socket", 97, 2, 1, 132);</code></pre>
+				
+				<br>
 				
 				<p>
 					And although calling <code>mmap</code> with <code>PROT_READ | PROT_WRITE | PROT_EXEC</code> will return a valid pointer, the <code>PROT_EXEC</code> flag is ignored. Reading its protection will return 3 (RW), and any attempt to execute the memory will trigger a segfault:
@@ -1120,6 +1198,8 @@ chain.add("pop rax", 0xfeeb);
 chain.add("mov [rdi], rax");
 chain.add("mov rax, rdi");
 chain.add("jmp rax");</code></pre>
+				
+				<br>
 				
 				<p>
 					The list of <a href="http://www.scei.co.jp/ps4-license/">open source software used in the PS4</a> doesn't list any kind of sandboxing software like <a href="https://www.freebsd.org/cgi/man.cgi?query=capsicum">Capsicum</a>, so the PS4 must use either pure <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jails</a>, or some kind of custom, proprietary, sandboxing system (unlikely).
@@ -1134,12 +1214,16 @@ chain.add("jmp rax");</code></pre>
 				
 				<pre><code>chain.syscall("auditon", 446, 0, 0, 0);</code></pre>
 				
+				<br>
+				
 				<p>
 					The first thing the <code>auditon</code> system call does is check <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L164">here</a>, and if so, return <code>ENOSYS</code>:
 				</p>
 				
 				<pre><code>if (jailed(td->td_ucred))
 	return (ENOSYS);</code></pre>
+				
+				<br>
 				
 				<p>
 					Otherwise the system call would most likely return <code>EPERM</code> from the <code>mac_system_check_auditon</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L169">here</a>:
@@ -1149,6 +1233,8 @@ chain.add("jmp rax");</code></pre>
 if (error)
 	return (error);</code></pre>
 				
+				<br>
+				
 				<p>
 					Or from the <code>priv_check</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L174">here</a>:
 				</p>
@@ -1157,12 +1243,16 @@ if (error)
 if (error)
 	return (error);</code></pre>
 				
+				<br>
+				
 				<p>
 					The absolute furthest that the system call could reach would be immediately after the <code>priv_check</code>, <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L178">here</a>, before returning <code>EINVAL</code> due to the length argument being 0:
 				</p>
 				
 				<pre><code>if ((uap->length <= 0) || (uap->length > sizeof(union auditon_udata)))
 	return (EINVAL);</code></pre>
+				
+				<br>
 				
 				<p>
 					Since <code>mac_system_check_auditon</code> and <code>priv_check</code> will never return <code>ENOSYS</code>, having the <code>jailed</code> check pass is the only way <code>ENOSYS</code> could be returned.
@@ -1180,7 +1270,7 @@ if (error)
 				
 				<h2>FreeBSD 9.0 kernel exploits</h2>
 				<p>
-					It makes little sense trying to look for new vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/release/9.0.0/sys/kern">FreeBSD 9.0 kernel source code</a> because since its release in 2012, <a href="https://www.exploit-db.com/platform/?p=freebsd">several kernel exploits have already been found</a>, which the PS4 could potentially be vulnerable to.
+					Before trying to look for new vulnerabilities in the <a href="https://github.com/freebsd/freebsd/tree/release/9.0.0/sys/kern">FreeBSD 9.0 kernel source code</a>, we should first check whether any of the <a href="https://www.exploit-db.com/platform/?p=freebsd">kernel vulnerabilities already found</a> could be used on the PS4.
 				</p>
 				
 				<p>
@@ -1213,7 +1303,7 @@ if (error)
 				</p>
 				
 				<p>
-					The <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&sektion=2"><code>getlogin</code></a> system call is intended to copy the login name of the current session to userland memory, however, due to a bug, the whole buffer is always copied, and not just the size of the name string. This means that we can read some uninitialised data from the kernel, which might be of some use.
+					The <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&amp;sektion=2"><code>getlogin</code></a> system call is intended to copy the login name of the current session to userland memory, however, due to a bug, the whole buffer is always copied, and not just the size of the name string. This means that we can read some uninitialised data from the kernel, which might be of some use.
 				</p>
 				
 				<p>
@@ -1226,6 +1316,8 @@ if (error)
 				
 				<pre><code>chain.syscall("getlogin", 49, chain.data, 17);</code></pre>
 				
+				<br>
+				
 				<p>
 					Unfortunately 17 bytes is the most data we can get, since:
 				</p>
@@ -1235,7 +1327,7 @@ if (error)
 				</div>
 				
 				<div class="quote-reference">
-					- <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&sektion=2">FreeBSD Man Pages</a>
+					- <a href="https://www.freebsd.org/cgi/man.cgi?query=getlogin&amp;sektion=2">FreeBSD Man Pages</a>
 				</div>
 				<br>
 				
@@ -1252,6 +1344,8 @@ if (error)
 				<pre><code>00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 00</code></pre>
 				
+				<br>
+				
 				<p>
 					After executing the chain:
 				</p>
@@ -1259,11 +1353,15 @@ if (error)
 				<pre><code>72 6f 6f 74 00 fe ff ff 08 62 61 82 ff ff ff ff
 00</code></pre>
 				
+				<br>
+				
 				<p>
 					After decoding the first 4 bytes as ASCII:
 				</p>
 				
 				<pre><code>root</code></pre>
+				
+				<br>
 				
 				<p>
 					So the browser is executed as root! That was unexpected.
