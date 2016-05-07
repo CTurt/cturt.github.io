@@ -131,6 +131,8 @@ for(i = 0; i &lt; 107; i++) {
 	m = info.end;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					Within this dump, you won't be able to find strings used by the other process, such as "Options", "Close Window", "Refresh", or "There is not enough free system memory".
 				</p>
@@ -175,6 +177,8 @@ sceNetSocketClose(sock);
 
 return 0;</code></pre>
 				
+				<br>
+				
 				<p>
 					After running this for several hours it returned 0, confirming that our process has no access to the other process' video handle.
 				</p>
@@ -218,6 +222,8 @@ canvas.style.height = "100%";
 
 body.appendChild(canvas);</code></pre>
 				
+				<br>
+				
 				<p>
 					Another thing you may want to do is remove all other elements before creating the canvas, as a slight performance boost, but also to prevent being able to scroll:
 				</p>
@@ -225,6 +231,8 @@ body.appendChild(canvas);</code></pre>
 				<pre><code>while(body.firstChild) {
 	body.removeChild(body.firstChild);
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					And finally, you will want to hide the cursor:
@@ -267,7 +275,7 @@ body.appendChild(canvas);</code></pre>
 				</p>
 				
 				<p>
-					However, we can access USB flash drives using the <code>libSceUsbd.sprx</code> module; it is very similar to <a href="http://www.freebsd.org/cgi/man.cgi?format=html&query=libusb%283%29"><code>libusb</code></a>, but with the Sony naming convention, and the removal of contexts.
+					However, we can access USB flash drives using the <code>libSceUsbd.sprx</code> module; it is very similar to <a href="http://www.freebsd.org/cgi/man.cgi?format=html&amp;query=libusb%283%29"><code>libusb</code></a>, but with the Sony naming convention, and the removal of contexts.
 				</p>
 				
 				<p>
@@ -278,12 +286,16 @@ body.appendChild(canvas);</code></pre>
 libusb_init(&amp;context);
 libusb_exit(context);</code></pre>
 				
+				<br>
+				
 				<p>
 					Would translate to this <code>libSceUsbd</code> code:
 				</p>
 				
 				<pre><code>sceUsbdInit();
 sceUsbdExit();</code></pre>
+				
+				<br>
 				
 				<p>
 					This is a very low level library for sending direct commands to USB devices, so it isn't really ideal to use, but with the help of xerpi, I was able to port one of the <code>libusb</code> examples to PS4, and <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/usb/storage/source/main.c">read the raw image of a USB flash drive</a>.
@@ -311,6 +323,8 @@ da1: 3819MB (7821312 512 byte sectors: 255H 63S/T 486C)
 [SceAutoMount] /mnt/usb0 is now available. fstype=exfatfs, device=/dev/da1s1
 MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203):
                 device(/dev/da1s1): exfat(mediaType=0x1001) is mounted at /mnt/usb0.</code></pre>
+                
+                <br>
 				
 				<p>
 					Only devices formatted as FAT32 will be successfully mounted, and after kernel code execution has been used to escape the filesystem sandbox, they may be accessed from <code>/mnt/usb0</code> and <code>/mnt/usb1</code>.
@@ -355,7 +369,7 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 				</p>
 				
 				<p>
-					We can copy some of the functions from <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>libprocstat</code></a>, but this functionality is mostly useless since we only have permission to target our own process.
+					We can copy some of the functions from <a href="http://www.freebsd.org/cgi/man.cgi?query=libprocstat&amp;apropos=0&amp;sektion=3&amp;manpath=FreeBSD+9.0-RELEASE&amp;arch=amd64&amp;format=html"><code>libprocstat</code></a>, but this functionality is mostly useless since we only have permission to target our own process.
 				</p>
 				
 				<br>
@@ -397,6 +411,8 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 				
 				<pre><code>int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
 				
+				<br>
+				
 				<p>
 					With the module loaded in memory, we can read its base and size, and dump it like before.
 				</p>
@@ -429,6 +445,8 @@ if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
 	printf("%d\n", data.symsize);
 }</pre></code>
 				
+				<br>
+				
 				<p>
 					However, in the PS4 kernel, this function has been disabled, and will always return <code>0x4e</code>, <code>ENOSYS</code>.
 				</p>
@@ -455,6 +473,8 @@ chain.execute(function() {
 	logAdd(readString(name) + " libkernel offset = 0x" + (getU64from(result) - module_infos[LIBKERNEL].image_base).toString(16));
 });</code></pre>
 				
+				<br>
+				
 				<p>
 					For firmware 1.76, the result is <code>0xbbb0</code>.
 				</p>
@@ -475,6 +495,8 @@ chain.execute(function() {
 000000000000BBBF                 lea     rcx, sub_DF60
 000000000000BBC6                 jmp     rcx
 000000000000BBC6 getpid          endp</code></pre>
+				
+				<br>
 				
 				<p>
 					To get other function names to try, you should use the strings view of your disassembler (or just search for <code>sce</code> in a hex editor); you'll find that Sony left some useful debug messages in many of the modules.
@@ -534,6 +556,8 @@ int _main(void) {
 	return 0;
 }</code></pre>
 				
+				<br>
+				
 				<div class="center">
 					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/tBev5h8vOtg" frameborder="0" allowfullscreen></iframe>
 				</div>
@@ -577,6 +601,8 @@ function getStackName() {
 	});
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					The above code shows us that the stack's name is "main stack" and its protection is 3 (read and write).
 				</p>
@@ -609,6 +635,8 @@ chain.execute(function() {
 	logAdd("First page size: 0x" + size.toString(16));
 	logAdd("First page name: " + name);
 });</code></pre>
+				
+				<br>
 				
 				<p>
 					Using this, we can extract a complete list of memory pages accessible from our process:
@@ -723,6 +751,8 @@ CompositorClient                0x118a000000    0x200000    0x33
 CompositorClient                0x118c000000    0x200000    0x33
 CompositorClient                0x118e000000    0x200000    0x33</code></pre>
 				
+				<br>
+				
 				<p>
 					<code>CompositorClient</code> is always based at <code>0x1100000000</code>, but all other addresses will be different each time.
 				</p>
@@ -769,6 +799,8 @@ chain.syscall("mprotect", 74, stack_base, 16 * 1024 * 1024, 1 | 2 | 16 | 32);
 
 // Give GPU read and execute access to WebKit2 module:
 chain.syscall("mprotect", 74, module_infos[WEBKIT2].image_base, 16 * 1024 * 1024, 1 | 4 | 16 | 8);</code></pre>
+				
+				<br>
 				
 				<p>
 					But trying to bypass DEP will fail:
@@ -838,6 +870,8 @@ chain.execute(function() {
 	logAdd(name);
 });</pre></code>
 				
+				<br>
+				
 				<p>
 					For me, it was <code>AaQj0xlzjX</code>.
 				</p>
@@ -856,6 +890,8 @@ chain.execute(function() {
 	chain.logVariable(0);
 });
 </pre></code>
+				
+				<br>
 				
 				<p>
 					In this example, the address returned was <code>0x200744000</code>.
@@ -876,6 +912,8 @@ chain.execute(function() {
 	logAdd("Size: " + getU32from(chain.data + 0x48).toString());
 });</pre></code>
 				
+				<br>
+				
 				<p>
 					The font I am dumping is 8312744 bytes.
 				</p>
@@ -893,6 +931,8 @@ chain.execute(function() {
 	logAdd("Dumped");
 });
 </pre></code>
+				
+				<br>
 				
 				<p>
 					Using cookies, you can pass information to subsequent stages automatically, but I won't go into it now.
@@ -946,11 +986,15 @@ chain.execute(function() {
 				
 				<pre><code>/user/home/[userID]/savedata/[titleID]/</code></pre>
 				
+				<br>
+				
 				<p>
 					For example:
 				</p>
 				
 				<pre><code>/user/home/10000000/savedata/CUSA00455/FFXIVSYSTEM.bin</code></pre>
+				
+				<br>
 				
 				<p>
 					We can dump these files, but they are encrypted, and are identical to the files copied from using the PS4's official USB save export feature.
@@ -970,6 +1014,8 @@ int (*sceSaveDataInitialize)(void *);
 RESOLVE(libSave, sceSaveDataInitialize);
 
 sceSaveDataInitialize(NULL);</code></pre>
+				
+				<br>
 				
 				<p>
 					But I just received error codes when attempting to mount or read/write save data.
