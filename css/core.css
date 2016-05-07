@@ -40,7 +40,12 @@ p {
 	padding: 0;
 }
 pre {
+	padding: 8px;
 	overflow-x: auto;
+	background-color: rgb(236, 236, 255);
+	-webkit-border-radius: 6px;
+	-moz-border-radius: 6px;
+	border-radius: 6px;
 }
 img {
 	max-width: 100%;
@@ -290,13 +295,12 @@ hr {
 	border-color: rgb(0, 132, 150);
 }
 .quote {
-	padding: 16px;
-	padding-bottom: 16px;
-	background-color: rgb(234, 234, 234);
-	-webkit-border-radius: 8px;
-	-moz-border-radius: 8px;
-	border-radius: 8px;
-	margin-bottom: 4px;
+	padding: 12px;
+	background-color: rgb(234, 234, 255);
+	-webkit-border-radius: 6px;
+	-moz-border-radius: 6px;
+	border-radius: 6px;
+	margin-bottom: 6px;
 }
 .quote p:last-child {
 	margin-bottom: 0px;
