@@ -136,7 +136,7 @@
 				</p>
 				
 				<p>
-					<a href="https://en.wikipedia.org/wiki/Return-oriented_programming">Return-Oriented Programming (ROP)</a> is just an extension to traditional stack smashing, but instead of overwriting only a single value which the PC will jump to, we can chain together many different addresses, known as gadgets.
+					<a href="https://en.wikipedia.org/wiki/Return-oriented_programming">Return-Oriented Programming (ROP)</a> is just an extension to traditional stack smashing, but instead of overwriting only a single value which <code>rip</code> will jump to, we can chain together many different addresses, known as gadgets.
 				</p>
 				
 				<p>
@@ -144,7 +144,7 @@
 				</p>
 				
 				<p>
-					In x86_64 assembly, when a <code>ret</code> instruction is reached, a 64bit value is popped off the stack and the PC jumps to it; since we can control the stack, we can make every <code>ret</code> instruction jump to the next desired gadget.
+					In x86_64 assembly, when a <code>ret</code> instruction is reached, a 64 bit value is popped off the stack and <code>rip</code> jumps to it; since we can control the stack, we can make every <code>ret</code> instruction jump to the next desired gadget.
 				</p>
 				
 				<p>
@@ -448,19 +448,19 @@ chain.add(chain.data);</code></pre>
 				
 				<h2>JavaScript caveats</h2>
 				<p>
-					JavaScript represents numbers using the <a href="https://en.wikipedia.org/wiki/IEEE_floating_point">IEEE-754</a> double-precision (64bit) format. This provides us with 53bit precision, meaning that it isn't possible to represent every 64bit value, approximations will have to be used for some.
+					JavaScript represents numbers using the <a href="https://en.wikipedia.org/wiki/IEEE_floating_point">IEEE-754</a> double-precision (64 bit) format. This provides us with 53 bit precision, meaning that it isn't possible to represent every 64 bit value, approximations will have to be used for some.
 				</p>
 				
 				<p>
-					If you just need to set a 64bit value to something low, like <code>256</code>, then <code>setU64to</code> will be fine.
+					If you just need to set a 64 bit value to something low, like <code>256</code>, then <code>setU64to</code> will be fine.
 				</p>
 				
 				<p>
-					But for situations in which you need to write a buffer or struct of data, there is the possibility that certain bytes will be written incorrectly if it has been written in 64bit chunks.
+					But for situations in which you need to write a buffer or struct of data, there is the possibility that certain bytes will be written incorrectly if it has been written in 64 bit chunks.
 				</p>
 				
 				<p>
-					Instead, you should write data in 32bit chunks (remembering that the PS4 is little endian), to ensure that every byte is exact.
+					Instead, you should write data in 32 bit chunks (remembering that the PS4 is little endian), to ensure that every byte is exact.
 				</p>
 				
 				<br>
