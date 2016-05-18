@@ -38,14 +38,23 @@
 				</p>
 				
 				<p>
-					A list of my bug reports, as well as the link to the accepted patch in FreeBSD, where applicable can be found <a href="fbsd.html">here</a>; most of these are not critical since they are only triggerable as <code>root</code>, or have other, similar limitations.
+					Below is a list of the critical bugs I have reported and analysed.
+				</p>
+				
+				<ul>
+					<li><a href="SETFKEY.html">Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</a></li>
+					<li><a href="sendmsg.html">Analysis of CVE-2016-1887, sendmsg FreeBSD kernel heap overflow</a></li>
+				</ul>
+				
+				<p>
+					A full list of bug reports, including the non-critical bugs, as well as the link to the accepted patch in FreeBSD, where applicable, can be found <a href="fbsd.html">here</a>.
 				</p>
 				
 				<br>
 				
 				<h2 id="ps4">PS4</h2>
 				<p>
-					I decided to start researching the PS4's security with almost no prior knowledge of exploitation, and ended up being the first to publicly gain code execution under the WebKit process through the JIT system calls, and then developing the first 2 public kernel exploits for the system. I've documented my experiences in the following articles:
+					I decided to research the Sony PlayStation 4 console, using a publicly available WebKit exploit to run my own ROP chains. I used this exploit to dump the available userland modules, and after some reverse engineering of how the JIT system calls were used, I was able to gain unsigned code execution under the WebKit process. Several months later, I developed a kernel exploit for the system using the BadIRET vulnerability. I used this exploit to dump the kernel, before analysing it to help exploit a vulnerability in the kernel's dynamic linker, which I had previously found by fuzzing. I've documented my experiences in the following articles:
 				</p>
 				
 				<ul>

