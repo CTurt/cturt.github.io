@@ -53,7 +53,7 @@
 				</p>
 				
 				<p>
-					I then decided to research the Sony PlayStation 4 console, using a publicly available WebKit exploit to <a href="ps4.html">run my own ROP chains</a>. I used this exploit to dump the available userland modules, and after some reverse engineering of how the JIT system calls were used, <a href="ps4-2.html">I was able to gain unsigned code execution under the WebKit process</a>. Several months later, I developed a kernel exploit for the system using the <a href="ps4-3.html">BadIRET vulnerability</a>. I used this exploit to dump the kernel, before analysing it to help exploit <a href="dlclose-overflow.html">a vulnerability in the kernel's dynamic linker</a>, which I had previously found by fuzzing.
+					I then decided to research the Sony PlayStation 4 console, using a publicly available WebKit exploit to <a href="ps4.html">run my own ROP chains</a>. I used this exploit to dump the available userland modules, and after some reverse engineering of how the JIT system calls were used, <a href="ps4-2.html">I was able to gain unsigned code execution under the WebKit process</a>. Several months later, I developed a kernel exploit for the system using the <a href="ps4-3.html">BadIRET vulnerability</a>. I used this exploit to dump the kernel, before analysing it to help me exploit <a href="dlclose-overflow.html">a vulnerability in the kernel's dynamic linker</a>, which I had previously found by fuzzing.
 				</p>
 				
 				<p>
@@ -104,6 +104,7 @@
 				<h3>Misc</h3>
 				<ul>
 					<li>IDA Pro</li>
+					<li>gdb</li>
 					<li>Git</li>
 					<li>Makefiles</li>
 				</ul>
