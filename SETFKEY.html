@@ -261,7 +261,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 				</p>
 				
 				<p>
-					Triggering the vulnerability only requires our copy size to be negative as a <code>signed char</code>, which means we may choose any values between <code>128 - 255</code>.
+					Triggering the vulnerability only requires our copy size to be negative as a <code>signed char</code>, which means we may set the length of a key description to any value between <code>128 - 255</code>.
 				</p>
 				
 				<br>
