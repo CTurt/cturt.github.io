@@ -127,6 +127,10 @@ sockargs(mp, buf, buflen, type)
 					The issue was solved by adding an explicit check in <code>sockargs</code> to return <code>EINVAL</code> for negative lengths. The official patch may be downloaded from the <a href="https://security.FreeBSD.org/patches/SA-16:19/sendmsg.patch">FreeBSD site</a>. Commit reference for this patch may be found <a href="https://github.com/freebsd/freebsd/commit/5e838e04e3b91d8abb280148ff38b52013f10389">here</a>.
 				</p>
 				
+				<p>
+					We later decided to refactor this function to treat <code>buflen</code> as <code>socklen_t</code> instead. Commit reference for this updated patch may be found <a href="https://github.com/freebsd/freebsd/commit/047e60c94a85e1381cd4e18c9e845ec34d5164a9">here</a>.
+				</p>
+				
 				<br>
 				
 				<h2>The heap overflow</h2>
