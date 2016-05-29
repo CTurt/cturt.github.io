@@ -40,12 +40,40 @@ p {
 	padding: 0;
 }
 pre {
-	padding: 8px;
 	overflow-x: auto;
-	background-color: rgb(236, 236, 255);
-	-webkit-border-radius: 6px;
-	-moz-border-radius: 6px;
-	border-radius: 6px;
+	
+	color: #f8f8f2;
+	background: #272822;
+	padding: 1em;
+	margin: .5em 0;
+	overflow: auto;
+	-moz-border-radius: 0.3em;
+	-webkit-border-radius: 0.3em;
+	border-radius: 0.3em;
+	
+	text-shadow: 0 1px rgba(0, 0, 0, 0.3);
+	font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+	text-align: left;
+	white-space: pre;
+	word-spacing: normal;
+	word-break: normal;
+	word-wrap: normal;
+	line-height: 1.5;
+	
+	-moz-tab-size: 4;
+	-o-tab-size: 4;
+	tab-size: 4;
+
+	-webkit-hyphens: none;
+	-moz-hyphens: none;
+	-ms-hyphens: none;
+	hyphens: none;
+}
+:not(pre) > code {
+	font-family: monospace;
+}
+pre > code {
+	font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
 }
 img {
 	max-width: 100%;

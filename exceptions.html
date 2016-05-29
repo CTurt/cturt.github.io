@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Exceptions in C</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -45,7 +48,7 @@
 						The example below shows the basic idea of setjmp. There, <code>main()</code> calls <code>first()</code>, which in turn calls <code>second()</code>. Then, <code>second()</code> jumps back into <code>main()</code>, skipping <code>first()</code>'s call of <code>printf()</code>.
 					</p>
 					
-					<pre><code>#include &lt;stdio.h&gt;
+					<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;setjmp.h&gt;
  
 static jmp_buf buf;
@@ -70,12 +73,16 @@ int main() {
     return 0;
 }</code></pre>
 					
+					<br>
+					
 					<p>
 						When executed, the above program will output:
 					</p>
 					
 					<pre><code>second
 main</code></pre>
+					
+					<br>
 					
 					<p>
 						Notice that although the <code>first()</code> subroutine gets called, "<code>first</code>" is never printed. "<code>main</code>" gets printed as the conditional statement <code>if ( ! setjmp(buf) )</code> is executed a second time.
@@ -116,14 +123,7 @@ main</code></pre>
 					The library I wrote can be found on <a href="https://github.com/CTurt/Exception">GitHub</a>, it is used like so:
 				</p>
 				
-				<pre><code>/*
-	CTurt's implementation of exceptions in C
-	licensed under the MIT License (MIT)
-	
-	https://github.com/CTurt/Exception
-*/
-
-/*
+				<pre><code class="language-c">/*
 	Program output:
 
 	Doing something...
@@ -168,6 +168,8 @@ int main(void) {
 	return 0;
 }
 </code></pre>
+				
+				<br>
 				
 				<p>
 					As you can see, the syntax is at least a little bit cleaner than using <code>setjmp</code> and <code>longjmp</code> directly, but I would still not recommend using this in any serious projects.

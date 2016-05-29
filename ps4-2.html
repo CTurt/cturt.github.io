@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Hacking the PS4, part 2 - Userland code execution</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -108,7 +111,7 @@
 					We can use the following code to dump all memory which our process has access to:
 				</p>
 				
-				<pre><code>struct memoryRegionInfo info;
+				<pre><code class="language-c">struct memoryRegionInfo info;
 struct otherMemoryRegionInfo otherInfo;
 
 void *m = NULL;
@@ -167,7 +170,7 @@ for(i = 0; i &lt; 107; i++) {
 					<code>sceVideoOutWaitVblank</code> will return an error if it is given an invalid handle, and 0 if it's given a valid handle:
 				</p>
 				
-				<pre><code>int i;
+				<pre><code class="language-c">int i;
 for(i = 0; i &lt; 0x7FFFFFFF; i++) {
 	if(!sceVideoOutWaitVblank(i)) return i;
 	if(i % 0x10000 == 0) debug(sock, "At %08x\n", i);
@@ -282,7 +285,7 @@ body.appendChild(canvas);</code></pre>
 					For example, the following <code>libusb</code> code:
 				</p>
 				
-				<pre><code>libusb_context *context;
+				<pre><code class="language-c">libusb_context *context;
 libusb_init(&amp;context);
 libusb_exit(context);</code></pre>
 				
@@ -292,7 +295,7 @@ libusb_exit(context);</code></pre>
 					Would translate to this <code>libSceUsbd</code> code:
 				</p>
 				
-				<pre><code>sceUsbdInit();
+				<pre><code class="language-c">sceUsbdInit();
 sceUsbdExit();</code></pre>
 				
 				<br>
@@ -409,7 +412,7 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 					We can load modules from their name using <code>sceKernelLoadStartModule</code> from <code>libkernel</code>:
 				</p>
 				
-				<pre><code>int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
+				<pre><code class="language-c">int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
 				
 				<br>
 				
@@ -429,16 +432,16 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 				
 				<h2>Finding function offsets from function names</h2>
 				<p>
-					FreeBSD uses system call 337, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&amp;sektion=2"><code>kldsym</code></a>, to locate the address of a function in a dynamic library from its name.
+					FreeBSD uses system call 337, <a href="https://www.freebsd.org/cgi/man.cgi?query=kldsym&amp;sektion=2"><code>kldsym</code></a>, to locate the address of a function in a kernel module from its name.
 				</p>
 				
 				<p>
 					In C, it can be used like this:
 				</p>
 				
-				<pre><code>struct kld_sym_lookup data;
+				<pre><code class="language-c">struct kld_sym_lookup data;
 data.version = sizeof(struct kld_sym_lookup);
-data.symname = "getpid";
+data.symname = "sys_getpid";
 
 if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
 	printf("%p\n", data.symvalue);
@@ -448,15 +451,15 @@ if(kldsym(libKernel, KLDSYM_LOOKUP, &amp;data) == 0) {
 				<br>
 				
 				<p>
-					However, in the PS4 kernel, this function has been disabled, and will always return <code>0x4e</code>, <code>ENOSYS</code>.
+					In the PS4 kernel, this function has been disabled, and will always return <code>0x4e</code>, <code>ENOSYS</code>.
 				</p>
 				
 				<p>
-					This is because Sony created their own custom module related system calls. Instead of <code>kldsym</code>, we can use system call 591, which works similarly, but is slightly simpler.
+					However, Sony implemented a dynamic linker in the PS4 kernel for userland dynamic libraries, and we can use it to resolve userland functions.
 				</p>
 				
 				<p>
-					This system call has become the basis of the PS4-SDK; once we've loaded a module and got its handle, we can call any functions which we know the name and parameters of.
+					System call <code>591</code>, <code>sys_dynlib_dlsym</code>, has become the basis of the PS4-SDK; once we've loaded a module and got its handle, we can call any functions which we know the name and parameters of.
 				</p>
 				
 				<p>
@@ -529,7 +532,7 @@ chain.execute(function() {
 					To demonstrate this, we can create a thread which will launch the Internet Browser after an arbitrary timeout:
 				</p>
 				
-				<pre><code>int (*sceSystemServiceLaunchWebBrowser)(const char *uri, void *);
+				<pre><code class="language-c">int (*sceSystemServiceLaunchWebBrowser)(const char *uri, void *);
 
 void *t(void *n) {
 	sceKernelSleep(10);
@@ -1008,7 +1011,7 @@ chain.execute(function() {
 					I was able to load and initialise this module successfully:
 				</p>
 				
-				<pre><code>int libSave = sceKernelLoadStartModule("libSceSaveData.sprx", 0, NULL, 0, 0, 0);
+				<pre><code class="language-c">int libSave = sceKernelLoadStartModule("libSceSaveData.sprx", 0, NULL, 0, 0, 0);
 
 int (*sceSaveDataInitialize)(void *);
 RESOLVE(libSave, sceSaveDataInitialize);

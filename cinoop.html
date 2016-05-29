@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Cinoop</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -96,7 +99,7 @@
 					The Game Boy has eight 8 bit registers: A, B, C, D, E, F, H, and L, as well as two 16 bit registers: SP, and PC. Initially I implemented the registers like so:
 				</p>
 				
-				<pre><code>struct registers {
+				<pre><code class="language-c">struct registers {
 	unsigned char a;
 	unsigned char b;
 	unsigned char c;
@@ -110,6 +113,8 @@
 } extern registers;
 </code></pre>
 				
+				<br>
+				
 				<p>
 					While this model is fine for dealing with instructions that access the 8 bit registers individually, what I didn't realise is that often the 8 bit registers are grouped together to form the 16 bit registers: AF, BC, DE, and HL.
 				</p>
@@ -118,7 +123,7 @@
 					I revised my register structure to make accessing grouped registers easier:
 				</p>
 				
-				<pre><code>struct registers {
+				<pre><code class="language-c">struct registers {
 	struct {
 		union {
 			struct {
@@ -163,6 +168,8 @@
 	unsigned short pc;
 } extern registers;
 </code></pre>
+				
+				<br>
 				
 				<p>
 					I used C11's anonymous structs and unions so that I could access individual registers, or grouped registers straight from the root structure: <code>registers.a</code> or <code>registers.af</code> for example.
@@ -225,7 +232,7 @@
 					I also copied every instruction's disassembly into the structure:
 				</p>
 				
-				<pre><code>struct instruction {
+				<pre><code class="language-c">struct instruction {
 	char *disassembly;
 	unsigned char operandLength;
 	void *execute;
@@ -241,6 +248,8 @@ const struct instruction instructions[256] = {
 	...
 </code></pre>
 				
+				<br>
+				
 				<p>
 					This, in combination with storing the operand lengths, made it incredibly easy to print out the instruction.
 				</p>
@@ -253,9 +262,11 @@ const struct instruction instructions[256] = {
 					Running the game now, gave me the message "Unimplemented instruction 0x06 (LD B, 0x00)!". This was all I needed to write the 0x06 instruction, I didn't have to stop and find it in an external program or piece of documentation:
 				</p>
 				
-				<pre><code>// 0x06
+				<pre><code class="language-c">// 0x06
 void ld_b_n(unsigned char operand) { registers.b = operand; }
 </code></pre>
+				
+				<br>
 				
 				<p>
 					This greatly improved the speed at which I could implement new instructions, and I continued to write most of the CPU this way.
@@ -284,17 +295,19 @@ void ld_b_n(unsigned char operand) { registers.b = operand; }
 					I could tweak the <code>cpuStep</code> function to give me some pseudo breakpoints:
 				</p>
 				
-				<pre><code>if(registers.pc == 0x300) {
+				<pre><code class="language-c">if(registers.pc == 0x300) {
 	printRegisters();
-}
-</code></pre>
+}</code></pre>
+				
+				<br>
 				
 				<p>
 					But this still wasn't very easy to use. If there was a mistake in one of my instruction implementations, I would want to run the game step by step so that I could find it. To do this, I created a basic, real time debugger, which I could run alongside NO$GMB to check that the instructions were being executed correctly:
 				</p>
 				
-				<img src="images/cinoop/debug.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/debug.png" />
+				</div>
 				
 				<br>
 				
@@ -317,15 +330,17 @@ void ld_b_n(unsigned char operand) { registers.b = operand; }
 					I set a breakpoint in my emulator for the start of the function:
 				</p>
 				
-				<pre><code>if(registers.pc == 0x2817) {
+				<pre><code class="language-c">if(registers.pc == 0x2817) {
 	realtimeDebugEnable = 1;
 }</code></pre>
-			
+				
+				<br>
+				
 				<p>
 					Of course, when I ran the emulator, it would exit before reaching this function since I hadn't implemented enough instructions; but I kept working, and eventually the breakpoint triggered! Then there were a few more instructions to implement to get through the function, before I could dump the first tile:
 				</p>
 				
-				<pre><code>// End of tileset loading function
+				<pre><code class="language-c">// End of tileset loading function
 if(registers.pc == 0x282a) {
 	FILE *f = fopen("tile0.bin", "wb");
 	fwrite(vram, 16, 1, f);
@@ -334,24 +349,29 @@ if(registers.pc == 0x282a) {
 	realtimeDebugEnable = 1;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					I compared this with NO$GMB's memory, and the data matched!
 				</p>
 				
 				<pre><code>00 00 3c 3c 66 66 66 66 66 66 66 66 3c 3c 00 00</pre></code>
 				
+				<br>
+				
 				<p>
 					The next thing to do was to dump the processed tile as well:
 				</p>
 				
-				<pre><code>FILE *f = fopen("tile0.txt", "wb");
+				<pre><code class="language-c">FILE *f = fopen("tile0.txt", "wb");
 int x, y;
 for(y = 0; y &lt; 8; y++) {
 	for(x = 0; x &lt; 8; x++) fprintf(f, "%02x ", tiles[0][x][y]);
 	fprintf(f, "\n");
 }
-fclose(f);
-</code></pre>
+fclose(f);</code></pre>
+				
+				<br>
 				
 				<p>
 					This was the result:
@@ -366,6 +386,8 @@ fclose(f);
 00 00 03 03 03 03 00 00 
 00 00 00 00 00 00 00 00</code></pre>
 				
+				<br>
+				
 				<p>
 					To clarify the above image, let's replace "00" with "  ", and "03" with "xx":
 				</p>
@@ -379,11 +401,13 @@ fclose(f);
       xx xx xx xx       
                        </code></pre>
 				
+				<br>
+				
 				<p>
 					With the confidence that everything was working as it should, I copied the first 8 tiles onto the screen:
 				</p>
 				
-				<pre><code>int i, x, y;
+				<pre><code class="language-c">int i, x, y;
 for(i = 0; i &lt; 8; i++) {
 	for(x = 0; x &lt; 8; x++) {
 		for(y = 0; y &lt; 8; y++) {
@@ -394,14 +418,19 @@ for(i = 0; i &lt; 8; i++) {
 	}
 }</code></pre>
 				
-				<img src="images/cinoop/tiles.png" />
+				<br>
+				
+				<div class="center">
+					<img src="images/cinoop/tiles.png" />
+				</div>
+				
 				<br>
 				
 				<p>
 					I let the game run a little bit further, and then copied as many tiles as would fit onto the screen:
 				</p>
 				
-				<pre><code>// draw tileset to framebuffer as a test
+				<pre><code class="language-c">// draw tileset to framebuffer as a test
 int i;
 for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 	int x;
@@ -415,8 +444,11 @@ for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 	}
 }</code></pre>
 				
-				<img src="images/cinoop/fullTileset.png" />
 				<br>
+				
+				<div class="center">
+					<img src="images/cinoop/fullTileset.png" />
+				</div>
 				
 				<br>
 				
@@ -426,27 +458,35 @@ for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 					My initial attempt at reading maps resulted in this:
 				</p>
 				
-				<img src="images/cinoop/map1.png" />
+				<div class="center">
+					<img src="images/cinoop/map1.png" />
+				</div>
+				
 				<br>
 				
 				<p>
 					I'm not sure if this was caused by a problem with the GPU tutorial that I followed, or my implementation, but changing the following line:
 				</p>
 				
-				<pre><code>mapOffset += ((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3;</code></pre>
+				<pre><code class="language-c">mapOffset += ((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3;</code></pre>
+				
+				<br>
 				
 				<p>
 					to:
 				</p>
 				
-				<pre><code>mapOffset += (((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3) &lt;&lt; 5;</code></pre>
+				<pre><code class="language-c">mapOffset += (((gpu.scanline + gpu.scrollY) &amp; 255) &gt;&gt; 3) &lt;&lt; 5;</code></pre>
+				
+				<br>
 				
 				<p>
 					fixed the problem. My emulator could now reach the copyright screen of Tetris!
 				</p>
 				
-				<img src="images/cinoop/map2.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/map2.png" />
+				</div>
 				
 				<br>
 				
@@ -455,9 +495,11 @@ for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 					Cinoop was getting stuck in a loop, and not progressing past the copyright screen. After some brief debugging, I found that blocking any writes to the first byte of HRAM (0xff80) would allow the loop to be completed:
 				</p>
 				
-				<pre><code>void writeByte(unsigned short address, unsigned char value) {
+				<pre><code class="language-c">void writeByte(unsigned short address, unsigned char value) {
 	// Block writes to ff80
 	if(tetrisPatch &amp;&amp; address == 0xff80) return;</code></pre>
+				
+				<br>
 				
 				<p>
 					It wasn't my intention to use game specific patches rather than sorting out bugs properly, but I assumed that if I temporarily enabled this patch, the problem would eventually sort its self out as I improved Cinoop (which it did).
@@ -467,9 +509,11 @@ for(i = 0; i &lt; (144 / 8) * (160 / 8); i++) {
 					After temporarily fixing the previous looping problem, I was presented with another; the game was repeating the following three instructions infinitely:
 				</p>
 				
-				<pre><code>ld a, 0xff80
+				<pre><code class="language-c">ld a, 0xff80
 and a
 jr z</code></pre>
+				
+				<br>
 				
 				<p>
 					I realised that it was probably waiting for the value to be written to by an interrupt, so I dumped the interrupt enable register: <code>0x09</code>, meaning that both VBlank and Serial interrupts were enabled (<code>(1 &lt;&lt; 0) | (1 &lt;&lt; 3)</code>), since it probably wasn't dependent on there being a Serial interrupt, I assumed that my VBlank code was wrong.
@@ -479,8 +523,9 @@ jr z</code></pre>
 					Sure enough, it was! After correcting the VBlank interrupt handler, I was presented with a few more unimplemented instructions, and eventually, Cinoop made it to the Tetris menu!
 				</p>
 				
-				<img src="images/cinoop/menu.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/menu.png" />
+				</div>
 				
 				<br>
 				
@@ -522,9 +567,11 @@ jr z</code></pre>
 					I started by rendering to the DS in framebuffer mode, which can be done as follows.
 				</p>
 				
-				<pre><code>videoSetMode(MODE_FB0);
+				<pre><code class="language-c">videoSetMode(MODE_FB0);
 vramSetBankA(VRAM_A_LCD);
 VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
+				
+				<br>
 				
 				<p>
 					This was good at first because it meant that I could just reuse the Windows rendering code, so I managed to get Cinoop up and running fairly quickly:
@@ -538,14 +585,17 @@ VRAM_A[x + y * 256] = RGB15(red, green, blue);</code></pre>
 					I revised the code to use the DS' native tile rendering. It ran faster than the framebuffer renderer, but it had some minor graphical glitches on some tiles (happened on real hardware as well as on emulators):
 				</p>
 				
-				<img src="images/cinoop/dsTiles.png" />
+				<div class="center">
+					<img src="images/cinoop/dsTiles.png" />
+				</div>
+				
 				<br>
 				
 				<p>
 					I'm not exactly sure what caused this, but I think it was because I was writing to VRAM too frequently. I fixed the issue by writing to an array in RAM instead, and setting a <code>dirtyTileset</code> variable. During the DS' VBlank, I checked to see if the tileset had changed, and if so, copied the tiles from RAM into VRAM:
 				</p>
 				
-				<pre><code>void dsVblank(void) {
+				<pre><code class="language-c">void dsVblank(void) {
 	if(dirtyTileset) {
 		memcpy(bgGetGfxPtr(layer), tiles, 160 / 8 * 144 / 8 * 32);
 		dirtyTileset = 0;
@@ -564,6 +614,8 @@ void updateTile(unsigned short address, unsigned char value) {
 	#endif
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					The way that the DS video modes are designed, it is not possible for sprites and backgrounds to share a tileset, like the Game Boy does. As a result of this, I had to copy the tileset into both the background, and sprite memory in the <code>dsVblank</code> routine.
 				</p>
@@ -572,8 +624,9 @@ void updateTile(unsigned short address, unsigned char value) {
 					Finally, I wrote a plain black tile into VRAM, and used it for the border. With the finalised tile rendering system in place, the emulator had no graphical artifacts, and ran noticeably faster (but still not full speed).
 				</p>
 				
-				<img src="images/cinoop/ds.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/ds.png" />
+				</div>
 				
 				<br>
 				
@@ -586,7 +639,7 @@ void updateTile(unsigned short address, unsigned char value) {
 					Unlike x86 and the DS, the GameCube's PowerPC processor is big endian. This was a minor annoyance, but was trivial to account for:
 				</p>
 				
-				<pre><code>#ifdef WIN
+				<pre><code class="language-c">#ifdef WIN
 	#define LITTLE_E
 #endif
 
@@ -630,12 +683,15 @@ struct registers {
 	};
 	...</code></pre>
 				
+				<br>
+				
 				<p>
 					The GameCube emulator I used for testing, gcube, doesn't support reading files from the memory card, so I had to hardcode the Tetris ROM into the binary, which was another minor annoyance. With all that done, I had Cinoop running on the GameCube!
 				</p>
 				
-				<img src="images/cinoop/gamecube.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/gamecube.png" />
+				</div>
 				
 				<br>
 				
@@ -675,20 +731,12 @@ struct registers {
 				
 				<h3>Ubuntu</h3>
 				<p>
-					I am a Windows user. I very rarely touch a Linux based machine, but since Cinoop had suddenly become a case of "let's see how many systems I can port this to", I decided to make an exception.
+					I tried a range a Linux distros, and found Ubuntu to be a pleasant platform to port Cinoop to.
 				</p>
 				
-				<p>
-					The first distro I tried was Fedora. I didn't like it, and couldn't get anything to work.
-				</p>
-				
-				<p>
-					I then tried Ubuntu. It was a <i>much</i> better user experience than Fedora!
-				</p>
-				
-				<img src="images/cinoop/ubuntu.png" />
-				<br>
-				<br>
+				<div class="center">
+					<img src="images/cinoop/ubuntu.png" />
+				</div>
 				
 				<br>
 				
@@ -701,8 +749,9 @@ struct registers {
 					I set up the <a href="http://sourceforge.net/projects/minpspw/">Minimalist PSP SDK</a>, and the <a href="http://www.ppsspp.org/">PPSSPP</a> emulator, and was able to port Cinoop within a single day!
 				</p>
 				
-				<img src="images/cinoop/psp.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/psp.png" />
+				</div>
 				
 				<br>
 				
@@ -754,47 +803,16 @@ struct registers {
 				
 				<h3>Mac OS X</h3>
 				<p>
-					I also had plans to port to Mac OS X, but like with PS2, this proved too difficult.
+					I also had plans to port to Mac OS X, but like with PS2, this proved too difficult since I was unable to install a working C compiler and development environment on Mac OS X.
 				</p>
 				
 				<p>
-					I was unable to install a working C compiler and development setup on Mac OS X. All development tools are centralised to Apple, which means that you have to create an account to download them.
+					Whilst nothing seemed to work on OS X for me, in the sprit of open source, <a href="https://github.com/nsenica">nsenica</a> managed to port to Cinoop to OS X with XQuartz, and submitted a pull request!
 				</p>
 				
-				<p>
-					I had to first install <a href="http://en.wikipedia.org/wiki/Xcode">Xcode</a> (which is a 5GB download), and then click on "Install Command Line tools" which is in the settings somewhere. There is probably a way to install a C compiler without Xcode, but it certainly wasn't clear.
-				</p>
-				
-				<p>
-					The C compiler included with "Command Line Tools" is called <code>gcc</code>, but despite the name, the "gcc" that Xcode installs is actually Clang...
-				</p>
-				
-				<p>
-					Regardless, I tried compiling and running a simple C template:
-				</p>
-				
-				<pre><code>gcc main.c -c -o main.o
-gcc main.o -o main
-./main</code></pre>
-				
-				<p>
-					This give me the output: "cannot execute binary file".
-				</p>
-				
-				<p>
-					I looked at the file <code>main</code> which it generated, and it was completely empty.
-				</p>
-				
-				<p>
-					I received no warnings or errors when executing the commands, it just didn't work.
-				</p>
-				
-				<p>
-					However, whilst nothing seemed to work on OS X for me, in the sprit of open source, <a href="https://github.com/nsenica">nsenica</a> managed to port to Cinoop to OS X with XQuartz, and submitted a pull request!
-				</p>
-				
-				<img src="images/cinoop/osx.png" />
-				<br>
+				<div class="center">
+					<img src="images/cinoop/osx.png" />
+				</div>
 				
 				<br>
 				
@@ -822,6 +840,8 @@ gcc main.o -o main
 				<div class="center">
 					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/aNqKyuTDbjE" frameborder="0" allowfullscreen></iframe>
 				</div>
+				
+				<br>
 				
 				<p>
 					The final limitation is that we don't have permission to mount USB flash drives and read them as normal.

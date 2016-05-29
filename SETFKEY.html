@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -72,7 +75,7 @@
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L103">sys/sys/kbio.h</a></code>:
 				</p>
 
-				<pre><code>#define MAXFK           16</code></pre>
+				<pre><code class="language-c">#define MAXFK           16</code></pre>
 
 				<br>
 
@@ -80,7 +83,7 @@
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbdreg.h#L52">sys/dev/kbd/kbdreg.h</a></code>:
 				</p>
 
-				<pre><code>typedef struct keyboard keyboard_t;
+				<pre><code class="language-c">typedef struct keyboard keyboard_t;
 
 ...
 
@@ -97,7 +100,7 @@ struct keyboard {
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L218">sys/sys/kbio.h</a></code>:
 				</p>
 
-				<pre><code>struct fkeytab {
+				<pre><code class="language-c">struct fkeytab {
 	u_char		str[MAXFK];
 	u_char		len;
 };</code></pre>
@@ -112,7 +115,7 @@ struct keyboard {
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L837">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code>int
+				<pre><code class="language-c">int
 genkbd_commonioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 {
 	keymap_t *mapp;
@@ -179,7 +182,7 @@ genkbd_commonioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L224">sys/sys/kbio.h</a></code>:
 				</p>
 
-				<pre><code>struct fkeyarg {
+				<pre><code class="language-c">struct fkeyarg {
     u_short         keynum;
     char            keydef[MAXFK];
     char            flen;
@@ -197,7 +200,7 @@ typedef struct fkeyarg  fkeyarg_t;</code></pre>
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L85">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code>SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
+				<pre><code class="language-c">SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
     &amp;keymap_restrict_change, 0, "restrict ability to change keymap");
 
 ...
@@ -240,7 +243,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					The handler attempts to do this by using <code>imin</code> to provide an upper limit of <code>MAXFK</code>. The problem is that no part of this code checks for negative values of <code>fkeyp->flen</code>!
 				</p>
 				
-				<pre><code>kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);</code></pre>
+				<pre><code class="language-c">kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);</code></pre>
 				
 				<br>
 				
@@ -252,7 +255,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L57">sys/sys/libkern.h</a></code>:
 				</p>
 
-				<pre><code>static __inline int imin(int a, int b) { return (a &lt; b ? a : b); }</code></pre>
+				<pre><code class="language-c">static __inline int imin(int a, int b) { return (a &lt; b ? a : b); }</code></pre>
 
 				<br>
 
@@ -279,7 +282,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L61">sys/sys/libkern.h</a></code>:
 				</p>
 
-				<pre><code>static __inline u_int min(u_int a, u_int b) { return (a &lt; b ? a : b); }</code></pre>
+				<pre><code class="language-c">static __inline u_int min(u_int a, u_int b) { return (a &lt; b ? a : b); }</code></pre>
 
 				<br>
 				
@@ -302,7 +305,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/sys_generic.c#L660">sys/kern/sys_generic.c</a></code>:
 				</p>
 
-				<pre><code>int
+				<pre><code class="language-c">int
 sys_ioctl(struct thread *td, struct ioctl_args *uap)
 {
 	u_char smalldata[SYS_IOCTL_SMALL_SIZE] __aligned(SYS_IOCTL_SMALL_ALIGN);
@@ -371,7 +374,7 @@ out:
 					Immediately after setting the new length in <code>SETFKEY</code>, a <code>bcopy</code> will be performed from the user supplied <code>keydef</code> in the <code>ioctl</code> argument buffer on the stack, into the key description heap array.
 				</p>
 				
-				<pre><code>bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
+				<pre><code class="language-c">bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
 	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
 				
 				<br>
@@ -391,7 +394,7 @@ out:
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L976">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code>bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
+				<pre><code class="language-c">bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
 	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
 				
 				<br>
@@ -461,7 +464,7 @@ out:
 					Below is some PoC code to demonstrate overflowing into a <code>keytab</code> with controlled contents:
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
 #include &lt;errno.h&gt;
@@ -586,7 +589,7 @@ rip (8)</code></pre>
 					The following PoC demonstrates this by leaking the stack guard.
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
 #include &lt;errno.h&gt;
@@ -688,7 +691,7 @@ FFFFFFFF80BBF2CC                 call    rax</code></pre>
 					The following PoC demonstrates gaining kernel code execution from the bug on 10.2-RELEASE for amd64:
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
@@ -796,7 +799,7 @@ int main(void) {
 					However, since my interest is just in demonstrating the impact of the bug, and not in creating fully weaponised source code, I decided to instead just use <code>swapgs</code> and <code>sysret</code> to return to userland with incorrect registers.
 				</p>
 				
-				<pre><code>__asm__ volatile("swapgs; sysret");</code></pre>
+				<pre><code class="language-c">__asm__ volatile("swapgs; sysret");</code></pre>
 				
 				<br>
 				
@@ -808,7 +811,7 @@ int main(void) {
 					This final PoC demonstrates using kernel code execution to modify a read only <code>sysctl</code> variable, and then reading it from a separate userland process. I've also included code to read the original stack variables, just in case anyone wants to try using them to return from the payload properly.
 				</p>
 				
-				<pre><code>#include &lt;stdio.h&gt;
+				<pre><code class="language-c">#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;

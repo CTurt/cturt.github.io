@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -547,7 +550,7 @@ syscall:
 					Using this, they can perform system calls from C using the function calling convention:
 				</p>
 				
-				<pre><code>int syscall();
+				<pre><code class="language-c">int syscall();
 
 int getpid(void) {
 	return syscall(20);
@@ -646,7 +649,7 @@ chain.syscall("getpid", 0, 20);</code></pre>
 					Here's an extract of <code>_libpthread_init</code> from <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/lib/libthr/thread/thr_init.c#L297">thr_init.c</a>:
 				</p>
 				
-				<pre><code>/*
+				<pre><code class="language-c">/*
  * Check for the special case of this process running as
  * or in place of init as pid = 1:
  */
@@ -1220,7 +1223,7 @@ chain.add("jmp rax");</code></pre>
 					The first thing the <code>auditon</code> system call does is check <code>jailed</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L164">here</a>, and if so, return <code>ENOSYS</code>:
 				</p>
 				
-				<pre><code>if (jailed(td->td_ucred))
+				<pre><code class="language-c">if (jailed(td->td_ucred))
 	return (ENOSYS);</code></pre>
 				
 				<br>
@@ -1229,7 +1232,7 @@ chain.add("jmp rax");</code></pre>
 					Otherwise the system call would most likely return <code>EPERM</code> from the <code>mac_system_check_auditon</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L169">here</a>:
 				</p>
 				
-				<pre><code>error = mac_system_check_auditon(td->td_ucred, uap->cmd);
+				<pre><code class="language-c">error = mac_system_check_auditon(td->td_ucred, uap->cmd);
 if (error)
 	return (error);</code></pre>
 				
@@ -1239,7 +1242,7 @@ if (error)
 					Or from the <code>priv_check</code> <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L174">here</a>:
 				</p>
 				
-				<pre><code>error = priv_check(td, PRIV_AUDIT_CONTROL);
+				<pre><code class="language-c">error = priv_check(td, PRIV_AUDIT_CONTROL);
 if (error)
 	return (error);</code></pre>
 				
@@ -1249,7 +1252,7 @@ if (error)
 					The absolute furthest that the system call could reach would be immediately after the <code>priv_check</code>, <a href="https://github.com/freebsd/freebsd/blob/release/9.0.0/sys/security/audit/audit_syscalls.c#L178">here</a>, before returning <code>EINVAL</code> due to the length argument being 0:
 				</p>
 				
-				<pre><code>if ((uap->length <= 0) || (uap->length > sizeof(union auditon_udata)))
+				<pre><code class="language-c">if ((uap->length <= 0) || (uap->length > sizeof(union auditon_udata)))
 	return (EINVAL);</code></pre>
 				
 				<br>

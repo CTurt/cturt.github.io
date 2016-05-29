@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>VertexNet malware analysis</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -41,7 +44,7 @@
 				</p>
 				
 				<p>
-					I searched for a simple target on <a href="http://kernelmode.info">KernelMode.info</a> (as I'm a beginner to malware analysis) and came across <a href="http://www.kernelmode.info/forum/viewtopic.php?f=16&t=1128">Win32 VertexNet</a>. Apparently it was written in C++ and has very little obfuscation, so it should be a great target for me to start with.
+					I searched for a simple target on <a href="http://kernelmode.info">KernelMode.info</a> (as I'm a beginner to malware analysis) and came across <a href="http://www.kernelmode.info/forum/viewtopic.php?f=16&amp;t=1128">Win32 VertexNet</a>. Apparently it was written in C++ and has very little obfuscation, so it should be a great target for me to start with.
 				</p>
 				
 				<p>
@@ -65,6 +68,8 @@
 				
 				<pre><code>upx VNet.exe -d -o unpacked.exe</code></pre>
 				
+				<br>
+				
 				<p>
 					Now that we have the unpacked executable; there are 144 functions, all of which can be succesfully decompiled!
 				</p>
@@ -80,7 +85,7 @@
 					Let's start analysing <code>WinMain</code>; there is no obfuscation on this function, and you can generate the following pseudo code by pressing <code>F5</code>:
 				</p>
 				
-				<pre><code>int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+				<pre><code class="language-c">int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
   struct tagMSG Msg; // [sp+4h] [bp-1Ch]@1
 
@@ -92,6 +97,8 @@
   }
   return 0;
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					What a lovely introduction to malware RE; we can clearly tell that <code>sub_406980();</code> is the initialisation function of the malware; so select it and hit <code>N</code> to give it a suitable name (<code>init</code>).
@@ -105,8 +112,10 @@
 					From here we can see some more function calls which we will come back to later, but the most apparent are the two calls to <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms682453%28v=vs.85%29.aspx">CreateThread</a>:
 				</p>
 				
-				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &amp;ThreadId);
+				<pre><code class="language-c">CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &amp;ThreadId);
 return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &amp;ThreadId);</pre></code>
+				
+				<br>
 				
 				<p>
 					I named the two threads' start routines <code>thread1</code> and <code>thread2</code>.
@@ -123,7 +132,7 @@ return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &amp;T
 					Initially, this function looked quite daunting:
 				</p>
 				
-				<pre><code>int __usercall sub_4022B0&lt;eax&gt;(unsigned int a1&lt;eax&gt;, int a2&lt;edx&gt;, int a3&lt;ecx&gt;)
+				<pre><code class="language-c">int __usercall sub_4022B0&lt;eax&gt;(unsigned int a1&lt;eax&gt;, int a2&lt;edx&gt;, int a3&lt;ecx&gt;)
 {
   unsigned int v3; // esi@1
   signed int v4; // eax@5
@@ -167,6 +176,8 @@ LABEL_4:
   return 0;
 }</code></pre>
 				
+				<br>
+				
 				<p>
 					It appears to use <code>a2</code> and <code>a3</code> as pointers to integers, however, it later goes on to use these as pointers to characters.
 				</p>
@@ -175,7 +186,7 @@ LABEL_4:
 					One of the best ways I've found to help understand what a function does is by adding and removing whitespace to make it match your own style. Whilst doing this it became clear what the function does: it performs a string comparison. The reason that the pointers are dereferenced to integers instead of characters at the start is just an optimisation; it is faster to compare blocks of 4 bytes at a time than to compare all bytes individually.
 				</p>
 				
-				<pre><code>int compareStrings(unsigned int length, char *string1, char *string2) {
+				<pre><code class="language-c">int compareStrings(unsigned int length, char *string1, char *string2) {
 	unsigned int i = length;
 	
 	if(length &lt; 4) {
@@ -213,6 +224,8 @@ LABEL_4:
 	
 	return 0;
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					I'm not entirely sure of this function's purpose considering it does the same job as <code>strncmp</code> (with a slightly different parameter order). A futile attempt at obfuscation, or an incompetent programmer, you decide!
@@ -285,6 +298,8 @@ LABEL_4:
 				
 				<pre><code>HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\</code></pre>
 				
+				<br>
+				
 				<p>
 					This causes the malware to automatically execute at startup.
 				</p>
@@ -337,7 +352,9 @@ LABEL_4:
 					When the <code>setkeylogger::</code> command is received, a new thread is created (<code>sub_404300</code>):
 				</p>
 				
-				<pre><code>CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &amp;ThreadId);</code></pre>
+				<pre><code class="language-c">CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &amp;ThreadId);</code></pre>
+				
+				<br>
 				
 				<p>
 					Keylogs are stored in the file <code>vnlogs.log</code> which can be read through the <code>getklogs</code> command.

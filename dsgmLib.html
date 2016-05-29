@@ -5,10 +5,13 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
 		<title>dsgmLib</title>
 	</head>
 	
 	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
 		<div class="page">
 			<div class="container">
 				<div class="header">
@@ -77,10 +80,12 @@
 					With that said, the combination of event driven, and object-oriented code is extremely pleasing; in the right hands, dsgmLib can be used to create some superbly clean code:
 				</p>
 				
-				<pre><code>void ball_touch(ballObjectInstance *me) {
+				<pre><code class="language-c">void ball_touch(ballObjectInstance *me) {
 	me->x += 32;
 	me->y += 32;
 }</code></pre>
+				
+				<br>
 				
 				<p>
 					<i>When any instance of <code>ball</code> is touched, it is moved down and right by 32 pixels.</i>
