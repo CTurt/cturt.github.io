@@ -466,7 +466,7 @@ mprotect(mapping + mappingSize, PAGE_SIZE, PROT_NONE);</code></pre>
 				</p>
 				
 				<p>
-					We used kernel code execution from the BadIRET exploit to test the behaviour of the heap. We found that after spraying 100 dummy allocations to ensure that the next two allocations will be adjacent, and then freeing the first allocation, the next allocation will occupy its memory:
+					We used kernel code execution from the BadIRET exploit to test the behaviour of the heap. We found that the heap can be defragged by performing 100 or so dummy allocations, which will ensure that the next two allocations will be adjacent. Once we have two adjacent allocations, we free the first allocation, such that the next allocation will occupy its memory and be positioned directly before the second allocation:
 				</p>
 				
 				<pre><code>/* Sample output:
@@ -502,6 +502,12 @@ free(m, &amp;M_SUBPROC);
 kprintf("New alloc\n");
 void *n = rtld_malloc(0x100000000 + 0x8000, 0);
 kprintf("%p\n", n);</code></pre>
+				
+				<br>
+				
+				<p>
+					With this setup, the final allocation will overwrite the <code>m2</code> allocation when overflowed.
+				</p>
 				
 				<br>
 				
