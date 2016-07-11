@@ -96,7 +96,11 @@
 				</p>
 				
 				<p>
-					Sony handled this by creating 2 custom system calls: <code>sys_jitshm_create</code>, and <code>sys_jitshm_alias</code>. You can use these system calls directly, or the wrappers in <code>libkernel</code> (<code>sceKernelJitCreateSharedMemory</code> et al.). To identify exactly how these functions are used, you should load, dump, and reverse <code>libSceJitBridge.sprx</code>.
+					Sony handled this by creating 2 custom system calls: <code>sys_jitshm_create</code>, and <code>sys_jitshm_alias</code>. You can use these system calls directly, or the wrappers exposed by <code>libkernel</code> (<code>sceKernelJitCreateSharedMemory</code> et al.).
+				</p>
+				
+				<p>
+					We reverse engineered the <code>libSceJitBridge.sprx</code> module to identify exactly how these functions are used together, and I added a simple wrapper to PS4-SDK for this functionality, called <a href="https://github.com/CTurt/PS4-SDK/blob/master/libPS4/source/jit.c#L17"><code>allocateJIT</code></a>.
 				</p>
 				
 				<p>
@@ -104,7 +108,7 @@
 				</p>
 				
 				<p>
-					Code can now be written to the RW mapping and executed from the RX mapping like so:
+					Code can now be written to the RW mapping and executed from the RX mapping like so (full example <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples/jit">here</a>):
 				</p>
 				
 				<pre><code class="language-c">unsigned char loop[] = { 0xeb, 0xfe };
@@ -115,7 +119,7 @@ memcpy(writableAddress, loop, sizeof(loop));
 				<br>
 				
 				<p>
-					The one limitation of this is that a segfault will be triggered if a <code>syscall</code> instruction is executed within JIT shared memory. To perform system calls we just do a jump to a <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls from ROP.
+					The one limitation of this is that a segfault will be triggered if a <code>syscall</code> instruction is executed from within JIT shared memory. To perform system calls we need to jump to a <code>syscall</code> instruction from <code>libkernel</code>; just like how we performed system calls with ROP.
 				</p>
 				
 				<p>
@@ -331,7 +335,7 @@ scePthreadCancel(thread);</code></pre>
 				</p>
 				
 				<p>
-					Despite <a href="https://reviews.freebsd.org/rS275833">being fixed back in 2014</a>, BadIRET has only recently gotten a <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-15:21.amd64.asc">security advisory</a>, apparently due to the security officer being replaced around this time. Because of this, I hadn't heard of BadIRET back when I started researching the PS4.
+					Despite <a href="https://reviews.freebsd.org/rS275833">being fixed back in 2014</a>, BadIRET has only recently gotten a <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-15:21.amd64.asc">security advisory</a>, apparently due to the FreeBSD Security Officer being replaced around this time. Because of this, I hadn't heard of BadIRET back when I started researching the PS4.
 				</p>
 				
 				<p>

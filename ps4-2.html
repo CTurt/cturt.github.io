@@ -74,14 +74,14 @@
 				</p>
 				
 				<p>
-					I've also since posted the method for gaining userland code execution and a ROP chain to load binaries sent over TCP, it is explained in <a href="ps4-3.html#code-execution">part 3 of this series</a>.
+					I've also since posted the method for gaining userland code execution, along with a ROP chain to load binaries sent over TCP; it is explained in <a href="ps4-3.html#code-execution">part 3 of this series</a>.
 				</p>
 				
 				<br>
 				
 				<h2>Code execution</h2>
 				<p>
-					As explained in my last article, ROP is just executing existing code loaded in memory in a smart way; whilst ROP can technically be <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a>, it really isn't practical for anything more complex than some basic tests.
+					As explained in my previous article, ROP is just executing existing code loaded in memory in a smart way; whilst ROP can technically be <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a>, it really isn't practical for anything more complex than some basic tests.
 				</p>
 				
 				<p>
@@ -89,7 +89,7 @@
 				</p>
 				
 				<p>
-					Simply, this means that I can compile C code, such as the <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples">PS4-SDK examples</a>, and execute them as native x86_64 code.
+					Simply, this means that I can compile C code, such as these <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples">examples included in PS4-SDK</a>, and execute them as native x86_64 code.
 				</p>
 				
 				<p>
