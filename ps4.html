@@ -112,7 +112,7 @@
 				</p>
 				
 				<p>
-					This gives us arbitrary read and write access to everything the WebKit process can read and write to, which can be used to dump modules, and overwrite return addresses on the stack, letting us control the Program Counter (for ROP).
+					This gives us arbitrary read and write access to everything the WebKit process can read and write to, which can be used to dump modules, and overwrite return addresses on the stack, letting us control the instruction pointer register (<code>rip</code>) to achieve ROP execution.
 				</p>
 				
 				<p>
@@ -286,7 +286,7 @@ ret</code></pre>
 				</p>
 				
 				<p>
-					x86_64 instructions are similar to words in that they variable lengths, and can mean something entirely different depending on where decoding starts.
+					x86_64 instructions are similar to words in that they have variable lengths, and can mean something entirely different depending on where decoding starts.
 				</p>
 				
 				<div class="quote">
@@ -1395,10 +1395,6 @@ if (error)
 				
 				<p>
 					And with FreeBSD 10 being out, it's unlikely that anyone is stashing away any private exploits for FreeBSD 9, so unless a new one is suddenly released, we're stuck with what is currently available.
-				</p>
-				
-				<p>
-					It may not be impossible to exploit the PS4 kernel by leveraging some of the existing kernel memory corruption vulnerabilities, but it certainly would't be easy.
 				</p>
 				
 				<p>
