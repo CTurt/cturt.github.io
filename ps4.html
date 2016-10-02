@@ -112,7 +112,7 @@
 				</p>
 				
 				<p>
-					In 2014, nas and Proxima announced that they had successfully been able to <a href="http://wololo.net/talk/viewtopic.php?p=368577">port this exploit to the PS4's browser</a>, and released the PoC code publicly as the first entry point into hacking the PS4.
+					In 2014 nas and Proxima announced that they had successfully been able to <a href="http://wololo.net/talk/viewtopic.php?p=368577">port an exploit using this vulnerability, originally written for Mac OS X Safari, to the PS4's internet browser</a>, and released the PoC code publicly as the first entry point into hacking the PS4.
 				</p>
 				
 				<p>
@@ -222,7 +222,7 @@ ret</code></pre>
 				<br>
 				
 				<p>
-					Although you may have to be creative with how you write ROP chains, it is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality; this makes ROP a viable method of bypassing DEP.
+					Although you may have to be creative with how you write ROP chains, it is generally accepted that within a sufficiently large enough code dump, there will be enough gadgets for <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a> functionality; this makes ROP a viable method of defeating DEP.
 				</p>
 				
 				<br>
@@ -336,9 +336,9 @@ ret</code></pre>
 				
 				<br>
 				
-				<h2>Segmentation faults</h2>
+				<h2>General protection faults</h2>
 				<p>
-					If we <i>do</i> try to execute a non-executable page of memory, or try to write to a non-writable page of memory, a <a href="https://en.wikipedia.org/wiki/Segmentation_fault">segmentation fault</a> will occur.
+					If we <i>do</i> perform an access violation, such as by trying to execute a non-executable page of memory, or by trying to write to a non-writable page of memory, a general protection fault, or more specifically in this instance, a <a href="https://en.wikipedia.org/wiki/Segmentation_fault">segmentation fault</a>, will occur.
 				</p>
 				
 				<p>
@@ -361,7 +361,7 @@ chain.add(chain.data);</code></pre>
 				<br>
 				
 				<p>
-					If a segmentation fault occurs, a message saying "There is not enough free system memory" will appear, and the page will fail to load:
+					If a general protection fault occurs, a message saying "There is not enough free system memory" will appear, and the page will fail to load:
 				</p>
 				
 				<div class="center">
@@ -371,7 +371,7 @@ chain.add(chain.data);</code></pre>
 				<br>
 				
 				<p>
-					There are other possible reasons for this message to be displayed, such as executing an invalid instruction or an unimplemented system call, but a segmentation fault is the most common.
+					This message will also be displayed for other hard faults, such as division by 0, or execution of an invalid instruction or unimplemented system call, but most commonly it will be encountered by performing a segmentation fault.
 				</p>
 				
 				<br>
@@ -390,7 +390,7 @@ chain.add(chain.data);</code></pre>
 				</p>
 				
 				<p>
-					Luckily for us, we aren't limited to just writing static ROP chains. We can use JavaScript to read the modules table, which will tell us the base addresses of all loaded modules. Using these bases, we can then calculate the addresses of all our gadgets before we trigger ROP execution, bypassing ASLR.
+					Luckily for us, we aren't limited to just writing static ROP chains. We can use JavaScript to read the modules table, which will tell us the base addresses of all loaded modules. Using these bases, we can then calculate the addresses of all our gadgets before we trigger ROP execution, defeating ASLR.
 				</p>
 				
 				<p>
@@ -432,15 +432,15 @@ chain.add(chain.data);</code></pre>
 				
 				<h2>JuSt-ROP</h2>
 				<p>
-					Using JavaScript to write and execute dynamic ROP chains gives us a tremendous advantage over a standard buffer overflow attack.
+					Using JavaScript to write and execute dynamic ROP chains gives us a tremendous advantage over a traditional, static buffer overflow attack.
 				</p>
 				
 				<p>
-					As well as bypassing ASLR, we can also read the user agent of the browser, and provide a different ROP chain for different browser versions, giving our exploit the highest compatibility possible.
+					As well as being necessary to defeat ASLR, JavaScript also lets us read the user agent of the browser, and provide different ROP chains for different browser versions, giving our exploit a greater range of compatibility.
 				</p>
 				
 				<p>
-					We can even use JavaScript to read the memory at our gadgets' addresses to check that they are correct, giving us almost perfect reliability.
+					We can even use JavaScript to read the memory at our gadgets' addresses to check that they are correct, giving us almost perfect reliability. Theoretically, you could take this even further by writing a script to dynamically find ROP gadgets and then build ROP chains on the fly.
 				</p>
 				
 				<p>
@@ -604,7 +604,7 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				</p>
 				
 				<p>
-					The fact that PID allocation is set to the default behaviour indicates that Sony likely didn't bother adding any additional security enhancements such as those encouraged by projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>.
+					The fact that PID allocation is set to the default behaviour indicates that Sony likely didn't bother adding any additional security enhancements such as those encouraged by projects like <a href="https://hardenedbsd.org/">HardenedBSD</a>, other than userland ASLR.
 				</p>
 				
 				<br>
@@ -624,22 +624,6 @@ chain.syscall("getpid", 0, 20);</code></pre>
 				
 				<p>
 					From this, we can conclude that there are 85 custom Sony system calls in the PS4's kernel (617 - 532).
-				</p>
-				
-				<p>
-					This is significantly less than the PS3, which had <a href="http://www.ps3devwiki.com/ps3/LV2_Functions_and_Syscalls">almost 1000 system calls</a> in total. This indicates that we have fewer possible attack vectors, but that it may be easier to document all of the system calls.
-				</p>
-				
-				<p>
-					Furthermore, 9 of these 85 system calls always return <code>0x4e</code>, <code>ENOSYS</code>, which suggests that they may only be callable from development units, leaving us with just 76 which are usable.
-				</p>
-				
-				<p>
-					Of these 76, only 45 are referenced by <code>libkernel.sprx</code> (which all non-core applications use to perform system calls), so developers only have 45 custom system calls which they can use.
-				</p>
-				
-				<p>
-					Interestingly, although only 45 are intended to be called (because <code>libkernel.sprx</code> has wrappers for them), some of the other 31 are still callable from the Internet Browser process. It is more likely for these unintended system calls to have vulnerabilities in them, since they have probably had the least amount of testing.
 				</p>
 				
 				<br>
@@ -979,7 +963,7 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				<br>
 				
 				<p>
-					Unforunately, a segmentation fault will be triggered when trying to load certain modules; this is because the <code>sceSysmoduleLoadModule</code> function doesn't load dependencies, so you will need to manually load them first.
+					Unfortunately, a fault will be triggered when trying to load certain modules; this is because the <code>sceSysmoduleLoadModule</code> function doesn't load dependencies, so you will need to manually load them first.
 				</p>
 				
 				<p>
@@ -1177,7 +1161,7 @@ chain.syscall("getdents", 272, undefined, chain.data + 0x10, 1028);</code></pre>
 				</p>
 				
 				<p>
-					Other system calls such as <code>exit</code> will also trigger a segmentation fault:
+					Other system calls such as <code>exit</code> will also trigger a fault:
 				</p>
 				
 				<pre><code>chain.syscall("exit", 1, 0);</code></pre>
