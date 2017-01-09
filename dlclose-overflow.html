@@ -562,6 +562,8 @@ memcpy(dump, m2, 0x8000);
 struct sendto_args args = { sock, dump, 0x8000, 0, NULL, 0 };
 sendto(td, &amp;args);</code></pre>
 				
+				<br>
+				
 				<p>
 					Sure enough, the two allocations are adjacent, the system call returns <code>EFAULT</code>, the second buffer is overwritten with "<code>aaa...</code>", and the system remains stable (since we only overwrote into our controlled mapping).
 				</p>
