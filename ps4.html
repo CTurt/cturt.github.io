@@ -871,7 +871,7 @@ chain.syscall("unknown", 538, chain.data, 0, 0, 0, 0, 0);</code></pre>
 				<br>
 				
 				<p>
-					The return value for this is <code>0x3f</code>, <code>ENAMETOOLONG</code>. Unfortunately it seems that this system call correctly limits the name (32 bytes including NULL truncator), but it does tell us that it <i>is</i> expecting a string, rather than a struct.
+					The return value for this is <code>0x3f</code>, <code>ENAMETOOLONG</code>. Unfortunately it seems that this system call correctly limits the name (32 bytes including <code>NULL</code> truncator), but it does tell us that it <i>is</i> expecting a string, rather than a struct.
 				</p>
 				
 				<p>
