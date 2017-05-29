@@ -5,7 +5,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
 		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<title>Articles and projects</title>
+		<title>Security research articles</title>
 	</head>
 	
 	<body>
@@ -29,39 +29,10 @@
 					</a>
 				</div>
 				
-				<h1>Articles and projects</h1>
+				<h1>Security reseach articles</h1>
 				<hr>
 				
-				<h2 id="xnu">XNU research</h2>
-				<p>
-					Lately I've mostly been focusing on iOS kernel exploitation, with Luca Todesco.
-				</p>
-				
-				<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">just got reliable kernel pc control from this new iOS 10 jailbreak chain I’ve been working on with <a href="https://twitter.com/CTurtE">@CTurtE</a> :)</p>&mdash; qwertyoruiop (@qwertyoruiopz) <a href="https://twitter.com/qwertyoruiopz/status/790755129070874624">October 25, 2016</a></blockquote>
-				
-				<p>
-					Amoung the bugs I've found was the fsevents double free race condition <a href="https://bugs.chromium.org/p/project-zero/issues/detail?id=1129&can=1&q=owner%3Aianbeer%20modified-after%3A2017%2F3%2F20">patched by Google Project Zero</a>.
-				</p>
-				
-				<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Had a bug collision with the fsevents double free race patched today (I found it 5 months ago): <a href="https://t.co/KgO27DIMKC">https://t.co/KgO27DIMKC</a></p>&mdash; CTurt (@CTurtE) <a href="https://twitter.com/CTurtE/status/848864109500260352">April 3, 2017</a></blockquote>
-				
-				<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
-				
-				<p>
-					Details of the other bugs I've found may be disclosed at some point in the future.
-				</p>
-				
-				<br>
-				
-				<h2 id="fbsd">FreeBSD kernel bugs</h2>
-				<p>
-					I've spent a lot of time auditing the FreeBSD kernel for vulnerabilities, (previously as a member of the <a href="https://hardenedbsd.org/article/shawn-webb/2016-01-26/new-member-cturt">HardenedBSD</a> team), and have proved successful in finding and patching several.
-				</p>
-				
-				<p>
-					Below is a list of the critical bugs I have reported and analysed.
-				</p>
-				
+				<h2 id="fbsd">FreeBSD kernel exploits</h2>
 				<ul>
 					<li><a href="SETFKEY.html">Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</a></li>
 					<li><a href="sendmsg.html">Analysis of CVE-2016-1887, sendmsg FreeBSD kernel heap overflow</a></li>
@@ -74,9 +45,9 @@
 				
 				<br>
 				
-				<h2 id="ps4">PS4</h2>
+				<h2 id="ps4">PS4 research</h2>
 				<p>
-					I decided to research the Sony PlayStation 4 console, using a publicly available WebKit exploit to run my own ROP chains. I used this exploit to dump the available userland modules, and after some reverse engineering of how the JIT system calls were used, I was able to gain unsigned code execution under the WebKit process. Several months later, I developed a kernel exploit for the system using the BadIRET vulnerability. I used this exploit to dump the kernel, before analysing it to help exploit a vulnerability in the kernel's dynamic linker, which I had previously found by fuzzing. I've documented my experiences in the following articles:
+					A set of articles describing the entire process of exploiting the PS4 console to gain kernel code execution just from visiting a web page with the Internet Browser.
 				</p>
 				
 				<ul>
@@ -88,75 +59,28 @@
 				
 				<br>
 				
+				<h2 id="xnu">XNU research</h2>
 				<p>
-					Projects:
+					Most recent research I've been doing has been focussed on the iOS kernel, with Luca Todesco.
 				</p>
 				
-				<ul>
-					<li><a href="https://github.com/CTurt/PS4-playground">Collection of WebKit exploit based experiments including a file browser and Linux loader</a></li>
-					<li><a href="https://github.com/CTurt/PS4-SDK">Open source PS4-SDK</a></li>
-					<li><a href="https://github.com/CTurt/PS4-Pong">Native Pong game</a></li>
-					<li><a href="cinoop.html">Port of my GameBoy emulator, Cinoop</a></li>
-				</ul>
+				<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">just got reliable kernel pc control from this new iOS 10 jailbreak chain I’ve been working on with <a href="https://twitter.com/CTurtE">@CTurtE</a> :)</p>&mdash; qwertyoruiop (@qwertyoruiopz) <a href="https://twitter.com/qwertyoruiopz/status/790755129070874624">October 25, 2016</a></blockquote>
 				
 				<br>
 				
-				<h2>Exploits and reverse engineering</h2>
-				<ul>
-					<li><a href="vertex-net.html">Reverse engineering VertexNet malware</a></li>
-					<li><a href="https://github.com/CTurt/JuSt-ROP">JavaScript framework for writing ROP chains</a></li>
-				</ul>
+				<p>
+					Amoung the bugs I've found was the fsevents double free race condition, which was also found and <a href="https://bugs.chromium.org/p/project-zero/issues/detail?id=1129&can=1&q=owner%3Aianbeer%20modified-after%3A2017%2F3%2F20">patched by Google Project Zero</a>.
+				</p>
+				
+				<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">Had a bug collision with the fsevents double free race patched today (I found it 5 months ago): <a href="https://t.co/KgO27DIMKC">https://t.co/KgO27DIMKC</a></p>&mdash; CTurt (@CTurtE) <a href="https://twitter.com/CTurtE/status/848864109500260352">April 3, 2017</a></blockquote>
+				
+				<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
 				
 				<br>
 				
-				<h2 id="ds">DS</h2>
 				<p>
-					The Nintendo DS was my first experience of programming; I've used the platform for many different projects!
+					Details of the other bugs I've found may be disclosed at some point in the future.
 				</p>
-				
-				<ul>
-					<li><a href="dsgmLib.html">dsgmLib</a></li>
-					<li><a href="ds-cfw.html">DS Custom Firmware</a></li>
-					<li><a href="DS-exploit-finding.html">DS exploit finding tutorial</a></li>
-				</ul>
-				
-				<br>
-				
-				<h3>DARA</h3>
-				<p>
-					Buffer overflow exploits in DS games are ridiculously common. Did you know that <a href="https://github.com/CTurt/DARA">every single FIFA game on the DS can be used to run unsigned code</a>?
-				</p>
-				
-				<div class="center">
-					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/eJLrJVGuvuc" frameborder="0" allowfullscreen></iframe>
-				</div>
-				
-				<p>
-					While checking the FIFA games for buffer overflows, I also came across numerous other bugs, including format string vulnerabilities (however they are not exploitable since the official Nitro SDK doesn't appear to support the "%n" format).
-				</p>
-				
-				<br>
-				
-				<h3>IQ overflow</h3>
-				<p>
-					Just a funny vulnerability I found in the game EA Sports Football Academy DS.
-				</p>
-				
-				<div class="center">
-					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/5qTqz9VADXA" frameborder="0" allowfullscreen></iframe>
-				</div>
-				
-				<br>
-				
-				<h2>3DS</h2>
-				<p>
-					I've also tried programming for the 3DS. It would be much easier to program for (more RAM, faster processors, less limited video modes), but since it is much newer than the DS, there is not nearly as much documentation or examples available yet.
-				</p>
-				
-				<ul>
-					<li><a href="3ds-controller.html">3DS Controller</a></li>
-					<li>3DS port of my Game Boy emulator, <a href="cinoop.html">Cinoop</a></li>
-				</ul>
 				
 				<br>
 				
@@ -164,16 +88,7 @@
 				
 				<ul>
 					<li><a href="cinoop.html">Writing a Game Boy emulator</a></li>
-					<li><a href="compression.html">Compression</a></li>
-					<li><a href="exceptions.html">Implementing exceptions in C</a></li>
-					<li><a href="nes.html">Making an NES game</a></li>
 				</ul>
-				
-				<br>
-				
-				<p>
-					Most articles written with <a href="RMD">RMD</a>.
-				</p>
 			</div>
 		</div>
 	</body>
