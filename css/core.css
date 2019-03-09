@@ -39,6 +39,9 @@ p {
 	margin-bottom: 16px;
 	padding: 0;
 }
+th {
+	text-align: left;
+}
 pre {
 	overflow-x: auto;
 	
