@@ -208,7 +208,7 @@
 
 <ul>
 	<li>Lack of spacing - it would look much nicer if there were spaces after commas. I found no way to configure the syntax, but since it's open source I expect this to be addressed at some point.</li>
-	<li>Redundant <code class="language-c">return</code> statement at the end of the function; probably due to the return instruction being <code class="language-c">bx r0</code>.</li>
+	<li>Redundant <code class="language-c">return</code> statement at the end of the function.</li>
 	<li>Since the IO section is mapped as <code class="language-c">volatile</code>, the decompiler wraps all loads and stores it detects to this region with <code class="language-c">read/write_volatile_x</code> functions. I find this slightly less readable, but I suppose it's useful to have these operations marked more explicitly than non-volatile read/writes.</li>
 </ul>
 
@@ -1686,7 +1686,7 @@ void loadCurrentStageData(void) {
 </p>
 
 <p>
-	Ghidra frequently messed up disassembly by not recognising all functions, and getting confused between ARM and Thumb mode, even though the whole program is Thumb. The UI also leaves a lot to be desired; scrolling is completely broken, selecting variables/registers doesn't highlight other uses of it, assembly output is cluttered as it displays multiple lines per instruction whenever there are any xrefs, etc. This is largely irrelevant though as no one is excited about Ghidra just to use its disassembler; all of the hype is around its decompiler, which is very promising aside from a few quirks I encountered like weird loop choices, and getting confused when a function with no return value uses <code class="language-c">R0</code> as its return address register (decompiler produces a redundant <code class="language-c">return</code> statement).
+	Ghidra frequently messed up disassembly by not recognising all functions, and getting confused between ARM and Thumb mode, even though the whole program is Thumb. The UI also leaves a lot to be desired; scrolling is completely broken, selecting variables/registers doesn't highlight other uses of it, assembly output is cluttered as it displays multiple lines per instruction whenever there are any xrefs, etc. This is largely irrelevant though as no one is excited about Ghidra just to use its disassembler; all of the hype is around its decompiler, which is very promising aside from a few quirks I encountered.
 </p>
 
 <p>
