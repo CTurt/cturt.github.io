@@ -38,6 +38,7 @@
 					<li><a href="SETFKEY.html">Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</a></li>
 					<li><a href="sendmsg.html">Analysis of CVE-2016-1887, sendmsg FreeBSD kernel heap overflow</a></li>
 					<li><a href="compat-info-leaks.html">Analysis of stack disclosure vulnerabilities in FreeBSD compatibility layers</a></li>
+					<li><a href="https://github.com/freebsd/freebsd/commit/6dc902485b5c8f8571858c9b7ac8de3beb3ea15d#diff-db8939642b9a00f58994fda878dbe744">Fix off-by-one (page) errors in checks in d_mmap methods of several drivers</a>, and <a href="https://github.com/freebsd/freebsd/commit/61e5f27315e23354bcbd65290d83199314daad63#diff-93daf4e85743ba2d6fdbb11505df9e95L264">a lot of drivers were also vulnerable because they didn't check for negative offsets</a> (this probably should have gotten a CVE for privilege escalation as at least some of the affected drivers were user readable like adlink_mmap)</li>
 				</ul>
 				
 				<br>
@@ -63,7 +64,6 @@
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=209078#c0">Minor bugs in vidcontrol</a> - <a href="https://svnweb.freebsd.org/base?view=revision&amp;revision=308312">Accepted patch</a></li>
 					<li><a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=206678#c0">OGIO_KEYMAP command does not restore priority level</a> - <a href="https://svnweb.freebsd.org/base?view=revision&amp;revision=311650">Accepted patch</a></li>
 					<li><a href="https://github.com/freebsd/freebsd/commit/7c3158894ace3c0867a2de3791ad680ef50e71d3">Nandsim device driver race condition bugs</a></li>
-					<li><a href="https://github.com/freebsd/freebsd/commit/6dc902485b5c8f8571858c9b7ac8de3beb3ea15d#diff-db8939642b9a00f58994fda878dbe744">Fix off-by-one (page) errors in checks in d_mmap methods of several drivers</a></li>
 				</ul>
 				
 				<br>
