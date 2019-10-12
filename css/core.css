@@ -19,7 +19,7 @@ body {
 	font-family: Arial, sans-serif;
 	color: rgb(51, 51, 51);
 }
-h1, h2, h3 {
+h1, h2, h3, h4 {
 	margin-top: 0;
 	margin-bottom: 16px;
 	padding: 0;
@@ -32,6 +32,7 @@ h1, h2, h3 {
 h1 { font-size: 38px; }
 h2 { font-size: 26px; }
 h3 { font-size: 20px; }
+h4 { font-size: 16px; }
 p {
 	margin-left: 0;
 	margin-right: 0;
