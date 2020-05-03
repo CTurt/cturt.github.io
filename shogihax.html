@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="css/core.css" />
+    <link rel="stylesheet" type="text/css" href="css/prism.css" />
+    <title>shogihax - Remote Code Execution on Nintendo 64 through Morita Shogi 64</title>
+  </head>
+  
+  <body>
+    <div class="page">
+      <div class="container">
+        <div class="header">
+          <a href="contact.html" class="header-element">
+            Contact
+          </a>
+          
+          <a href="about.html" class="header-element">
+            About
+          </a>
+          
+          <a href="articles.html" class="header-element">
+            Articles
+          </a>
+          
+          <a href="index.html" class="header-element">
+            Home
+          </a>
+        </div>
+
+<h1>shogihax - Remote Code Execution on Nintendo 64 through Morita Shogi 64</h1>
+<hr>
+
+<div class="center">
+  <iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/9VyoLYnWx7o" frameborder="0" allowfullscreen></iframe>
+</div>
+
+<h2>Introduction</h2>
+<p>
+  I've been wanting to develop Nintendo 64 homebrew for a while, but have been put off due to the limited options available for testing on the hardware.
+</p>
+
+<p>
+  Instead of shelling out money for a flashcard (which have inflated prices since they are marketed for pirating games), I decided to invest some time systematically going through other potential methods of running arbitrary code.
+</p>
+
+<p>
+  I eventually stumbled upon Morita Shogi 64, the only official N64 game to include a modem built-into the cartridge to support its unique online-play functionality. The ability to easily transfer arbitrary data to the game through this interface made it an attractive target to analyse. Note that Nintendo also produced a stand-alone modem cartridge which allows the 2 supported N64DD games to connect to the internet (Randnet and Mario Artist: Communication Kit), but since the N64DD was cancelled after only 10 games were released for it in Japan it's very rare and expensive, making it a less convenient choice than Morita Shogi 64.
+</p>
+
+<p>
+  In this article I will describe how I exploited the game for arbitrary remote code execution, ultimately creating a solution for developing and testing small programs on the console that under my criteria is preferable to the other options.
+</p>
+
+<p>
+  Much like in <a href="ps2-yabasic.html">my last post</a>, where I developed the first PS2 exploit that could be triggered using only hardware that came with the original console release (in PAL regions), I compromise on a lot of other criteria such as transfer speed that makes this solution impractical to many; to those people, I hope this article is still interesting for the novelty value at least, and I'm sure we can all agree that it's more convenient to use than the only other 2 public N64 arbitrary code execution exploits that don't require unofficial hardware: the one developed against the game <a href="https://www.youtube.com/watch?v=RoEmGCNsbno">The Legend of Zelda: Ocarina of Time</a>, which is triggered entirely from controller input, and the one for <a href="https://github.com/MrCheeze/pokestadium-ace">Pokemon Stadium</a>, which is triggered through the Game Boy save import feature. Unlike my PS2 exploit, which was for PAL regions only, this one is for NTSC regions only, so hopefully this balances things out.
+</p>
+
+<br>
+
+<h2>GameShark</h2>
+<p>
+  Since the modem hardware isn't supported by the Project 64 Nintendo 64 emulator, I had to perform all of my testing on the real hardware. Rather than trying to exploit the game using only static analysis, I made use of a GameShark early on to provide some dynamic feedback.
+</p>
+
+<p>
+  There exist specific models of Action Replay/GameShark cheating devices which expose read/write functionality over a parallel port on the back of the cartridge. Unfortunately, these are difficult to find since they were only produced for a brief period, before the functional parallel ports were replaced with non-functional dummy ports, making it impossible to identify them without <a href="https://sites.google.com/site/sm64gameshark/resources/transfering-codes-over-usb">opening up the cartridge</a>. Even if you can find one of these, you'll also either need an old PC with a parallel port to connect to, or a very specific and no longer stocked parallel port to USB adapter containing a MosChip MCS7705 controller in order to get it working with a modern computer.
+</p>
+
+<p>
+  <a href="http://ppcasm.blogspot.com/">ppcasm</a> sent me one of these for experimentation, but it ended up being pretty painful to use due to unreliability (even after fixing a <a href="https://github.com/hcs64/gs_libusb/issues/3">couple</a> of <a href="https://github.com/hcs64/gs_libusb/issues/4">bugs</a>) and low throughput (single digit bytes-per-second transfers). I used this for a while, before it eventually broke, as they are notorious for. Regardless, I had some basic way of partially debugging Morita Shogi 64 on the hardware for a while, which was invaluable.
+</p>
+
+<p>
+  Being able to write to RAM allows you to <a href="https://github.com/hcs64/gs_libusb">run homebrew</a> programs, and being able to read RAM provides the ability to monitor execution. Whilst it should be technically possible to extend this to create a full execution-stepping debugger with read/write/execute breakpoints and a crash handler, this was out of scope of this project, so I relied only on the basic read/write functionality.
+</p>
+
+<p>
+  Note that these also require the expansion pak, an add-on which doubles the N64's RAM from 4MB to 8MB! This makes the N64 a really fun system to mod/debug since you have your own exclusive area of RAM which is essentially guaranteed not to be used by the game you're debugging.
+</p>
+
+<br>
+
+<h2>Save data exploits</h2>
+<p>
+  Many games, including Morita Shogi 64, use on-cartridge chips as a method of storage that persists across power cycles to save in-game progress (or alternatively the controller pak attached to the controller). Another avenue I had considered early on was exploiting the game over its loading of this cartridge save data.
+</p>
+
+<p>
+  Finding a vulnerability in a game's handling of save data is relatively trivial. Most games only consider this storage accessible to the game and so make little to no effort to validate contents other than a checksum. Even games which do attempt to validate contents often do so inconsistently due to the limited security experience during this era. Nintendo clearly didn't attempt to check for these vulnerabilities during quality assurance testing, and so it could almost be considered a by-design attack vector that if you can modify the contents of a game's save data that you can run your own code.
+</p>
+
+<p>
+  For example, Super Mario 64 is fully decompiled so I took a quick look and was able to find <a href="https://github.com/n64decomp/sm64/blob/9273f38df135273d905ac14e7a090ebac4ba3ae9/src/menu/file_select.c#L822">a write to an out of bounds pointer</a> if <code>sSoundMode</code> (offset <code>0x1d1</code>, 1 byte) is too large, which can be triggered by pressing the sound option box on the file select screen. That can be used to NOP out some code in the title screen renderer, but I gave up trying to exploit that - maybe someone reading will be interested in the challenge... if you could do it, you could potentially make a payload that patches Mario's colour to green to 'unlock Luigi' on a real cartridge, a feat people have been attempting since its release in 1996!
+</p>
+
+<p>
+  However, the limitations of this approach are clear: modifying save data requires unofficial hardware (<a href="https://github.com/sanni/cartreader/blob/a6e2613379f5c996612a90f8514ad19af5092af7/Cart_Reader/N64.ino#L1480">like this open source Arduino project provided by Sanni</a>), and the size of the save data is severely limiting (on-cartridge storage chips range from 512-byte EEPROM chips to 128KB FlashRAM, and controller paks are 32KB). The payload for a save data exploit would need to fetch more data, possibly over the transfer pak (which allows the N64 to access Game Boy cartridges through the controller), or through the modem in the case of Morita Shogi 64 (but if the game has a modem anyway, why not just exploit that?).
+</p>
+
+<br>
+
+<h2>Morita Shogi 64 save game exploit</h2>
+<p>
+  In this case, the game has <code>512</code> bytes of EEPROM storage, which is used to save the configured phone number and login details. I first decided to take a quick look at how the game reads this data, so that I'd at least know that the game can be exploited that way before purchasing it.
+</p>
+
+<p>
+  After some quick reverse engineering, I located the checksum function at <code>0x8000eaa0</code>, and built <a href="https://gist.github.com/CTurt/2344065fed820a19356dd3fa3cdb82d9">a quick program</a> to allow me to modify a save and correct the checksum so it would be accepted by the game.
+</p>
+
+<p>
+  With the ability to correct the checksum, I extended the phone number string, and sure enough triggered a stack buffer overflow by navigating to the phone number input menu.
+</p>
+
+<img src="images/N64/ra.png" />
+
+<br>
+
+<p>
+  This save data exploit can be triggered more quickly than the pure-modem exploit, so it could be a nice way to 'install' the exploit more permanently.
+</p>
+
+<br>
+
+<h2>Reversing the packet handling</h2>
+<p>
+  Okay, you didn't come here to read about a save game exploit, so I'll move onto the more interesting target, handling of controllable packet data over the built-in modem.
+</p>
+
+<p>
+  Firstly, we'll need a system to actually send and receive controlled data to the N64 over the modem. If you're comfortable modding a USB modem to simulate the line voltage (as has been documented on other retro modem communities like <a href="http://blog.kazade.co.uk/p/dreampi.html">DreamPi</a>), that's the most practical solution to use. Alternatively, you could just connect the N64 to your phone socket as normal and communicate over your phone; since the exploit is deterministic, you could just encode the data as an audio file and play it through the microphone without requiring any custom software. ppcasm talks more about these methods on his blog.
+</p>
+
+<p>
+  With that setup, let's get into the reversing! Like many N64 games, Morita Shogi 64 is utilising compression, so to reverse the code for the online mode, we'll select it from the menu and then take a RAM dump from the emulator.
+</p>
+
+<br>
+
+<h3>Debug prints</h3>
+<p>
+  The first thing that becomes apparent when firing up that RAM dump in Ghidra is the fact that the game left in a bunch of debug printing calls. You can search for strings like "packet", and locate all of the networking code fairly easily.
+</p>
+
+<p>
+  More interestingly, we can actually access the output of these print calls on real hardware using the aforementioned GameShark parallel port functionality.
+</p>
+
+<p>
+  By hooking the <code>gamePrint</code> function (<code>0x800029d0</code>):
+</p>
+
+<pre><code class="language-c">/*
+
+  la $v0, 0x80410000
+  jr $v0
+  nop
+
+*/
+
+unsigned char gamePrintHook[] = {0x3c, 0x02, 0x80, 0x41, 0x00, 0x40, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00};
+
+WriteRAM(g, gamePrintHook, 0x800029d0, sizeof(gamePrintHook));
+WriteRAM(g, gamePrintHook, 0xA00029d0, sizeof(gamePrintHook));</code></pre>
+
+<br>
+
+<p>
+  And inserting some code to save the passed arguments to unused expansion RAM:
+</p>
+
+<pre><code class="language-c">/*
+
+  lw $v1, -4($v0)
+  sw $a0, 0($v1)
+  sw $a1, 4($v1)
+  sw $a2, 8($v1)
+  addiu $v1, $v1, 12
+  sw $v1, -4($v0)
+
+  jr $ra
+  nop
+
+*/
+
+unsigned char printer[] = {0x8c, 0x43, 0xff, 0xfc, 0xac, 0x64, 0x00, 0x00, 0xac, 0x65, 0x00, 0x04, 0xac, 0x66, 0x00, 0x08, 0x24, 0x63, 0x00, 0x0c, 0x03, 0xe0, 0x00, 0x08, 0xac, 0x43, 0xff, 0xfc, 0x00, 0x00, 0x00, 0x00};
+
+
+WriteRAM(g, printer, 0x80410000, sizeof(printer));
+WriteRAM(g, printer, 0xA0410000, sizeof(printer));
+
+unsigned char start[] = {0x80, 0x41, 0x00, sizeof(printer)};
+
+WriteRAM(g, start, 0x80410000 - 4, 4);</code></pre>
+
+<br>
+
+<p>
+  We can pause the game at an arbitrary point and retrieve a list of all debug prints executed since our last observation:
+</p>
+
+<pre><code class="language-c">printf("Hooked gamePrint, enter to dump\n");
+
+Disconnect(g);
+
+while(1) {
+  getchar();
+
+  if (!InitGSCommsNoisy(g, RETRIES, 1)) {
+    printf("Init failed\n");
+     do_clear(g);
+     return 1;
+  }
+  
+  printf("Connected, dumping\n");
+  
+  unsigned char end[4];
+  ReadRAM(g, end, 0x80410000 - 4, 4);
+  
+  unsigned int endI = (end[0] << 24) | (end[1] << 16) | (end[2] << 8) | (end[3]);
+  unsigned int prints = (endI - (0x80410000 + sizeof(printer))) / 12; 
+  
+  printf("%d prints made\n", prints);
+  
+  int i = 0;
+    
+  for(; i < prints; i++) {
+    printf("%d / %d:\n", i, prints);    
+
+    unsigned char r0[4] = {};
+    ReadRAM(g, r0, 0x80410000 + sizeof(printer) + i * 12 + 1, 3);
+    unsigned int r0n = (0x80 << 24) | (r0[0] << 16) | (r0[1] << 8) | (r0[2]);
+    char *s = readString(g, r0n);
+
+    printf("r0: %08x - %s\n", r0n, s);
+    
+    int ps = 1;
+    for(int p = 0; p < strlen(s) && ps < 3; p++) {
+      if(s[p] == '%') {
+        unsigned char r[4] = {};
+        ReadRAM(g, r, 0x80410000 + sizeof(printer) + i * 12 + ps * 4, 4);
+        unsigned int rn = (r[0] << 24) | (r[1] << 16) | (r[2] << 8) | (r[3]);
+
+        if(s[p + 1] == 's') {
+          printf("r%d: %08x - %s\n", ps, rn, readString(g, rn));
+        }
+        else printf("r%d: %08x\n", ps, rn);
+        
+        ps++;
+      }
+    }
+    
+    printf("\n");
+  }
+
+  WriteRAM(g, start, 0x80410000 - 4, 4);
+
+  Disconnect(g);
+}
+</code></pre>
+
+<br>
+
+<p>
+  I later sped this up by caching strings on the PC, and modifying the hook to ignore a bunch of high frequency, noisy, prints:
+</p>
+
+<pre><code class="language-c">// avoid noisy prints
+unsigned char printer[] = {0x80, 0x83, 0x00, 0x00, 0x24, 0x0c, 0x00, 0x80, 0x01, 0x82, 0x08, 0x2a, 0x14, 0x20, 0x00, 0x36, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xf3, 0xf8, 0x10, 0x83, 0x00, 0x33, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xee, 0x9c, 0x10, 0x83, 0x00, 0x30, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xdf, 0x40, 0x10, 0x83, 0x00, 0x2d, 0x3c, 0x03, 0x80, 0x04, 0x34, 0x63, 0x1d, 0xec, 0x10, 0x83, 0x00, 0x2a, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xc8, 0xf0, 0x10, 0x83, 0x00, 0x27, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xcf, 0xa0, 0x10, 0x83, 0x00, 0x24, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xcf, 0xb4, 0x10, 0x83, 0x00, 0x21, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xd0, 0x38, 0x10, 0x83, 0x00, 0x1e, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xcc, 0xc4, 0x10, 0x83, 0x00, 0x1b, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xd0, 0x84, 0x10, 0x83, 0x00, 0x18, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xd0, 0xb8, 0x10, 0x83, 0x00, 0x15, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xde, 0x98, 0x10, 0x83, 0x00, 0x12, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xde, 0x3c, 0x10, 0x83, 0x00, 0x0f, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xdf, 0x34, 0x10, 0x83, 0x00, 0x0c, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xd0, 0xd4, 0x10, 0x83, 0x00, 0x09, 0x3c, 0x03, 0x80, 0x0c, 0x34, 0x63, 0xd1, 0x04, 0x10, 0x83, 0x00, 0x06, 0x8c, 0x43, 0xff, 0xfc, 0xac, 0x64, 0x00, 0x00, 0xac, 0x65, 0x00, 0x04, 0xac, 0x66, 0x00, 0x08, 0x24, 0x63, 0x00, 0x0c, 0xac, 0x43, 0xff, 0xfc, 0x03, 0xe0, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00};</code></pre>
+
+<br>
+
+<p>
+  With this setup, I was able to observe helpful error messages such as <code>"HEADER: Invalid CRC. %d\n"</code>, <code>"HEADER: Invalid seq. number.\n"</code>, and others.
+</p>
+
+<br>
+
+<h3>Packet handling overview</h3>
+<p>
+  The debug strings made it fairly simple to reverse engineer how to establish a connection and begin sending valid packets to the game.
+</p>
+
+<p>
+  When you click the menu item to enter online mode, it transfers control to the looping function, <code>online</code> (<code>0x800ab998</code>).
+</p>
+
+<p>
+  This function calls <code>connectPackets</code> (<code>0x800bbb1c</code>) which handles all the connection and initial packet handling of top-level commands. There's not too much interesting stuff during the initial connection handling, it just expects some magic data to ensure that it's talking to an intended server. If you send invalid data during the connection phase it will tell you how to correct it by printing <code>"modem receive char %02x, expect char %02x\n"</code>.
+</p>
+
+<p>
+  Once connection has been established, the <code>online</code> function then goes on to actually handle top-level packets (a 10-byte header followed by data). Every few milliseconds when the game loops around to calling this function, it will take all received data and try to construct a packet (a 10-byte header followed by data). Since we're only able to send a certain amount of data during this time interval, our packet sizes are restricted to around 80 - 100 bytes.
+</p>
+
+<p>
+  Building upon those raw packets, the game implements a system to construct larger, multi-packet, messages, and then starts passing them to <code>handleSubCommandPacket</code> (<code>0x800aea40</code>).
+</p>
+
+<br>
+
+<h3>Top-level commands</h3>
+<p>
+  Top-level commands operate on single packets, and are the first commands I started reversing. There are 11 of these commands, and due to the debug prints, we have the official names for most of them, which are:
+</p>
+
+<pre><code>1 = ?
+2 = NS_ACK
+3 = NS_RETRY
+4 = NS_ABORT
+5 = NS_CONNECT
+6 = NS_DISCONNECT
+7 = ?
+8 = NS_LOGINOK
+9 = ?
+10 = NS_LOGINFAIL
+11 = ?</code></pre>
+
+<br>
+
+<p>
+  Once we're established a connection, we need to send an <code>NS_CONNECT</code>, and an <code>NS_LOGINOK</code> packet to enable access to packet type 7, which is the main packet type and will be discussed later. There are a few interesting things with these top level commands before moving on.
+</p>
+
+<br>
+
+<h4>NS_CONNECT</h4>
+<p>
+  This top-level command takes two <code>unsigned short</code>s from the packet and computes a heap allocation size. This is vulnerable to integer overflow which leads to heap buffer overflow. Great! The very first command we send has a vulnerability.
+</p>
+
+<p>
+  It passes those sizes to <code>0x800bb18c</code>, which is allocating space for future packet structures:
+<p>
+
+<pre><code class="language-c">  alloc = allocateMemory(PTR_LOOP_80056ea4, totalPacketSize * packetCount * 2);
+  if (alloc == (uint *)0x0) {
+    packetAlloc = alloc;
+    return 0xffffffffffffffff;
+  }</code></pre>
+
+<br>
+
+<p>
+  In the end, I didn't play with this vulnerability too much, but I believe it's probably exploitable.
+</p>
+
+<br>
+
+<h4>NS_DISCONNECT</h4>
+<p>
+  The disconnect command basically just accepts a string from the packet and copies it to a statically reserved 256-byte buffer (<code>&disconnectString = 0x800d39a0</code>):
+</p>
+
+<pre><code class="language-c">                        case 6:
+                          disconnectReason = *(undefined4 *)(packetData + 10);
+                          sequenceNumberAnticipating = uVar7;
+                          copyString((byte *)disconnectString,packetData + 0xe);
+                          gamePrint(s_HEADER:_DISCONNECT:_%d(%s)_800cf2f8,disconnectReason,
+                                    disconnectString);
+                          gamePrint(&DAT_800cf314);
+                          disableNetworking();
+                          resetPacketVariables();
+                          connectionState1 = 0xf;
+                          DAT_800cac08 = 5;
+                          return;</code></pre>
+
+<br>
+
+<p>
+  There's no bounds checking on the <code>copyString</code> call, so we could potentially overflow the <code>disconnectString</code>. Unfortunately, since this is a top-level command, we can't send very large packets, and so this doesn't turn out to be very useful. We can also trigger a crash by sending an unterminated string, but don't think that's easily exploitable either.
+</p>
+
+<br>
+
+<h3>Multi-packets</h3>
+<p>
+  Whilst we've already found some interesting bugs, let's dig deeper into the code. After connecting and logging in, we can start sending the top-level command number 7; this command is used to send higher level commands which can operate on larger, multi-packet, messages.
+</p>
+
+<p>
+  The logic for reconstructing multi-packets is in <code>handleMultiPackets</code> (<code>0x800bae08</code>). Byte 1 of each packet is a flags bitmap which recognises the following:
+</p>
+
+<pre><code>1 - start
+2 - end
+4 - multi
+128 - ack</code></pre>
+
+<br>
+
+<p>
+  A single packet can be sent and processed immediately by using flag <code>0</code>, but to send larger messages (of up to <code>0x1000</code> bytes), it needs to be split up into multiple packets and then reconstructed by this function. The first packet will have flag <code>5</code> (<code>multi | start</code>), the middle packets will have flag <code>4</code> (<code>multi</code>), and the final packet will have flag <code>6</code> (<code>multi | end</code>).
+</p>
+
+<p>
+  One thing that will be useful later is that by delaying the final packet, we can construct a large area of controlled packet memory and leave it there for an arbitrary length of time, before finally triggering processing of the message by sending the final packet.
+</p>
+
+<br>
+
+<h3>Commands and subcommands</h3>
+<p>
+  Top-level command 7 (I'm calling it <code>NS_COMMAND</code>), allows us to send the following subcommands:
+</p>
+
+<pre><code>MN, LS, ME, ED, IF, GS, GM, ML, BB, DL, FC, DC</code></pre>
+
+<br>
+
+<p>
+  We're getting pretty deep into the game now - for example, I sent a <code>GS</code> command and it actually started an online game match for the first time in 20 years:
+</p>
+
+<pre><code>modem.subcommand('GS', 0x000e, '\x00\x00\x00\x09', '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')</code></pre>
+
+<br>
+
+<p>
+  Calling most of these commands with invalid data will crash. Since these commands branch off quite far, I didn't fully analyse all of these crashes; there were a few <code>NULL</code> dereferences, but I guess some of the others might be exploitable.
+</p>
+
+<p>
+  There's also reference in the code to a <code>DG</code> (debug) command, which allows you to read and write out of bounds, but unfortunately this command is not enabled (its code is still present at <code>0x800b4354</code>, but they zeroed its entry in the array of valid command names at <code>0x800ca3d0</code>).
+</p>
+
+<br>
+
+<h3>Command IF</h3>
+<p>
+  The IF command (<code>0x800b3e94</code>) is the simplest command, it basically takes two strings, and opens a dialog box on screen, much like the <code>NS_DISCONNECT</code> top-level command. Unlike the <code>NS_DISCONNECT</code> overflow however, this is a command handled through <code>NS_COMMAND</code> and so can take a large controlled packet. It also copies to stack destinations, giving us stack buffer overflows instead of static array overflows.
+</p>
+
+<p>
+  The relevant parts of the function look like this:
+</p>
+
+<pre><code class="language-c">void *commandIF(char *packet) {
+  char final[256];
+  char otherString[100];
+  char target[108];
+  char *packetPtr;
+  
+  packetPtr = packet;
+  
+  ...
+
+    copyAdvanceString(&packetPtr, target);
+    copyAdvanceString(&packetPtr, otherString);
+    
+    final[0] = 0;
+    strcat(final, &start);
+    strcat(final, otherString);
+    strcat(final, &mid);
+    strcat(final, target);
+    strcat(final, &end);
+
+    openDialog(final, 1);
+    
+  ...
+}</code></pre>
+
+<br>
+
+<p>
+  <code>copyAdvanceString</code> calls <code>copyString</code> and then advances the source pointer by the length copied. The <code>copyString</code> function is similar to <code>strcpy</code>, but has special handling for a custom Japanese character encoding that maps input characters above <code>0x80</code> to multi-byte character outputs. This limits our ability to craft fully arbitrary addresses.
+</p>
+
+<br>
+
+<h2>Exploitation</h2>
+<h3>Initial setup</h3>
+<p>
+  Since we're testing on real hardware and can't observe how the game crashes with our primitive GameShark debugger setup, we need a very simple payload which can verify control flow redirection. The simplest thing I came up with was calling <code>disableNetworking</code> (<code>0x8001da9c</code>), which turns off the red light on top of the cartridge.
+</p>
+
+<p>
+  In addition, we can use the GameShark's arbitrary write to place this payload at a character encodable address like <code>0x80313130</code>, so that we don't need to deal with the character conversion behaviour of <code>copyString</code> initially.
+</p>
+
+<br>
+
+<h3>Overflow</h3>
+<p>
+  Exploitation of the IF command seems straightforward, we can overflow the <code>target</code> string on the first copy by specifying a large first string, eventually corrupting a return address on the stack. Then when the function returns it will redirect control flow to our corrupted address.
+</p>
+
+<p>
+  Overflowing that much data will also corrupt <code>packetPtr</code>, which is used as the source pointer for the next copy, before returning to our corrupted address, so in order to not crash on the second copy we'll need to make sure to write a valid address that points to an empty string there.
+</p>
+
+<p>
+  With all of that in mind, I tried the following:
+</p>
+
+<pre><code>packetPtr = '\x80\x05\x0d\x01'
+returnAddress = '\x80\x31\x31\x30'
+modem.subcommand('IF', 0x000e, '\x00\x00\x00\x09', 'A' * 108 + packetPtr + 'C' * 0x24 + returnAddress + '\x00' + 'B' + '\x00')</code></pre>
+
+<br>
+
+<p>
+  And... It didn't work. I was stumped for a while on this, before I decided to try using a GameShark code to <code>NOP</code>-out the call to <code>openDialog</code> so that we would directly return after performing the second copy (<code>a10b3fb4 0000, a10b3fb6 0000</code>), which worked! It turns out that there's additional special handling in <code>openDialog</code> which crashes the game if we try to display invalid characters (such as <code>0x80</code>), further limiting the type of corruption we can perform with the overflow.
+</p>
+
+<br>
+
+<h3>Removing the GameShark</h3>
+<p>
+  At this stage we've demonstrated using the vulnerability to redirect control flow, but we rely on the GameShark for a couple of things: placing our payload at a nicely encodable address, and removing the limitation on using invalid characters.
+</p>
+
+<p>
+  The two limitations are intrinsically linked, and could be carefully worked around together by ensuring we only use valid characters, and padding the payload where possible to help achieve this. For example, instead of using input character <code>0x80</code> which maps to the invalid output character <code>0x80</code>, we could use input character <code>0xef 0x1f</code>, which maps to valid output character <code>0xfd 0x80</code>. That works fine if we want the first byte to be <code>0x80</code> and don't care about corrupting the previous byte to <code>0xfd</code>, but it could be a problem if we needed say the final byte to be <code>0x80</code> instead (in that case it would make more sense to just pad the start of the payload by <code>0x84</code> bytes so that the final byte was <code>0x04</code>).
+</p>
+
+<p>
+  However, thankfully there's a much more elegant solution we can use to eliminate the second requirement. If we trigger a second stack buffer overflow during the copy into <code>otherString</code>, we can overflow into <code>target</code> and rewrite the string so that it doesn't contain any invalid characters before it is displayed (even just immediately terminating it to produce an empty string). Note that at this point we're no longer necessarily copying from the packet, since we have corrupted <code>packetPtr</code>, we just need to redirect <code>packetPtr</code> to any string in memory that's larger than <code>100</code> bytes and consists of only valid characters. There are plenty of suitable strings.
+</p>
+
+<p>
+  The <code>final</code> string constructed after the double stack buffer overflow will just be <code>start + 'x' * 100 + mid + '' + end</code>, which won't cause any crash in <code>openDialog</code>, and will let us successfully return to our corrupted return address.
+</p>
+
+<p>
+  Now that we don't need to worry about encoding invalid characters, we can use the GameShark's memory search cheat feature to find which areas of memory our packet data resides in. Our fully constructed message is at <code>0x801bd91c</code>, which is difficult to use since that address contains character <code>0xd9</code>, but some of the individual packets (including their headers) are still in memory and are located at an easily encodable address region to corrupt the return address to (around <code>0x800a7500</code>). Since we control <code>80</code> bytes of data, that's easily enough to place a 'stage 1' payload which flushes to instruction cache the full contiguous, message at <code>0x801bd91c</code> ('stage 2') and then jumps to it.
+</p>
+
+<br>
+
+<h2>Cache coherency</h2>
+<p>
+  All you need to know is that there are 2 virtual address mappings to access memory on the N64, from <code>0x80000000</code> is the cached region, and from <code>0xa0000000</code> is the uncached region. Depending on whether you read/write or execute from the cached region, the system will use either the data cache, or instruction cache, respectively.
+</p>
+
+<p>
+  A write to <code>0x80000000</code> will just write to the data cache, but may not immediately commit it to RAM, and so reading <code>0xa0000000</code> might give you a stale value. If you then jump to <code>0x80000000</code>, you'll execute from the instruction cache, which may not have the latest data from RAM. We need to ensure that when we redirect control flow to our payload, that we are actually executing our payload and not stale data.
+</p>
+
+<p>
+  Our payloads are written to the cached virtual address mapping and so we can only guarantee that it resides in the data cache. However, remembering that the vulnerability is only triggered when we submit the final packet which has the end flag set in its header, we can upload all of the data for our IF command packet, including the stage 1 and 2 payloads, and leave them in memory for an arbitrary length of time before choosing to trigger the double stack buffer overflow. Leaving the payloads for a few seconds gives us strong confidence that they will have been committed from data cache to main memory in that time. To then ensure we don't use stale instruction cache, we redirect the return address to jump to the uncached virtual address for stage 1.
+</p>
+
+<p>
+  As mentioned before, once we're executing stage 1, there's enough space to write-back the data cache to RAM, and invalidate the instruction cache so that we can execute stage 2 utilising caching.
+</p>
+
+<br>
+
+<h2>Writing a loader</h2>
+<p>
+  At the point of jumping to stage 2, we're executing up to almost <code>0x1000</code> bytes of arbitrary code (subtract a little for the overflow data).
+</p>
+
+<p>
+  Stage 2 can use the game's existing <code>getCharFromModem</code> (<code>0x8001dd48</code>), and <code>sendModem</code> (<code>0x8001df54</code>) functions to fetch a further (stage 3) payload, without any strict size limitation. Since other threads from the game are still running, I decided to write the payload to expansion RAM to ensure that we have exclusive access and it isn't corrupted by unrelated code.
+</p>
+
+<p>
+  Once this third stage payload has been downloaded, stage 2 can disable interrupts, relocate stage 3 to the beginning of RAM, writeback the data cache to RAM and clear the instruction cache, and then execute it! We also have enough space in stage 2 to implement decompression of stage 3, which makes it much faster to download.
+</p>
+
+<p>
+  Full <a href="https://github.com/CTurt/shogihax/blob/master/payload/stage2.c">source code for stage 2</a> can be found in the repository.
+</p>
+
+<br>
+
+<h2>Stage 3</h2>
+<p>
+  Stage 3 can be an arbitrary size, so you can make whatever program you like here. There are a few gotchas from loading a raw binary rather than writing a full ELF loader to keep in mind when making a stage 3, so I'll briefly address those:
+</p>
+
+<ul>
+  <li>I jump to offset <code>0</code> of the payload as the entry point, you should write a short <code>crt0.s</code> style assembly routine at <code>.section .text.startup</code> to ensure that its at offset <code>0</code> in the output (initialise <code>SP</code> and jump to <code>main</code> at least),</li>
+  <li>I don't bother zeroing the <code>.bss</code> section so either don't rely on your global variables being initialised to <code>0</code>, or you could include the <code>.bss</code> section in your output binary and hope the compression keeps the size down,</li>
+  <li>When compiling MIPS payloads pass <a href="https://gcc.gnu.org/onlinedocs/gcc/MIPS-Options.html#index-G-2"><code>-G 0</code></a> to ensure that your payload doesn't reference <code>GP</code> which my loader doesn't initialise,</li>
+</ul>
+
+<p>
+  For the initial release, I've made a hacky proof-of-concept 'Homebrew Channel' stage 3, which demonstrates drawing to a double buffered framebuffer, and downloading/uploading data over the modem, but the possibilities here are endless... Assuming you program the PC to forward your traffic on, you have an internet connected Nintendo 64!
+</p>
+
+<br>
+
+<h2>Conclusion</h2>
+<p>
+  Morita Shogi 64 was successfully exploited to provide the first UnPaTcHaBlE ReMoEe CoDe ExEcuTiOn exploit against the Nintendo 64 console.
+</p>
+
+<p>
+  This exploit allows a user to execute homebrew software on the console much faster and more conveniently than with arbitrary code execution exploits in games without modems, like Zelda, and without having to purchase inaccessible, expensive, unreliable, and unofficial hardware like a GameShark parallel port and USB adapter, or a "flashcard".
+</p>
+
+<p>
+  Furthermore, once code execution has been achieved through this exploit, the developer has access to the unique modem functionality of the cartridge - this allows development of games which dynamically load more content than would be possible on a normal cartridge, or even implementing real-time online multiplayer functionality (which could perhaps be added to Super Mario 64 using <a href="https://github.com/n64decomp/sm64">the public decompilation</a>).
+</p>
+
+<hr>
+
+<p>
+  With thanks to ppcasm.
+</p>
+
+      </div>
+    </div>
+
+    <script src="js/prism.js" type="text/javascript"></script>
+  </body>
+</html>
