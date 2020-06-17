@@ -33,12 +33,14 @@ h1 { font-size: 38px; }
 h2 { font-size: 26px; }
 h3 { font-size: 20px; }
 h4 { font-size: 16px; }
+.date { float: right; font-style: italic; position: relative; top: -20px; font-size: 16px; }
 p {
 	margin-left: 0;
 	margin-right: 0;
 	margin-top: 0;
 	margin-bottom: 16px;
 	padding: 0;
+	font-size: 16px;
 }
 th {
 	text-align: left;
