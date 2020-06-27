@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
+		<title>FreeDVDBoot - Hacking the PlayStation 2 through its DVD player</title>
+	</head>
+	
+	<body>
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="contact.html" class="header-element">
+						Contact
+					</a>
+					
+					<a href="about.html" class="header-element">
+						About
+					</a>
+					
+					<a href="articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="index.html" class="header-element">
+						Home
+					</a>
+				</div>
+
+<h1>FreeDVDBoot - Hacking the PlayStation 2 through its DVD player</h1>
+<span class="date">Initial publication: June 27, 2020</span>
+<hr>
+
+<p>
+	I've <a href="ps2-yabasic.html">previously discussed</a> how the PlayStation 2 doesn't have any good entry-point software exploits for launching homebrew. You need to either purchase a memory card with an exploit pre-installed, open up the console to block the disc tray sensors, or install a modchip. For the best selling console of all time, it deserves better hacks.
+</p>
+
+<p>
+	My initial attempt to solve this problem was to <a href="ps2-yabasic.html">exploit the BASIC interpreter</a> that came bundeld with early PAL region PS2s. Although I was successful at producing the first software based entry-point exploit that can be triggered using only hardware that came with the console, the attack was largely criticized due to the requirement of having to enter the payload manually through the controller or keyboard, and limitation of being PAL only. I decided to write-off that exploit as being impractical, and so the hunt continued for a better attack scenario for the PlayStation 2.
+</p>
+
+<p>
+	The PlayStation 2 has other sources of untrusted input that we could attack; games which support online multiplayer or USB storage could almost definitely be exploited. But unlike say the Nintendo 64, where we don't really have any other choice but to resort to <a href="shogihax.html">exploiting games over interfaces like modems</a>, the PlayStation 2 has one key difference: its primary input is optical media (CD / DVD discs), a format which anyone can easily burn with readily available consumer hardware. This leaves an interesting question which I've wanted to solve since I was a child:
+</p>
+
+<div class="quote">
+	Is it possible to just burn our own homebrew games and launch them on an unmodified console the same way we would launch official discs (without going through any user interaction like disc swapping or triggering a network exploit in a game)?
+</div>
+
+<br>
+
+<p>
+	Ultimately, I was successfully able to achieve my goal by exploiting the console's DVD player functionality. This blog post will describe the technical details and process of reversing and exploiting the DVD player. All of my code is <a href="https://github.com/CTurt/FreeDVDBoot">available on GitHub</a>.
+</p>
+
+<div class="center">
+	<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/ez0y-hz3VuM" frameborder="0" allowfullscreen></iframe>
+</div>
+
+<br>
+
+<h2>DVD video player attack surface</h2>
+<p>
+	Obviously we can't just burn a disc containing an ELF file and expect the PS2 to boot it; we'll need to exploit some kind of software vulnerability related to parsing of controlled data. The console supports playing burned DVD video discs, which exposes significant attack surface we could potentially exploit to achieve our goal.
+</p>
+
+<p>
+	If we think about what a DVD Video consists of there are quite a few main components, each with the potential for vulnerabilities:
+</p>
+
+<ul>
+	<li>UDF filesystem</li>
+	<li>DVD Video metadata / subtitles</li>
+	<li>Audio and video decoding</li>
+	<li>Interaction machine</li>
+</ul>
+
+<p>
+	Whilst the complete DVD Video specification is unfortunately behind a paywall, it is comprised largely of <a href="https://en.wikipedia.org/wiki/DVD-Video#Video_data">open formats like MPEG</a>, just bundled together in a proprietary container format (VOB). For the proprietary aspects there are some freely accessible unofficial references.
+</p>
+
+<p>
+	The <a href="http://dvd.sourceforge.net/dvdinfo/ifo.html">IFO</a> file format is probably the simplest format used, and is responsible for storing the metadata that links the video files together.
+</p>
+
+<p>
+	The interaction machine is what allows for interactive menus and games in DVD Videos. It has <a href="https://en.wikibooks.org/wiki/Inside_DVD-Video/Instruction_Set_Details">32 groups of instructions</a>, and is interesting because it could potentially be used to dynamically manipulate internal memory state to prime an exploit, or it could be used to create a universal DVD with a menu which allows you to select your firmware version and trigger the appropriate exploit.
+</p>
+
+<br>
+
+<h2>Setup</h2>
+<p>
+	Clearly it's not practical to do most of our testing on the real hardware since burning hundreds of test discs would be wasteful and time inefficient. We need an emulator with some debugger support, which is where we hit our first roadblock: the most popular emulator for PlayStation 2, PCSX2, <a href="https://github.com/PCSX2/pcsx2/issues/1981">does not support playing DVD Videos</a>, and no one is interested in adding support.
+</p>
+
+<p>
+	I'd like to thank krHacken for helping me out with that first roadblock. It turns out that PCSX2 does support the DVD player; it just can't load it automatically since its located in encrypted storage and PCSX2 does not support the decryption. There are public tools which can <a href="https://github.com/xfwcfw/kelftool">decrypt</a> and <a href="https://github.com/jimmikaelkael/eromdir">extract</a> the DVD player from EROM storage. It can then be repacked into an ELF for easy loading into PCSX2.
+</p>
+
+<p>
+	Due to the large number of different PlayStation 2 models released, each with slightly different DVD player firmwares (> 50...), I will focus on a single DVD player for the duration of this article: 3.10E, as it happens to be the firmware for the console I own.
+</p>
+
+<p>
+	I will continue to use Ghidra for decompilation as I've been using throughout my <a href="ps2-yabasic.html">previous</a> articles. The DVD player does not contain any symbols so all names in code snippets were assigned by me through reverse engineering.
+</p>
+
+<br>
+
+<h2>Disc controlled data</h2>
+<p>
+	The first file a DVD player will attempt to read is <code>VIDEO_TS.IFO</code>. Searching memory for contents of the file and then setting memory write breakpoints there to track back where it was written we quickly locate the API that reads disc contents used by the IFO parsing code, <code>getDiscByte</code> at <code>0x25c920</code>. It's a stream reader which caches a number of sectors into a RAM buffer, and then automatically seeks more data once needed:
+</p>
+
+<pre><code class="language-c">byte getDiscByte(void) {
+	byte ret;
+	
+	if (currentDiscBytePointer &lt; endDiscBytePointer) {
+		ret = *currentDiscBytePointer;
+	}
+	else {
+		currentDiscBytePointer = &amp;buffer;
+		setOffset = setOffset + numberOfSectorsRead;
+		getDiscByteInternal();
+		ret = *currentDiscBytePointer;
+	}
+	currentDiscBytePointer = currentDiscBytePointer + 1;
+	return ret;
+}
+</code></pre>
+
+<br>
+
+<p>
+	From searching calls to this, we can also quickly find wrappers that fetch data of larger sizes: <code>getDiscU16</code> (<code>0x25c980</code>), <code>getDiscU32</code> (<code>0x25c9b8</code>), and <code>getDiscData</code> (<code>0x25c9f0</code>), which is the most interesting as it reads an arbitrary length of data:
+</p>
+
+<pre><code class="language-c">void getDiscData(uint size, byte *destination) {
+	byte b;
+	uint i;
+	
+	i = 0;
+	if (size != 0) {
+		do {
+			i = i + 1;
+			b = getDiscByte();
+			*destination = b;
+			destination = destination + 1;
+		} while (i &lt; size);
+	}
+	return;
+}
+</code></pre>
+
+<br>
+
+<br>
+
+<h2>Large reads</h2>
+<p>
+	The first thing I did was search for calls to <code>getDiscData</code> in the hope of finding one with controllable size, and no bounds checking.
+</p>
+
+<p>
+	Sure enough, we very quickly identify about 4 blatant buffer overflow vulnerabilities of this nature. Relating back to the <a href="http://dvd.sourceforge.net/dvdinfo/ifo.html">IFO</a> file format, we can see that there are numerous 16-bit array lengths which are needed to parse the variably sized data structures in the file. The DVD player mistakenly only ever expects the maximum lengths allowed by the DVD specification, and so it is missing checks to reject discs with larger lengths. Since all of the copies are done on statically allocated memory buffers, specifying larger than allowed lengths will cause buffer overflows. For example, below is decompilation for the one at <code>0x25b3bc</code>:
+</p>
+
+<pre><code class="language-c">		large1 = getDiscU16();
+		large2 = getDiscU16();
+		large3 = getDiscU16();
+		ignored = getDiscU16();
+		getDiscData(((uint)large1 + (uint)large2 + (uint)large3) * 8, &DAT_0140bdd4);</code></pre>
+
+<br>
+
+<p>
+	This one is the most interesting because it allows the largest possible copy size (<code>0xffff * 3 * 8 = 0x17FFE8</code> bytes) of all the <code>getDiscData</code> buffer overflows. It copies into the statically allocated buffer at <code>0x0140bdd4</code>, and so by specifying the maximum possible copy size we gain control over the address space from <code>0x140bdd4</code> to <code>0x158BDBC</code> (<code>0x140bdd4 + 0x17FFE8</code>).
+</p>
+
+<br>
+
+<h2>Corruption from the large reads</h2>
+<p>
+	As you can see, we can control quite a large region of memory using the above vulnerability. However, scanning through that memory is initially very disappointing; there are very few pointers, and none of them look particularly interesting to corrupt!
+</p>
+
+<p>
+	Although there are no interesting pointers in this region, there are some indexes, which if corrupted could lead to further out of bounds memory corruption.
+</p>
+
+<p>
+	Note that large reads like this won't always copy contiguous data from the IFO file, as sectors will start repeating once we exceed the file size, but generally assume that all data written by a <code>getDiscData</code> call can be controlled as it originates from <i>somewhere</i> on the disc. Also, after writing a certain amount, we may overflow into internal state used by <code>getDiscByte</code> functions, but we will get to this later.
+</p>
+
+<br>
+
+<h3>OOB call</h3>
+<p>
+	At <code>0x25e388</code> we have this call to an entry in a function pointer array, where we can control the 16-bit <code>fpIndex</code> at <code>0x141284a</code> from the overflow:
+</p>
+
+<pre><code class="language-c">(*(code *)(&PTR_LAB_005b9d40)[(uint)fpIndex])(puVar6 + ((uint)DAT_01412841 - 1) * 8);</code></pre>
+
+<br>
+
+<p>
+	This allows us to jump to the address stored anywhere from <code>0x5b9d40</code> up to <code>0x5b9d40 + 0xffff * 4 = 0x5F9D3C</code>.
+</p>
+
+<br>
+
+<h4>Exploiting OOB call</h4>
+<p>
+	This primitive is not quite ideal, as none of our overflow bugs allow us to control the memory where the jump targets are read from. Worse still, most of this memory region is mapped from a read-only section of the DVD Player, so it's unlikely that we can influence the contents of this memory region without another bug.
+</p>
+
+<p>
+	After the function pointers, we do some see some addresses for <code>switch</code> <code>case</code> labels, which is slightly interesting because that allows us to jump into the middle of a function and execute its epilogue without having executed its prologue, allowing us to misalign the stack pointer and return to an unexpected value on the stack. I went through all of these and unfortunately I was only ever able to use that to jump to <code>0</code>.
+</p>
+
+<p>
+	I decided to dump the entire region of possible jump targets, group them into 4-bytes and see if any of them would point to memory that we control via the overflow vulnerability... Amazingly, there is a result: index <code>0xe07e</code> (address <code>0x5f1f38</code>) points to <code>0x1500014</code>, which is within our controlled range! This isn't perfect, since it's the cached virtual address, and so we might run into cache coherency problems, but it could work.
+</p>
+
+<br>
+
+<h3>OOB write</h3>
+<p>
+	It's amazingly lucky that there happens to be a valid jump target we can use which already points to memory we can control. Since other DVD Player versions with different address spaces probably won't have this same luxury, I'll briefly talk about one other corruption primitive, in case it turns out to be useful for anyone trying to exploit their own console's version.
+</p>
+
+<p>
+	There's a possible OOB write at <code>0x25c718</code> (inside <code>getDiscByteInternal</code>):
+</p>
+
+<pre><code class="language-c">	if (*(int *)(&DAT_01411e54 + indexForOOBW * 4) == 0) {
+		error = getBuffer(filename,0,&buffer,1,0);
+		if (error &lt; 0) goto LAB_0025c79c;
+		lVar3 = FUN_002161f8(0x140de40,pcVar4,0xc);
+		if (lVar3 == 0) {
+			uVar2 = getControlledValue();
+-->			*(undefined4 *)(&DAT_01411e54 + indexForOOBW * 4) = uVar2;
+			if (*(int *)(&DAT_01411e54 + indexForOOBW * 4) != 0) goto LAB_0025c7ac;
+		}
+		error = -3;
+	}
+</code></pre>
+
+<br>
+
+<p>
+	Since <code>indexForOOBW</code> is a 32-bit value, corrupting it via the large overflow could potentially allow writing to an arbitrary address in this path.
+</p>
+
+<p>
+	There's the constraint that the value must be <code>0</code> before you write it (per the first line in that snippet), but that shouldn't make exploitation significantly more difficult. You could easily overwrite a <code>NOP</code> in a delay-slot somewhere into a jump to a register which happens to be controlled at time of execution. Alternatively, a better approach would be chaining this OOB write with the OOB call mentioned above; you overwrite one of the addresses we can use as a jump target which happens to be <code>0</code> into an arbitrary new jump target.
+</p>
+
+<p>
+	When I briefly experimented with this primitive, it failed at the call to <code>getBuffer</code> because earlier on in the function it generated the <code>filename</code> via <code>sprintf(filename, "VTS_%02d_0.IFO", indexForOOBW)</code>, and the file <code>"VTS_1364283729_0.IFO"</code> didn't exist. We can't create this file normally because the code has a maximum filename length which we run into when we try large indexes like this (I think it's either <code>15</code> or <code>16</code> bytes). You could work around the length limitation, and still use this bug to corrupt quite a large region of memory, or it might be possible to corrupt enough internal data-structures through another overflow to trick the call into thinking these large index files exist. Since I didn't need it for my console, I didn't analyse this possibility fully, and proceeded with just exploiting the OOB call.
+</p>
+
+<br>
+
+<h2>Triggering the exploit</h2>
+<p>
+	At this point, we have a pretty clear path for exploitation of the large read overflow: we overwrite the <code>fpIndex</code> to <code>0xe07e</code>, and overflow our payload into <code>0x1500014</code>. When the code then indexes into the function pointer array using the corrupted <code>fpIndex</code>, it will trigger a jump to our payload.
+</p>
+
+<br>
+
+<h3>Corrupting <code>getDiscByte</code> state</h3>
+<p>
+	The first problem we run into is that the first thing we intend to corrupt, <code>fpIndex</code> (<code>0x141284a</code>), is located after <code>currentDiscBytePointer</code> (<code>0x1411fe4</code>) and <code>endDiscBytePointer</code> (<code>0x1411fe8</code>) in memory, and so those values which affect the output of <code>getDiscByte</code> will have already been corrupted by the time we are trying to corrupt <code>fpIndex</code>, and may have been redirected to no longer point to memory set to the contents of our IFO file.
+</p>
+
+<p>
+	The solution is to break at writing <code>currentDiscBytePointer</code> to find out its value at the time we are about to corrupt it, and make sure we just overwrite the same value it already had. We can also change <code>endDiscBytePointer</code> to <code>0xffffffff</code> to prevent calling <code>getDiscByteInternal</code> which would lead to more confusion if it was called whilst we are in half corrupted state.
+</p>
+
+<br>
+
+<h3>Corrupting <code>fpIndex</code></h3>
+<p>
+	With the overflow now reaching <code>fpIndex</code> and still copying controlled contents from the IFO file, we can break and look at the <code>currentDiscBytePointer</code> at the time of corrupting it to locate where from the IFO we are copying from. Once we've found that, we can modify those bytes in the file to <code>7e e0</code> (little endian representation of <code>0xe07e</code>) to point to our jump target.
+</p>
+
+<p>
+	Similarly, we can break at writing <code>0x1500014</code> to work out where in the file our payload will be copied from and set it to some placeholder value.
+</p>
+
+<p>
+	Now running the exploit and breaking at the OOB call (<code>0x25e388</code>), we're faced with a new problem: the index has been rewritten between our corruption and its usage for the call. If we can't avoid this write, it could be a dead end for this exploitation method.
+</p>
+
+<p>
+	Breaking on writing <code>fpIndex</code> after our large read, we see that its written inside this function at <code>0x25E970</code>:
+</p>
+
+<pre><code class="language-c">int setFpIndex(void) {
+	if (DAT_01412856 != 0) {
+		if (DAT_0141284e == '\0') {
+			if (DAT_01412854 == 0) {
+				fpIndex = 3;
+			}
+			else {
+				fpIndex = 4;
+			}
+		}
+		else {
+			if (DAT_01412854 == 0) {
+				fpIndex = 5;
+			}
+			else {
+				fpIndex = 6;
+			}
+		}
+		return 0;
+	}
+	return -1;
+}
+</code></pre>
+
+<br>
+
+<p>
+	Notice how not all paths write <code>fpIndex</code>? If the 16-bit value at <code>0x1412856</code> (which we can also corrupt with the overflow) is set to <code>0</code>, it will leave <code>fpIndex</code> alone and return <code>-1</code> to indicate failure.
+</p>
+
+<p>
+	The call chain that leads to <code>setFpIndex</code> is immediately before the OOB call itself (<code>0x25e378</code>), and there's also no checking of the return value of <code>setFpIndex</code>! This means we can bypass the initialisation of <code>fpIndex</code> and still reach the OOB call whilst it still contains our corrupted value:
+</p>
+
+<pre><code class="language-c">			callSetFpIndex(puVar6 + ((uint)DAT_01412841 - 1) * 8);
+			(*(code *)(&PTR_LAB_005b9d40)[(uint)fpIndex])(puVar6 + ((uint)DAT_01412841 - 1) * 8);</code></pre>
+
+<br>
+
+<h2>Cache coherency</h2>
+<p>
+	At this point we are jumping to memory of controlled contents, which should mean arbitrary code execution! However, we write our payload to the cached virtual address mapping, and also execute it from there, which creates two potential sources of failure on the hardware we will need to consider:
+</p>
+
+<ul>
+	<li>The payload may not have been flushed from data cache to main memory at the time of execution,</li>
+	<li>The instruction cache may not have been flushed since the payload reached main memory, so we may execute stale instruction cache instead,</li>
+</ul>
+
+<p>
+	The first is solvable: we can extend our large copy to the maximum possible size (<code>0xffff * 3 * 8</code>), and maybe even make use of the other large copies to write as much data as possible, to ensure that our payload gets evicted from the data cache in place of something else. I stuck with this maxium possible size in my exploit, but you could potentially fine-tune this number to optimise boot time by a fraction of a second if you were so inclined.
+</p>
+
+<p>
+	The second is not really solvable. Since we don't control the target jump address, we cannot instead jump to the uncached virtual address to bypass instruction cache, and to my knowledge there's no way of manipulating the program into dynamically loading new code causing an instruction cache flush after our payload has been written. However, it actually turns out to not even be an issue because the instruction cache is flushed during startup, and our payload doesn't overwrite any existing code, so there won't be any stale instruction cache covering the payload's address (PS2 CPU doesn't have speculative execution or anything else which would cause instruction cache entries to be created at non-architecturally executed paths).
+</p>
+
+<p>
+	Given that cache coherency doesn't seem to be an issue, I tried a simple payload, which just boots back the browser menu to verify that the payload would execute on the hardware, and burned a test disc:
+<p>
+
+<pre><code class="language-c">void _start(void) {
+	//Exit(0);
+	asm volatile("la $v1, 0x04; la $a0, 0; syscall 0x04");
+}</code></pre>
+
+<br>
+
+<p>
+	It worked!
+</p>
+
+<br>
+
+<h2>Initial payload</h2>
+<p>
+	The payload should read an ELF from the disc and then execute it. It seems simple, but there are a few different considerations:
+</p>
+
+<ul>
+	<li>How to prevent other threads interfering with the data we write,</li>
+	<li>How to read the data off the disc,</li>
+	<li>Where to read the data to,</li>
+	<li>How to execute the data,</li>
+</ul>
+
+<p>
+	I started with a basic <code>crt0.s</code> which would use the <code>ExecPS2</code> system call to start <code>main</code>, reinitialising the kernel's internal state, and thus destroying other threads to prevent them from corrupting any memory used by our payload:
+</p>
+
+<pre><code>.section .text.startup
+
+.global _start
+_start:
+	#la $a0, 0x7f
+	#la $v1, 0x01
+	#syscall 0x01 # ResetEE
+
+	la $a0, main
+	la $a1, 0
+	la $a2, 0
+	la $a3, 0
+
+.global ExecPS2
+ExecPS2:
+	la $v1, 7
+	syscall 7 # ExecPS2</code></pre>
+
+<br>
+
+<p>
+	My first attempt to load an ELF from the disc was use the same high level function calls which were used to read data from the IFO file (<code>pointToIFO</code> (<code>0x25c880</code>) followed by <code>getDiscData</code> with the desired size). When I attempted this, it was only able to fetch a single sector (<code>0x800</code> bytes) of data, likely due to the previous corruption from the buffer overflow.
+</p>
+
+<p>
+	Instead of attempting to fix that, I decided to use the lowest level function, <code>getBufferInternal</code> (<code>0x2986a0</code>), which just calls <code>SifCallRpc</code> (<code>0x2096e8</code>) to request the IOP co-processor to fetch the data and then waits for completion. This worked perfectly.
+</p>
+
+<p>
+	The next consideration is where to load the ELF file to. Running <code>readelf -l</code> will tell us that the target is not a position-independent binary and needs to be loaded at a specific location:
+</p>
+
+<pre><code>readelf -l BOOT.ELF
+
+Elf file type is EXEC (Executable file)
+Entry point 0x1d00008
+There is 1 program header, starting at offset 52
+
+Program Headers:
+	Type					 Offset	 VirtAddr	 PhysAddr	 FileSiz MemSiz	Flg Align
+	LOAD					 0x000060 0x01ca1450 0x01ca1450 0x5ed6d 0x5ee30 RWE 0x10</code></pre>
+
+<br>
+
+<p>
+	I came up with the following which successfully booted my target ELF in PCSX2:
+</p>
+
+<pre><code class="language-c">#define SifIopReset ((void (*)(char *, int))0x84fe0)
+#define SifIopSync ((int (*)(void))0x85110)
+#define SifInitRpc ((void (*)(int))0x84180)
+#define SifExitRpc ((void (*)(void))0x84310)
+
+#define PAYLOAD_SIZE 0x5ed6d
+#define MEM_SIZE 0x5ee30
+#define DESTINATION 0x01ca1450
+#define ENTRY 0x1d00008
+
+__attribute__((noreturn)) int main(void) {
+	// Target relative to VIDEO_TS.IFO (starting DVDVIDEO-VMG...)
+	int lbaOffset = 8338 - 285;
+
+	char ignored[] = "";
+	getBufferInternal(ignored, 0, lbaOffset, (void *)DESTINATION - 0x60, (PAYLOAD_SIZE + 0x60 + 0x7ff) / 0x800, 0);
+
+	// Init BSS section
+	for(i = 0; i &lt; MEM_SIZE - PAYLOAD_SIZE; i++) {
+		((char *)DESTINATION + PAYLOAD_SIZE)[i] = 0;
+	}
+
+	SifIopReset(0, 0);
+	while(!SifIopSync());
+
+	SifInitRpc(0);
+	SifExitRpc();
+
+	asm volatile("la $v1, 0x64; la $a0, 0; syscall 0x64"); // FlushCache data writeback
+	asm volatile("la $v1, 0x64; la $a0, 2; syscall 0x64"); // FlushCache instruction invalidate
+
+	//void ExecPS2(void* entry, void* gp, int argc, char** argv);
+	//ExecPS2((void *)ENTRY, 0, 0, 0);
+	asm volatile("la $a0, 0x1d00008; la $a1, 0; la $a2, 0; la $a3, 0; la $v1, 7; syscall 7");
+}
+</code></pre>
+
+<br>
+
+<br>
+
+<h2>Payload improvements</h2>
+<p>
+	There are a number of things not ideal with the initial payload. It's not very portable because we rely on hardcoding both the offset from the IFO file to the payload file, and the base address of the target ELF. We also rely on the target ELF loading address not overlapping with any of the functions we still call during loading and booting.
+</p>
+
+<br>
+
+<h3>Loading stage 2</h3>
+<p>
+	In order to make the above improvements, we'll need more space. The initial payload (now referred to as stage 1) is located at offset <code>0x2bb4</code> within the IFO file, and the <code>fpIndex</code> corruption value at <code>0x2faa</code>, so we only have <code>0x2faa - 0x2bb4 = 1014</code> bytes of contiguous space to use. We could consider scattering bits of the payload at earlier or later locations in the file and just jumping to them, but it's quite dangerous to do this as it's hard to reason whether our payload will remain intact between writing it with the overflow and by the time we execute it: parts of the payload could have been rewritten the same way that our corrupted <code>fpIndex</code> was originally rewritten.
+</p>
+
+<p>
+	Instead, we'll just make stage 1 as small as possible, and load a stage 2 where we can implement a nice ELF loader without any space constraints.
+</p>
+
+<p>
+	After stage 1 has called <code>ExecPS2</code> to kill other threads as before, we will load stage 2 from the end of the IFO file at offset <code>0x3000</code> to the end of EE RAM, flush the cache, and then execute it. We'll also set the stack to scatchpad RAM to prevent it from overlapping with any ELF section either:
+</p>
+
+<pre><code>load:
+	la $a0, 0
+	la $a1, 0 # 0 = VIDEO_TS.IFO, 1 = VTS_01_0.IFO
+	la $a2, 0x3000 / 0x800 # lba offset in file
+	la $a3, payload # Destination
+	la $t0, 0x800 / 0x800 # Count
+	la $t1, 0
+	la $v0, getBufferInternal
+	jalr $v0
+	nop
+
+boot:
+	la $v1, 0x64; la $a0, 0; syscall 0x64 # FlushCache data writeback
+	la $v1, 0x64; la $a0, 2; syscall 0x64 # FlushCache instruction invalidate
+
+	# Point stack to end of scratchpad RAM
+	la $sp, 0x70004000
+
+	# Execute from relocated place
+	la $v0, ENTRY
+	j $v0
+	nop</code></pre>
+
+<br>
+
+<p>
+	Stage 2 can now be arbitrarily sized C code as there no real space constraints.
+</p>
+
+<br>
+
+<h3>Finding the payload file</h3>
+<p>
+	To prevent needing to hardcode the offset of the target ELF, I decided to store it in <code>VTS_02_0.IFO</code> and use the existing functions I had already reversed to update the internal data structures to point to the the new file's LBA:
+</p>
+
+<pre><code class="language-c">	// Point to VTS_02_0.IFO
+	pointToIFO(2, 0, 0);
+	
+	// Force a read from VTS_02_0.IFO
+	char head[64];
+	getDiscData(64, &head);
+
+	// Now reads from VTS_02_0.IFO
+	getBufferInternal("", 1, sectorOffset, buffer, sectorCount, 0);</code></pre>
+
+<br>
+
+<br>
+
+<h3>ELF loading</h3>
+<p>
+	I removed the limitation of needing to hardcode the ELF loading address by reading it dynamically through the ELF header, based on code from <a href="https://github.com/AKuHAK/uLaunchELF/blob/master/loader/loader.c">uLaunchELF</a>, but adapted to read from the disc:
+</p>
+
+<pre><code class="language-c">	elf_header_t eh;
+	readData(&eh, 0, sizeof(elf_header_t));
+
+	elf_pheader_t eph[eh.phnum];
+	readData(&eph, eh.phoff, sizeof(elf_pheader_t) * eh.phnum);
+	
+	for (i = 0; i &lt; eh.phnum; i++) {
+		if (eph[i].type != ELF_PT_LOAD)
+			continue;
+
+		readData(eph[i].vaddr, eph[i].offset, eph[i].filesz);
+		if(eph[i].memsz > eph[i].filesz) memset(eph[i].vaddr + eph[i].filesz, 0, eph[i].memsz - eph[i].filesz);
+	}</code></pre>
+
+<br>
+
+<p>
+	That's it! We can reliably execute an ELF file from <code>VTS_02_0.IFO</code> on the disc, without any constraints on its base address or having to hardcode specific details about it in advance. Full code is <a href="https://github.com/CTurt/FreeDVDBoot/tree/master/PAYLOAD">available on GitHub</a>.
+</p>
+
+<br>
+
+<h2>Further developments</h2>
+<p>
+	Whilst the exploit itself is now complete, there's not a huge amount we can currently do beyond loading small standalone homebrew games like Tetris.
+</p>
+
+<br>
+
+<h3>Multi-file homebrew</h3>
+<p>
+	Ideally, it would nice for the exploit to boot into a menu which would allow you to select a different homebrew program out of multiple stored on the same disc, and which could then in turn load further data from the disc (such as an emulator loading ROMs). Unfortunately, the PS2SDK filesystem code, and by extension all PS2 homebrew, doesn't support DVD videos. Since DVD videos are the only type of disc that unmodified consoles will accept which we can burn, I assume that everyone was previously satisfied with just loading data over USB.
+</p>
+
+<p>
+	I decided to show the exploit to some PS2 enthusiasts in the hope that it might inspire someone to take a look, and uyjulian was kind enough to spend some time adding support and submit a <a href="https://github.com/ps2dev/ps2sdk/pull/130">pull request</a>. If you recompile the PS2SDK with this fix, and then recompile your homebrew application, it will have support for loading DVD video disc files from <code>cdfs</code> device.
+</p>
+
+<p>
+	This isn't a perfect solution since we don't have source code for all PS2 homebrew produced over the last 20 years, but it is also possible to binary patch homebrew to manually replace the <code>cdvd.irx</code> IOP module with a new one to add DVD video support. For instance, ChelseaFantasy patched the closed source SNES Station emulator, allowing me to make the following demo (special thanks!):
+</p>
+
+<div class="center">
+	<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/lyFNHGmbBsU" frameborder="0" allowfullscreen></iframe>
+</div>
+
+<br>
+
+<br>
+
+<h3>Loading backups with ESR</h3>
+<p>
+	There already exists a tool (ESR patcher) which patches games to appear like DVD videos so that they'll be accepted by the 'mechacon' (security processor), and an associated loader program (ESR) that boots these patched "video discs". Chaining together this new exploit with that ESR loader would allow you to patch your backups so that they could just be burned and run on your console from boot as though they were official discs.
+</p>
+
+<p>
+	I don't really want to be responsible for maintaining a tool that does this, so I'm not including any of the code to do this in the repo, but the gist of it can be explained pretty quickly, so I'll just provide some notes explaining how to do it:
+</p>
+
+<p>
+	ESR patcher will add two files, <code>VIDEO_TS.IFO</code> and <code>VIDEO_TS.BUP</code>, to the disc's UDF filesystem. Our exploit requires two files named <code>VIDEO_TS.IFO</code> and <code>VTS_01_0.IFO</code>, so just replace the <code>VIDEO_TS.BUP</code> string it writes with <code>VTS_01_0.IFO</code> to create the filesystem structure we need.
+</p>
+
+<p>
+	Attributes we care about for those files are size (4-bytes) and LBA position (2-bytes). In the UDF specification these fields are adjacent, with LBA being stored as an offset from the directory descriptor containing these fields (<code>VIDEO_TS</code> at LBA <code>134</code> in our case). The tool creates these files with size <code>2032</code> bytes, and LBAs <code>138</code> and <code>139</code>, so the byte patterns we are interested in are:
+</p>
+
+<pre><code>VIDEO_TS.IFO: f0 07 00 00 0a 00
+VIDEO_TS.BUP: f0 07 00 00 0b 00</code></pre>
+
+<br>
+
+<p>
+	Contents of the ISO 9660 filesystem used by games generally seem to start at around 260, which I believe is a requirement by Sony. This is great for us since it means that we have roughly 250KB <code>((262-137) * 0x800)</code> of space to place the exploit files and loader, and we only need a fraction of that. Given this amount of space, it would even be possible to include some kind of Action Replay cheat menu or something on the disc, which could be a fun future project.
+</p>
+
+<p>
+	Keeping <code>VIDEO_TS.IFO</code> at LBA 138, we just need to extend its size to <code>14336</code>, and copy the file contents to <code>138 * 0x800 = 0x45000</code> in the ISO. Our next free space is 7 sectors later at LBA 145, and will store the contents of our <code>12288</code> byte <code>VTS_01_0.IFO</code> file. Finally, the ESR loader program can be copied to the next available sector at <code>151</code>; we won't bother creating an entry in the UDF filesystem for it since we've already had to manually modify the ISO anyway.
+</p>
+
+<p>
+	In summary, the patches we need to make to the UDF data to add our exploit to a patched game are:
+</p>
+
+<pre><code>VIDEO_TS.BUP -> VTS_01_0.IFO (to rename the file)
+f0 07 00 00 0a 00 -> 00 38 00 00 0a 00 (VIDEO_TS.IFO filesize to 14336)
+0x45000: paste VIDEO_TS.IFO exploit contents (compiled with LOAD_FROM_SECTOR_RELATIVE_TO_VIDEO_TS_IFO so as to boot the ELF from disc at 0x4B800)
+f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and filesize to 12288)
+0x48800: paste VTS_01_0.IFO contents
+0x4B800: paste loader ELF</code></pre>
+
+<br>
+
+<p>
+	I only did this once, manually, but it should be pretty straight forward to modify the tool to change these patches. The result is a pretty cool demo showing total defeat of the PlayStation 2 copy-protection security model:
+</p>
+
+<div class="center">
+	<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/DWIvfFGuw7I" frameborder="0" allowfullscreen></iframe>
+</div>
+
+<div class="quote-reference">
+	ffgriever is working on a new version of ESR to remove the annoying splash screen and flickering colours
+</div>
+<br>
+
+<br>
+
+<h3>Optimisation</h3>
+<p>
+	As previously mentioned, the exploit could probably be optimised to boot a fraction of a second faster by reducing the size of the overflow. Also worth noting is that part of the reason the screen flickers whilst triggering the exploit is because I happened to encode my base DVD video as NTSC, and so some of that flickering is an artifact of switching from PAL to NTSC back to PAL. If this bothers you, you can re-make the exploit based on a PAL base DVD instead. Some of the weird white pattern displayed is probably a result of the overflow, and you might be able to remove it by manipulating more of the overflow data.
+</p>
+
+<br>
+
+<h2>Conclusion</h2>
+<p>
+	I was successfully able to exploit the PlayStation 2 DVD Player to allow me to run my own burned homebrew discs simply by inserting them and booting, just as you would launch an official disc.
+</p>
+
+<p>
+	Although I only exploited version 3.10E, as its the version on the console I happen to own, it's a pretty late version (3.11J was the final version ever released), and so I'm confident that all other versions also contain these same trivial IFO parsing buffer overflows. If those prove to be difficult to exploit on other firmware versions, I'm also confident that there probably exist more generically exploitable bugs like stack buffer overflows if you reverse deeper, after all, I only got as far as reverse engineering the initial IFO parsing before I identified sufficient vulnerabilities for my exploit. I hope this article and these demos inspire others to have a crack at hacking their own console's firmware versions and share their methods in a centralised repo for the community to share.
+</p>
+
+<p>
+	The idea of booting discs with no user interaction was extremely appealing to me, but if you instead value having a single disc with compatibility against multiple different firmware versions, it may be possible to build a DVD video which starts with a DVD menu where you select your version and it plays a different video which launches a different exploit, depending on user selection.
+</p>
+
+<p>
+	As a final thought, there's really no reason this general attack scenario is specific to the PlayStation 2 as all generations support some combination of burned media: from the PlayStation 1's CD support, to the PlayStation 3 and 4's Blue-ray support, with the PlayStation 4 having only removed CD support. Hacking the PS4 through Blue-ray BD-J functionality has <a href="http://wololo.net/2016/07/02/can-bd-j-lead-ps4-hack/">long been discussed</a> as an idea for an entry point. This may be something I would be interested in looking into for a long-term future project: imagine being able to burn your own PlayStation games for all generations; 1 down, 3 to go...
+</p>
+
+<hr>
+
+<p>
+	With thanks to krHacken, uyjulian, ChelseaFantasy, and ffgriver.
+</p>
+
+			</div>
+		</div>
+
+		<script src="js/prism.js" type="text/javascript"></script>
+	</body>
+</html>
