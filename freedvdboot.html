@@ -35,7 +35,7 @@
 <hr>
 
 <p>
-	I've <a href="ps2-yabasic.html">previously discussed</a> how the PlayStation 2 doesn't have any good entry-point software exploits for launching homebrew. You need to either purchase a memory card with an exploit pre-installed, open up the console to block the disc tray sensors, or install a modchip. For the best selling console of all time, it deserves better hacks.
+	I've <a href="ps2-yabasic.html">previously discussed</a> how the PlayStation 2 doesn't have any good entry-point software exploits for launching homebrew. You need to either purchase a memory card with an exploit pre-installed (or a memory card to USB adapter), a HDD expansion bay (not available to slim consoles), open up the console to block the disc tray sensors, or install a modchip. For the best selling console of all time, it deserves better hacks.
 </p>
 
 <p>
@@ -53,7 +53,7 @@
 <br>
 
 <p>
-	Ultimately, I was successfully able to achieve my goal by exploiting the console's DVD player functionality. This blog post will describe the technical details and process of reversing and exploiting the DVD player. All of my code is <a href="https://github.com/CTurt/FreeDVDBoot">available on GitHub</a>.
+	Ultimately, I was successfully able to achieve my goal by exploiting the console's DVD player functionality. This blog post will describe the technical details and process of reversing and exploiting the DVD player. All of my code is <a href="https://github.com/CTurt/FreeDVDBoot">available on GitHub</a>. Loading <a href="#backups">backups of commercial games is also possible</a>.
 </p>
 
 <div class="center">
@@ -98,11 +98,11 @@
 </p>
 
 <p>
-	I'd like to thank krHacken for helping me out with that first roadblock. It turns out that PCSX2 does support the DVD player; it just can't load it automatically since its located in encrypted storage and PCSX2 does not support the decryption. There are public tools which can <a href="https://github.com/xfwcfw/kelftool">decrypt</a> and <a href="https://github.com/jimmikaelkael/eromdir">extract</a> the DVD player from EROM storage. It can then be repacked into an ELF for easy loading into PCSX2.
+	I'd like to thank krHacken for helping me out with that first roadblock. It turns out that PCSX2 does support the DVD player; it just can't load it automatically since it's located in encrypted storage and PCSX2 does not support the decryption. There are public tools which can <a href="https://github.com/xfwcfw/kelftool">decrypt</a> and <a href="https://github.com/jimmikaelkael/eromdir">extract</a> the DVD player from EROM storage. It can then be repacked into an ELF for easy loading into PCSX2.
 </p>
 
 <p>
-	Due to the large number of different PlayStation 2 models released, each with slightly different DVD player firmwares (> 50...), I will focus on a single DVD player for the duration of this article: 3.10E, as it happens to be the firmware for the console I own.
+	Due to the large number of different PlayStation 2 models released, each with slightly different DVD player firmwares (> 50...), I will focus on a single DVD player for the duration of this article: 3.10E, as it happens to be the firmware for the console I own. Update: apparently region doesn't matter as my 3.10E exploit was confirmed work on a 3.10U console.
 </p>
 
 <p>
@@ -605,7 +605,7 @@ boot:
 
 <br>
 
-<h3>Loading backups with ESR</h3>
+<h3 id="backup">Loading backups with ESR</h3>
 <p>
 	There already exists a tool (ESR patcher) which patches games to appear like DVD videos so that they'll be accepted by the 'mechacon' (security processor), and an associated loader program (ESR) that boots these patched "video discs". Chaining together this new exploit with that ESR loader would allow you to patch your backups so that they could just be burned and run on your console from boot as though they were official discs.
 </p>
@@ -663,6 +663,8 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 
 <br>
 
+<br>
+
 <h3>Optimisation</h3>
 <p>
 	As previously mentioned, the exploit could probably be optimised to boot a fraction of a second faster by reducing the size of the overflow. Also worth noting is that part of the reason the screen flickers whilst triggering the exploit is because I happened to encode my base DVD video as NTSC, and so some of that flickering is an artifact of switching from PAL to NTSC back to PAL. If this bothers you, you can re-make the exploit based on a PAL base DVD instead. Some of the weird white pattern displayed is probably a result of the overflow, and you might be able to remove it by manipulating more of the overflow data.
@@ -684,7 +686,7 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 </p>
 
 <p>
-	As a final thought, there's really no reason this general attack scenario is specific to the PlayStation 2 as all generations support some combination of burned media: from the PlayStation 1's CD support, to the PlayStation 3 and 4's Blue-ray support, with the PlayStation 4 having only removed CD support. Hacking the PS4 through Blue-ray BD-J functionality has <a href="http://wololo.net/2016/07/02/can-bd-j-lead-ps4-hack/">long been discussed</a> as an idea for an entry point. This may be something I would be interested in looking into for a long-term future project: imagine being able to burn your own PlayStation games for all generations; 1 down, 3 to go...
+	As a final thought, there's really no reason this general attack scenario is specific to the PlayStation 2 as all generations support some combination of burned media: from the PlayStation 1's CD support, to the PlayStation 3 and 4's Blu-ray support, with the PlayStation 4 having only removed CD support. Hacking the PS4 through Blu-ray BD-J functionality has <a href="http://wololo.net/2016/07/02/can-bd-j-lead-ps4-hack/">long been discussed</a> as an idea for an entry point. This may be something I would be interested in looking into for a long-term future project: imagine being able to burn your own PlayStation games for all generations; 1 down, 3 to go...
 </p>
 
 <hr>
