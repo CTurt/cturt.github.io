@@ -683,6 +683,17 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 
 <br>
 
+<h3>Hybrid discs</h3>
+<p>
+	So I just merged support for 3.10 and 3.11 into a single hybrid ISO. The reason this works is because different offsets in the IFO file corrupt different offsets in memory, and the things we corrupt like <code>fpIndex</code> are at different offsets in different versions, so we can set different values.
+</p>
+
+<p>
+	However, it's actually even better than that because remember how we corrupt <code>currentDiscBytePointer</code> in the overflow first? This means that as long as <code>currentDiscBytePointer</code> doesn't overlap in any firmware versions, we can move the corruption to a different place to ensure that none of our stuff from different exploits in the IFO overlaps. This gives us a good chance that we could potentially exploit all firmwares with a single disc; time will tell if that is the case.
+</p>
+
+<br>
+
 <h2>Conclusion</h2>
 <p>
 	I was successfully able to exploit the PlayStation 2 DVD Player to allow me to run my own burned homebrew discs simply by inserting them and booting, just as you would launch an official disc.
