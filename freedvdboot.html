@@ -102,7 +102,7 @@
 </p>
 
 <p>
-	Due to the large number of different PlayStation 2 models released, each with slightly different DVD player firmwares (> 50...), I will focus on a single DVD player for the duration of this article: 3.10E, as it happens to be the firmware for the console I own. Update: apparently region doesn't matter as my 3.10E exploit was confirmed work on a 3.10U console.
+	Due to the large number of different PlayStation 2 models released, each with slightly different DVD player firmwares (> 50...), I will focus on a single DVD player for the duration of this article: 3.10E (configured with English language in PS2 settings), as it happens to be the firmware for the console I own. Update: apparently region doesn't matter as my 3.10E exploit was confirmed work on a 3.10U console.
 </p>
 
 <p>
@@ -220,6 +220,10 @@
 
 <p>
 	After the function pointers, we do some see some addresses for <code>switch</code> <code>case</code> labels, which is slightly interesting because that allows us to jump into the middle of a function and execute its epilogue without having executed its prologue, allowing us to misalign the stack pointer and return to an unexpected value on the stack. I went through all of these and unfortunately I was only ever able to use that to jump to <code>0</code>.
+</p>
+
+<p>
+	Finally after the code pointers, we see read only string data. Interestingly, this data can be changed by switching languages in the PS2 menu, which gives greater hope for finding at least 1 usable jump target in every firmware version, however it unfortunately comes at the cost of forcing the user to reconfigure their language.
 </p>
 
 <p>
@@ -668,6 +672,13 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 <h3>Optimisation</h3>
 <p>
 	As previously mentioned, the exploit could probably be optimised to boot a fraction of a second faster by reducing the size of the overflow. Also worth noting is that part of the reason the screen flickers whilst triggering the exploit is because I happened to encode my base DVD video as NTSC, and so some of that flickering is an artifact of switching from PAL to NTSC back to PAL. If this bothers you, you can re-make the exploit based on a PAL base DVD instead. Some of the weird white pattern displayed is probably a result of the overflow, and you might be able to remove it by manipulating more of the overflow data.
+</p>
+
+<br>
+
+<h3>Porting to other firmware versions</h3>
+<p>
+	The porting process is quite time consuming because you need to manually identify all of the pertinent functions in order to find the right offsets, identify a suitible jump target, and re-link the loader payload with the new addresses. It might be possible to automate some of that by using decompilation signatures, but for now it is fully manual process, and takes at least 1 hour. I first ported to 3.11J, and uploaded my <a href="https://github.com/CTurt/FreeDVDBoot/blob/master/porting%20notes.txt">porting notes</a> to the repo in case anyone else wants to attempt the process.
 </p>
 
 <br>
