@@ -302,7 +302,7 @@
 </p>
 
 <p>
-	Breaking on writing <code>fpIndex</code> after our large read, we see that its written inside this function at <code>0x25E970</code>:
+	Breaking on writing <code>fpIndex</code> after our large read, we see that it's written inside this function at <code>0x25E970</code>:
 </p>
 
 <pre><code class="language-c">int setFpIndex(void) {
@@ -615,7 +615,7 @@ boot:
 </p>
 
 <p>
-	I don't really want to be responsible for maintaining a tool that does this, so I'm not including any of the code to do this in the repo, but the gist of it can be explained pretty quickly, so I'll just provide some notes explaining how to do it:
+	I don't really want to be responsible for maintaining a tool that does this, so I'm not including any of the code to do this in the repo, but the gist of it can be explained pretty quickly, so I'll just provide some notes explaining how I did it:
 </p>
 
 <p>
@@ -671,25 +671,37 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 
 <h3>Optimisation</h3>
 <p>
-	As previously mentioned, the exploit could probably be optimised to boot a fraction of a second faster by reducing the size of the overflow. Also worth noting is that part of the reason the screen flickers whilst triggering the exploit is because I happened to encode my base DVD video as NTSC, and so some of that flickering is an artifact of switching from PAL to NTSC back to PAL. If this bothers you, you can re-make the exploit based on a PAL base DVD instead. Some of the weird white pattern displayed is probably a result of the overflow, and you might be able to remove it by manipulating more of the overflow data.
+	As previously mentioned, the exploit could probably be optimised to boot a fraction of a second faster by reducing the size of the overflow. Also worth noting is that part of the reason the screen flickers whilst triggering the exploit is because I happened to encode my base DVD video as NTSC, and so some of that flickering is an artifact of switching from PAL to NTSC back to PAL. There is almost <a href="https://twitter.com/MrMario2011/status/1277586569738813440">no video corruption</a> when booted on an NTSC region console. If this bothers you, you could re-make the exploit based on a PAL base DVD instead.
 </p>
 
 <br>
 
 <h3>Porting to other firmware versions</h3>
 <p>
-	The porting process is quite time consuming because you need to manually identify all of the pertinent functions in order to find the right offsets, identify a suitible jump target, and re-link the loader payload with the new addresses. It might be possible to automate some of that by using decompilation signatures, but for now it is fully manual process, and takes at least 1 hour. I first ported to 3.11J, and uploaded my <a href="https://github.com/CTurt/FreeDVDBoot/blob/master/porting%20notes.txt">porting notes</a> to the repo in case anyone else wants to attempt the process.
+	Initially I had only planned to release the exploit for my firmware version, as a proof-of-concept, since I cannot really justify investing the time to exploit and support other people's firmware versions. However, I have since done several other ports, and have documented all of the addresses / offsets / techniques <a href="https://cturt.github.io/FreeDVDBoot/portingnotes.html">here</a>.
 </p>
 
 <br>
 
 <h3>Hybrid discs</h3>
 <p>
-	So I just merged support for 3.10 and 3.11 into a single hybrid ISO. The reason this works is because different offsets in the IFO file corrupt different offsets in memory, and the things we corrupt like <code>fpIndex</code> are at different offsets in different versions, so we can set different values.
+	The first firmware I ported the 3.10 exploit to was 3.11. Collectively, all PS2 slim consoles have either 3.10 or 3.11, which makes these firmware versions an attractive target to merge together into a single exploit since it would allow all PS2 slim owners to just burn a single disc, without even having to check their firmware version first!
 </p>
 
 <p>
-	However, it's actually even better than that because remember how we corrupt <code>currentDiscBytePointer</code> in the overflow first? This means that as long as <code>currentDiscBytePointer</code> doesn't overlap in any firmware versions, we can move the corruption to a different place to ensure that none of our stuff from different exploits in the IFO overlaps. This gives us a good chance that we could potentially exploit all firmwares with a single disc; time will tell if that is the case.
+	These two exploits merged into a single easily, since the offsets in the IFO file to corrupt things like <code>currentDiscBytePointer</code> and <code>fpIndex</code> don't overlap at all, so we can specify different corruption values for each firmware. However, there are still potentially some options if some things in the IFO do overlap between two different versions (mentioned in more detail in <a href="https://cturt.github.io/FreeDVDBoot/portingnotes.html">porting notes</a>):
+</p>
+
+<p>
+	If <code>fpIndex</code> did overlap in the IFO file, but <code>currentDiscBytePointer</code> didn't, we could offset the <code>currentDiscBytePointer</code> corruption value for one of the firmwares so that <code>fpIndex</code> is copied from different regions.
+</p>
+
+<p>
+	If <code>currentDiscBytePointer</code> does overlap, as long as there's an address which happens to have controlled contents in both versions, we can specify a common address.
+</p>
+
+<p>
+	As a final resort, if it turns out not to be possible to merge support for two firmware versions into a single IFO exploit, we could trade the automatic booting with a DVD menu that let's you select a different chapter manually to match your DVD player version, in order to produce a single disc with compatibility against all firmware versions. I'm optimistic that eventually such a disc will be available.
 </p>
 
 <br>
@@ -700,11 +712,7 @@ f0 07 00 00 0b 00 -> 00 30 00 00 11 00 (VIDEO_TS.BUP/VTS_01_0.IFO LBA to 145 and
 </p>
 
 <p>
-	Although I only exploited version 3.10E, as its the version on the console I happen to own, it's a pretty late version (3.11J was the final version ever released), and so I'm confident that all other versions also contain these same trivial IFO parsing buffer overflows. If those prove to be difficult to exploit on other firmware versions, I'm also confident that there probably exist more generically exploitable bugs like stack buffer overflows if you reverse deeper, after all, I only got as far as reverse engineering the initial IFO parsing before I identified sufficient vulnerabilities for my exploit. I hope this article and these demos inspire others to have a crack at hacking their own console's firmware versions and share their methods in a centralised repo for the community to share.
-</p>
-
-<p>
-	The idea of booting discs with no user interaction was extremely appealing to me, but if you instead value having a single disc with compatibility against multiple different firmware versions, it may be possible to build a DVD video which starts with a DVD menu where you select your version and it plays a different video which launches a different exploit, depending on user selection.
+	Although I only exploited version 3.10, as its the version on the console I happen to own, I was later able to extend support to all slim consoles too. If these same vulnerabilities and techniques prove to be difficult to exploit on earlier firmware versions used by phat consoles, I'm also confident that there probably exist more generically exploitable bugs like stack buffer overflows if you reverse deeper, after all, I only got as far as reverse engineering the initial IFO parsing before I identified sufficient vulnerabilities for my exploit. I hope this article and these demos inspire others to have a crack at hacking their own console's firmware versions and share their methods in a centralised repo for the community to share.
 </p>
 
 <p>
