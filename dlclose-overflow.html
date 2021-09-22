@@ -215,9 +215,13 @@ else {
 				
 				<br>
 				
-				<h2>The second integer overflow</h2>
+				<h2 id="malloc-truncation">Another integer overflow (inside malloc)</h2>
 				<p>
-					Since <code>uma_large_malloc</code> declares the size parameter as <code>vm_size_t</code>, which is a 32 bit type, we can get the size to overflow at a later stage of the allocation.
+					With an unrestricted size allocation we can actually trigger an entirely different <a href="https://github.com/freebsd/freebsd-src/commit/57feb6fb43533ca4e0343a17ff4b78f93c27e3dd#diff-615acc80d211459f3ac74637e470bd77">bug</a>, which was discovered and fixed in FreeBSD after PS4 firmware 1.76's release, inside the memory allocator itself.
+				</p>
+
+				<p>
+					Since <code>uma_large_malloc</code> declares the size parameter as <code>vm_size_t</code>, which is a 32-bit type, any inputs larger than 4GB will be truncated at this later stage of the allocation path.
 				</p>
 				
 				<p>
