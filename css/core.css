@@ -308,6 +308,9 @@ a:active {
 	margin-left: auto;
 	margin-right: auto;
 }
+.pad-in {
+	padding-left: 5%;
+}
 .inline-right {
 	float: right;
 	margin: 0;
