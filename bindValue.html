@@ -38,11 +38,7 @@
 
 <h2>Introduction</h2>
 <p>
-	I decided to write an exploit for the <a href="https://trac.webkit.org/changeset/213742">JSC bindValue UaF</a>, patched on March 10th, 2017, as my first browser exploit. In this article I will describe how I exploited this bug through a mostly heuristic approach, without delving deeply into the WebKit source code.
-</p>
-
-<p>
-	My understanding of JSC internals comes almost entirely from <a href="https://twitter.com/5aelo">saelo</a>'s phrack paper, <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">Attacking JavaScript Engines: A case study of JavaScriptCore and CVE-2016-4622</a> first, which I highly recommend reading for more detail.
+	In this article I will describe how I exploited <a href="https://trac.webkit.org/changeset/213742">JSC's bindValue UaF</a>, patched on March 10th, 2017, as my first browser exploit. I was able to do this through a mostly heuristic approach, without delving deeply into the WebKit source code thanks to all the information in <a href="https://twitter.com/5aelo">saelo</a>'s phrack paper, <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">Attacking JavaScript Engines: A case study of JavaScriptCore and CVE-2016-4622</a>, which I highly recommend reading.
 </p>
 
 <p>
