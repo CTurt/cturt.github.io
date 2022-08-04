@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
+        <link rel="stylesheet" type="text/css" href="css/core.css" />
+        <link rel="stylesheet" type="text/css" href="css/prism.css" />
+        <title>Can you use StackOverflow to find bugs at scale?</title>
+    </head>
+    
+    <body>
+        <div class="page">
+            <div class="container">
+                <div class="header">
+                    <a href="contact.html" class="header-element">
+                        Contact
+                    </a>
+                    
+                    <a href="about.html" class="header-element">
+                        About
+                    </a>
+                    
+                    <a href="articles.html" class="header-element">
+                        Articles
+                    </a>
+                    
+                    <a href="index.html" class="header-element">
+                        Home
+                    </a>
+                </div>
+                
+<h1 id="canyouusestackoverflowtofindbugsatscale">Can you use StackOverflow to find bugs at scale?</h1>
+<span class="date">Initial publication: August 4rd, 2022</span>
+                <hr>
+
+<p>There are some questions that get independently thought up and pondered almost universally amoung security engineers at some point.</p>
+
+<p>Of course there's the classic: "does dropping 0days have a material effect on stock prices?".</p>
+
+<p>But another such question is: "can you find bugs at scale by identifying a vulnerable StackOverflow answer?". Since I recently stumbled upon an interesting lead for this, I decided to actually investigate. The goal was just to see if by starting from a vulnerable answer I could find at least one vulnerable server.</p>
+
+<br>
+
+<h2 id="rationale">Rationale</h2>
+
+<p>Black box targets, like game servers, can be very challenging targets to try to find bugs in.</p>
+
+<p>Even when they implement open standards/protocols which we have documentation and RFCs for, these only attempt to describe how a theoretical fully compliant implementation would work, which can differ significantly from the average implementation. For example, according to standards, <code>"()&lt;&gt;[]:,;@\\"!#$%&amp;'-/=?^_{}| ~.a"@[IPv6:2001:db8::1]</code>, should be a valid email address, but in practice most servers would not accept it.</p>
+
+<p>In contrast, code snippets from StackOverflow are often directly copied into codebases. The opportunity of potentially being able to perform some source code level analysis on a codebase would be tremendously more efficient than the inherently guessy "black box testing" alternative.</p>
+
+<p>Put another way: the identification of vulnerable StackOverflow code reduces the problem of black box testing game servers down to just finding affected servers, which may be significantly easier, especially if the snippet has been widely copied.</p>
+
+<br>
+
+<h2 id="thecandidate">The candidate</h2>
+
+<p>For this to work, you'd need to find a topic about a very specific attacker facing feature, which can be implemented in relatively little code so isn't just offloaded to a library, and niche enough that the answers haven't been reviewed by too many people.</p>
+
+<p>The thing that caused me to look into this was the atrocity of "login with Game Center" advice.</p>
+
+<br>
+
+<h2 id="howshouldaserverhandlegamecenterloginrequests">How should a server handle Game Center login requests?</h2>
+
+<p>Here's a snippet from some old Apple documentation describing the steps a game server should take to handle login with Game Center requests (as I understand, this flow still exists in many old games to provide a way for users to migratate old accounts to the current Apple authentication flow):</p>
+
+<div class="quote">
+                    <p>2. (Receive) the publicKeyURL, signature, salt, and timestamp parameters (...)</p>
+
+<p>3. Use the publicKeyURL on the third party server to download the public key.</p>
+
+<p>4. Verify with the appropriate signing authority that the public key is signed by Apple.</p>
+
+<p>5. Retrieve the player’s playerID and bundleID.</p>
+
+<p>6. Concatenate into a data buffer the following information, in the order listed:</p>
+
+<p>&nbsp;&nbsp;&nbsp;&nbsp;The playerID parameter in UTF-8 format</p>
+
+<p>&nbsp;&nbsp;&nbsp;&nbsp;The bundleID parameter in UTF-8 format</p>
+
+<p>&nbsp;&nbsp;&nbsp;&nbsp;The timestamp parameter in Big-Endian UInt-64 format</p>
+
+<p>&nbsp;&nbsp;&nbsp;&nbsp;The salt parameter</p>
+
+<p>7. Generate a SHA-256 hash value for the buffer.</p>
+
+<p>8. Using the public key downloaded in step 3, verify that the hash value generated in step 7 matches the signature parameter provided by the API.</p>
+
+<p>If the generated and retrieved signatures match, the local player has been authenticated.</p>
+                </div>
+                
+                <div class="quote-reference">
+                    - <a href="https://developer.apple.com/documentation/gamekit/gklocalplayer/1515407-generateidentityverificationsign#discussion">Apple Documentation</a>
+                </div>
+                <br>
+                
+                <br>
+
+<h2 id="whatdoesstackoverflowsay">What does StackOverflow say?</h2>
+
+<p>There are 3 relevant threads on Game Center authentication (<a href="https://stackoverflow.com/questions/14201700/authenticating-a-game-center-player-on-an-online-games-servers">1</a>, <a href="https://stackoverflow.com/questions/24621839/how-to-authenticate-the-gklocalplayer-on-my-third-party-server-using-php/33442151#33442151">2</a>, <a href="https://stackoverflow.com/questions/17408729/how-to-authenticate-the-gklocalplayer-on-my-third-party-server/32692503#32692503">3</a>).</p>
+
+<p>Step 4 is a common point of deviation from the documentation, with the vast majority of code examples failing to include it entirely.</p>
+
+<p>Authors who even bother to mention they've skipped this step at all present it as being wholly unnecessary unless you have "extra-paranoia", or in one case as being just a "minor flaw".</p>
+
+<div class="quote">
+<p>"It has minor flaw - Apple certificate is not verified"</p>
+</div>
+
+<br>
+
+<div class="quote">
+<p>"note that verification of the public certificate after downloading is not done here, similar to the python answer above using OpenSSL. Is this step really necessary anyway?"</p>
+</div>
+
+<br>
+
+<div class="quote">
+<p>"Ideally, we would also check that the certificate came from a trusted source. Extra-paranoia to check that it is Apple's Game Center certificate would be good, too."</p>
+</div>
+
+<br>
+
+<p>The last comment proposes a new step of checking the requested certificate URL, which is commonly thought of as a kind of mitigation used as justification for skipping step 4:</p>
+
+<div class="quote">
+<p>"What are the security implications of not verifying the Apple certificate before using? I'm wondering if it would be enough to check that the domain of the public key url is coming from Apple (sandbox.gc.apple.com or production server)"</p>
+</div>
+
+<br>
+
+<div class="quote">
+<p>"If we check that the public key URL is going to an apple domain and it's using ssl (https), doesn't that mean that it's protected from man-in-the-middle attacks?"</p>
+</div>
+
+<br>
+
+<br>
+
+<h2 id="implicationsofmissingstep4">Implications of missing step 4</h2>
+
+<p>Step 4 is a crucial step, and skipping it is not just a "minor flaw". Without this step, there is essentially no authentication. Anyone can sign Game Center login requests for any Apple player ID with their own certificates, which would be accepted.</p>
+
+<p>These player IDs are not secret and can easily be found through leaderboard / friend list APIs (this is partly what <a href="https://developer.apple.com/videos/play/wwdc2019/615/">motivated</a> the need for the current authentication system, which scopes player IDs per-game, and then provides further context scoped IDs for public leaderboards, etc).</p>
+
+<p>Checking the URL before fetching the certificate <i>does</i> act as a mitigation against the missing authentication step, but leaves your authentication exploitable to any open redirects on any Apple subdomain, and this is the best case scenario if you implement the URL checking correctly in the first place.</p>
+
+<br>
+
+<h2 id="badurlchecks">Bad URL checks</h2>
+
+<p>Two of the samples which rely on the URL-checking mitigation for their incomplete implementations were bypassable:</p>
+
+<pre><code>    #Verify the url is https and is pointing to an apple domain.
+    parts = urlparse.urlparse(gc_public_key_url)
+    domainName = "apple.com"
+    domainLocation = len(parts[1]) - len(domainName)
+    actualLocation = parts[1].find(domainName)
+    if parts[0] != "https" or domainName not in parts[1] or domainLocation != actualLocation:
+        logging.warning("Public Key Url is invalid.")
+        raise Exception
+</code></pre>
+
+                <div class="quote-reference">
+                    - <a href="https://stackoverflow.com/revisions/27827658/3">https://stackoverflow.com/revisions/27827658/3 (fixed in next revision)</a>
+                </div>
+                <br>
+                
+                <br>
+
+<pre><code>func IsValidCertUrl(fullUrl string) bool {
+    //https://sandbox.gc.apple.com/public-key/gc-sb-2.cer
+    uri, err := url.Parse(fullUrl)
+    if err != nil {
+        log.Printf("not a valid url %s", fullUrl)
+        return false
+    }
+
+    if !strings.HasSuffix(uri.Host, "apple.com") {
+        log.Printf("not a valid host %s", fullUrl)
+        return false
+    }
+
+    if path.Ext(fullUrl) != ".cer" {
+        log.Printf("not a valid ext %s, %s", fullUrl, path.Ext(fullUrl))
+        return false
+    }
+    return true
+}
+</code></pre>
+
+                <div class="quote-reference">
+                    - <a href="https://stackoverflow.com/a/32692503">https://stackoverflow.com/a/32692503 (unfixed as of writing)</a>
+                </div>
+                <br>
+                
+                <br>
+
+<p>In each case, the logic is bypassable by registering domains like <code>endswithapple.com</code>.</p>
+
+<br>
+
+<h2 id="findingavulnerableserver">Finding a vulnerable server</h2>
+
+<p>Given that the only public example code of Game Center authentication written in Go was vulnerable, I figured there was a pretty good chance I could use this knowledge to find a vulnerability against a real game server.</p>
+
+<p>By searching the App Store for multiplayer games, and cross referencing <a href="https://web.archive.org/web/20220615235217/https://lockwoodpublishing.com/job/?jobID=84DA3B62FB">job postings</a> in those companies to determine which languages were in use, I was able to find a company using Go, Lockwood Publishing, which also has a game server old enough that it should still support "login with Game Center" (Avakin):</p>
+
+<br>
+
+<h2 id="proofofconcept">Proof-Of-Concept</h2>
+
+<p>We can verify the presence of the URL check mitigation due to the fact that a Game Center request pointing to a certificate at <code>https://wikipedia.org/cert.cer</code> will be rejected instantly, whilst one pointing to <code>https://apple.com/cert.cer</code> will take half a second longer due to the additional request the server has to make.</p>
+
+<p>To test the bypass, I then registered the domain <code>endswithapple.com</code>, configured some free web hosting, and uploaded a rudimentary IP address logging PHP script to <code>www.endswithapple.com/c.cer/index.php</code> (so it would trigger on requests to <code>wwww.endswithapple.com/c.cer</code>):</p>
+
+<pre><code>&lt;?php
+
+$myfile = fopen("/tmp/test.txt", "a");
+fwrite($myfile, $_SERVER['REMOTE_ADDR']);
+fwrite($myfile, "&lt;br&gt;");
+fclose($myfile);
+
+$connections = file_get_contents('/tmp/test.txt');
+echo $connections;
+
+?&gt;
+</code></pre>
+
+<br>
+
+<p>Sure enough, the bypass worked and I was seeing requests from an IP address provided by Amazon Data Services ISP and registered to the game company's hostnames (<code>gw1.lkwd.net</code>, <code>gw2.lkwd.net</code>).</p>
+
+<p>The final step would be to verify the original bug (missing Apple certificate checking), but since I didn't actually want to try to log in as other users, the rest of the PoC from this point is just theoretical. Exploiting it would just require generating a certificate, and then signing the request with its associated private key:</p>
+
+<pre><code>openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout example.com.key -days 730 -out example.com.pem
+openssl x509 -inform PEM -in example.com.pem -outform DER -out certificate.cer
+</code></pre>
+
+<br>
+
+<p>The full PoC script to generate signed login requests to this game is provided <a href="https://gist.github.com/CTurt/3f2ffbd03df3adaa8d628257d50d9b56">here</a>.</p>
+
+<p>I emailed Lockwood Publishing, and they fixed the vulnerability. They did not offer a bug bounty.</p>
+
+<br>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Since web/mobile games don't typically award bug bounties (my <a href="poker.html">last web vulnerability</a> didn't get one either), I didn't bother to cover a large sample of games, so we can't really draw broad conclusions.</p>
+
+<p>But by finding at least 1 affected game server from this, I've at least anecdotally demonstrated that you can indeed identify vulnerabilities in StackOverflow answers, and then use that knowledge against black box servers to successfully find instances of those vulnerabilities.</p>
+
+<br>
+
+<h2 id="whatcouldstackoverflowdo">What could StackOverflow do?</h2>
+
+<p>In my opinion, there needs to be some way to mark a comment or revision as being security related, to distinguish it from regular chatter.</p>
+
+<p>These security related updates are important enough that by-default, you should be automatically subscribed to them whenever you copy code from an answer (by registering the browser's <code>oncopy</code> event).</p>
+
+<p>Under this system, any logged in user who copied the first vulnerable domain check would have been notified both when <a href="https://stackoverflow.com/questions/17408729/how-to-authenticate-the-gklocalplayer-on-my-third-party-server/27827658#comment44607465_27827658">the comment</a> pointing out the vulnerability was made, and when the <a href="https://stackoverflow.com/revisions/27827658/3">revision that fixed it</a> was made, but not from the other chatter under the answer.</p>
+
+<p>For the <a href="https://stackoverflow.com/a/32692503">second vulnerable</a> domain check, I did not have enough reputation to leave a comment as a new account, but could propose a suggested edit. I never heard back on <a href="https://stackoverflow.com/posts/32692503/revisions">its approval/rejection</a>.</p>
+
+</div>
+        </div>
+
+        <script src="js/prism.js" type="text/javascript"></script>
+    </body>
+</html>
