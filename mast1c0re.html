@@ -52,10 +52,15 @@
 <p> With arbitrary code execution in a PS4 game process, homebrew software, including JIT optimised emulators, and potentially even some pirated commercial PS4 games could be run under this context.</p>
 </li>
 <li><p>Under PlayStation&#39;s security model it&#39;s essentially <b>unpatchable</b>.</p>
-<p> Since PlayStation can&#39;t be held responsible for the security of third party games (partially those that statically link to old versions of WebKit), their security model operates under the assumption that games are compromised, and focuses on instead securing higher privileged layers of the platform (kernel, and hypervisor on PS5).</p>
-<p> As a result of this, they didn&#39;t design the console to have mechanisms to enforce patches for games. You can simply launch a physical game without checking for updates, or you can even <a href="https://www.youtube.com/watch?v=wGUQ2Ynx0Uk">downgrade digital games</a> by proxying PSN traffic (which is just HTTP for cost saving reasons).</p>
-<p> It&#39;s my interpretation that the existence of games with special privileges, like the PS2 emulator&#39;s JIT, fundamentally violates their own security model because it leaves privileged code with no readily available mechanisms to patch potential future vulnerabilities.</p>
-<p>Whilst <em>unpatchable</em> is not entirely technically accurate, I feel comfortable using this term because PlayStation&#39;s official response to me after one year from reporting was that they decided not to try to patch this chain. Think about it from their side: if they consider deny-listing old versions of PS2 emulators in later firmware updates, this would break the consumer&#39;s expectation that they can play discs offline. Binary-patching every version of the PS2 emulator manually and bundling them with operating system patches instead would be borderline infeasible for them.</p>
+<p> Once you have access to an exploitable game (digital or physical), it would be extremely difficult for PlayStation to remove your access to it.</p>
+<p> The console was only designed to enforce updates for the Operating System, but has no mechanisms to enforce patches for games; ie: old versions of games can always be played on the latest version of the Operating System:</p>
+<ul>
+<li>For physical games, you can simply launch them without first checking for updates.</li>
+<li><p>For digital games, you can <a href="https://www.youtube.com/watch?v=wGUQ2Ynx0Uk">downgrade them</a> by proxying PSN traffic (which is just HTTP, instead of HTTPS for server-side cost saving reasons).</p>
+</ul>
+<p>It was designed this way since PlayStation can&#39;t be held responsible for the security of third party games (particularly those that statically link to old versions of WebKit). Their security model operates under the assumption that games are compromised, and focuses on instead securing higher privileged layers of the platform (kernel, and hypervisor on PS5).</p>
+<p>It&#39;s my interpretation that the existence of games with special privileges, like the PS2 emulator&#39;s JIT, fundamentally violates their own security model because it leaves privileged code with no readily available mechanisms to patch potential future vulnerabilities.</p>
+<p>Furthermore, PlayStation has decided to double-down on this security model by not even removing the identified known-exploitable PS2 games from the store. Because of these reasons, I&#39;m confortable referring to this scenario as &quot;unpatchable&quot;, even if it may not <em>technically</em> be fully accurate.</p>
 </li>
 </ol>
 <br>
@@ -67,10 +72,10 @@
 <h2 id="ps2-code-execution-entry-point">PS2 Code Execution Entry-point</h2>
 <p>Our exploit chain will begin by exploiting a PS2 game to achieve code execution within the emulator, either through a save game exploit, or through a purely controller-triggered exploit.</p>
 <ul>
-<li><p>Exploitable PS2 save game vulnerabilities are not hard to find; for example, see the GTA decompilations <a href="https://github.com/halpz/re3/blob/9a7fa478578beaba947ea867c15a25e411d641d8/src/save/MemoryCard.cpp#L358">showing</a> a copy from the memory card into a fixed-size buffer with size supplied by the save. With one of these exploits, a PS4 save file containing the crafted PS2 memory card can be encrypted and signed for any PSN-ID by anyone with a hacked PS4 on any firmware (or just a PC if they have the decapped SAMU keys), and then imported to the target PS4/PS5 using the USB save import feature in Settings.</p></li>
+<li><p>PS2 save game vulnerabilities are not hard to find; for example, see the GTA decompilations <a href="https://github.com/halpz/re3/blob/9a7fa478578beaba947ea867c15a25e411d641d8/src/save/MemoryCard.cpp#L358">showing</a> a copy from the memory card into a fixed-size buffer with size supplied by the save; exploiting these issues is relatively simple since the PS2 didn't have any exploit mitigations. With one of these exploits, a PS4 save file containing the crafted PS2 memory card can be encrypted and signed for any PSN-ID by anyone with a hacked PS4 on any firmware (or just a PC if they have the decapped SAMU keys), and then imported to the target PS4/PS5 using the USB save import feature in Settings.</p></li>
 <li><p>A controller-input-triggered exploit would be less practical, except for having the ability to be used without requiring the USB save import feature, which depends on having signed into PSN (since saves are encrypted per-account), and times out on the PS5 after being offline for too long.</p></li>
 </ul>
-<p>I did briefly search for PS2 games available on PS4 which could be exploitable this way, and discovered that Dark Cloud would be (there&#39;s <a href="https://www.youtube.com/results?search_query=%22dark+cloud%22+item+glitch+menu+before%3A2008-01-01">a decades-old known bug</a> whereby moving the cursor and pressing X on the same frame in the items menu allows you to pick up an item from out-of-bounds memory, which results in exploitable behaviour), but sadly it only received a digital PS4 release, not a physical disc release (so it doesn't help remove the PSN requirement).</p>
+<p>I did briefly search for PS2 games available on PS4 which could be exploitable this way, and discovered that Dark Cloud would be (there&#39;s <a href="https://www.youtube.com/results?search_query=%22dark+cloud%22+item+glitch+menu+before%3A2008-01-01">a decades-old known bug</a> whereby moving the cursor and pressing X on the same frame in the items menu allows you to pick up an item from out-of-bounds memory, which results in exploitable behaviour), but sadly it only received a digital PS4 release, not a physical PS4 disc release (so it doesn't help remove the PSN requirement).</p>
 <p>For my chain, I settled on <a href="https://store.playstation.com/en-us/product/UP9000-CUSA02199_00-SCUS971290000001">Okage Shadow King</a>, which has a typical stack buffer oveflow if you extend the player/town name.</p>
 <br>
 <h2 id="the-emulator-bug">The Emulator Bug</h2>
@@ -208,7 +213,7 @@ writeOOB1(0x41414141 - N_STATUS_BUFFER, 0x41);
 <br>
 <h3 id="primitive-3-redirected-read-handler-call">Primitive 3 - Redirected Read-Handler Call</h3>
 <p>Back again to the memory read/write handlers, we&#39;ll see that there are also some jump tables / arrays of function pointers that are called when we access some of the memory mapped IO registers.</p>
-<p>For example, if we submit a read to <code>0x10000000</code>, the below code will be reached with <code>rax == 0</code>, and it will call the first function pointer in the <code>ioRegisterReadHandlers</code> array:</p>
+<p>For example, if we submit a read to <code>0x10000000</code>, the below code will be reached with <code>rcx == 0</code>, and it will call the first function pointer in the <code>ioRegisterReadHandlers</code> array:</p>
 <pre><code class="language-c">0x6E4098: LEA RAX, [ioRegisterReadHandlers]
 ...
 0x6E40B2: CALL qword ptr [RCX + RAX*0x1]
@@ -379,7 +384,7 @@ eboot <span class="hljs-keyword">read</span>-<span class="hljs-keyword">write</s
 <br>
 <h2 id="booting-custom-ps2-games">Booting Custom PS2 Games</h2>
 <p>Now that we&#39;ve successfully escaped the PS2 emulator, the natural first thing to try doing with it is to boot another game.</p>
-<p>There are a few options for retriving an external game file:</p>
+<p>There are a few options for retrieving an external game file:</p>
 <ul>
 <li><p>Bundling it within the save file initially seems like the obvious choice, but since PS4 save games have a filesize limit (I think it was 1GB, but then raised a bit for Cyberpunk&#39;s release), this approach won&#39;t work for many PS2 games.</p>
 </li>
@@ -398,7 +403,7 @@ eboot <span class="hljs-keyword">read</span>-<span class="hljs-keyword">write</s
 <h2 id="part-1-conclusion">Part 1 Conclusion</h2>
 <p>PS2 piracy is a fun implication, especially being able to disclose it despite there being no patch, but my main goal was getting native homebrew applications running.</p>
 <p>Regarding that goal, escaping the emulator is just the first half of the chain; we can&#39;t yet write arbitrary native code since our application process only has permission to map JIT shared memory as executable, not writeable.</p>
-<p>We could technically write &quot;PS4-enhanced&quot; PS2 homebrew applications that could use any native PS4 functionality, and so could behave essentially the same as normal PS4 homebrew (accessing the PS4 controller&#39;s touchpad, etc), but I really wanted to achieve fully arbitrary code execution for a more practical homebrew environment. This makes the next step attacking the compiler process: <a href="mast1c0re-2.html">mast1c0re - Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Arbitrary Code Execution</a>.</p>
+<p>We could technically write &quot;PS4-enhanced&quot; PS2 homebrew applications that could use any native PS4 functionality, and so could behave essentially the same as normal PS4 homebrew (accessing the PS4 controller&#39;s touchpad, etc), but I really wanted to achieve fully arbitrary code execution for a more practical homebrew environment. This makes the next step attacking the compiler process: <a href="mast1c0re-2.html">mast1c0re: Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Arbitrary Code Execution</a>.</p>
 <br>
 <h2 id="thanks">Thanks</h2>
 <p>flatz, balika011, theflow0, chicken(s), PlayStation</p>
