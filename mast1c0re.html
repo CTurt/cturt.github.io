@@ -53,14 +53,14 @@
 </li>
 <li><p>Under PlayStation&#39;s security model it&#39;s essentially <b>unpatchable</b>.</p>
 <p> Once you have access to an exploitable game (digital or physical), it would be extremely difficult for PlayStation to remove your access to it.</p>
-<p> The console was only designed to enforce updates for the Operating System, but has no mechanisms to enforce patches for games; ie: old versions of games can always be played on the latest version of the Operating System:</p>
+<p> The console was designed to enforce updates for the Operating System to play the latest games, but the Operating System was not originally designed with any mechanism to enforce patches for games; ie: old versions of games can always be played on the latest version of the Operating System:</p>
 <ul>
 <li>For physical games, you can simply launch them without first checking for updates.</li>
 <li><p>For digital games, you can <a href="https://www.youtube.com/watch?v=wGUQ2Ynx0Uk">downgrade them</a> by proxying PSN traffic (which is just HTTP, instead of HTTPS for server-side cost saving reasons).</p>
 </ul>
 <p>It was designed this way since PlayStation can&#39;t be held responsible for the security of third party games (particularly those that statically link to old versions of WebKit). Their security model instead focuses on securing higher privileged layers of the platform (kernel, and hypervisor on PS5), operating under the assumption that games are compromised.</p>
 <p>It&#39;s my interpretation that the existence of games with special privileges, like the PS2 emulator&#39;s JIT, fundamentally violates their own security model because it leaves privileged code with no readily available mechanisms to patch potential future vulnerabilities.</p>
-<p>Furthermore, PlayStation has decided to double-down on this security model by not even removing the identified known-exploitable PS2 games from the store. Because of these reasons, I&#39;m comfortable referring to this scenario as &quot;unpatchable&quot;, even if it may not <em>technically</em> be fully accurate.</p>
+<p>Furthermore, in addition to the gap in their security model that prevents patching existing copies of the games, PlayStation has also decided to not even to remove the identified known-exploitable PS2 games for purchase from the store. Because of these two reasons, I'm comfortable referring to this exploit chain as &quot;unpatchable&quot;, even if it may not <em>technically</em> be fully accurate.</p>
 </li>
 </ol>
 <br>
