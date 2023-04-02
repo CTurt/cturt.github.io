@@ -148,7 +148,7 @@ while ( v196 != 4096 );
 <h2 id="choosing-a-mapping-to-corrupt">Choosing a Mapping to Corrupt</h2>
 <p>Now we need to decide which OOB vulnerability to use, and what to corrupt with it.</p>
 <p>Since both OOB writes occur relative to an array within the bridge region, which we already control the entirety of, our corruption target will need to be in a separate memory mapping to be useful, which will be a random number of pages away due to ASLR.</p>
-<p>Because of this, Vulnerability 3 is much more attractive because its stride (<code>0x10</code>) is a multiple of the page size, and so the offsets within different pages that we can corrupt will be consistent across different runs.</p>
+<p>Because of this, Vulnerability 3 is much more attractive because its stride (<code>0x10</code>) is a factor of the page size, and so the offsets within different pages that we can corrupt will be consistent across different runs.</p>
 <p>We already know where the compiler processes&#39; data section is, thanks to Vulnerability 1 (pointers in the bridge), but unfortunately it&#39;s too far away for us to try to corrupt (it&#39;s one of the first things mapped in the process and will have a relatively low address like <code>0x7d7cc000</code>, whilst the lowest we can write to with Vulnerability 3 is <code>0x114AD6E30</code>).</p>
 <br>
 <h3 id="locating-the-heap">Locating the Heap</h3>
