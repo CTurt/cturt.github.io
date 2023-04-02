@@ -1,238 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Reverse Engineering and Modding Mario Pinball Land (GBA)</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-
-<h1>Reverse Engineering and Modding Mario Pinball Land (GBA)</h1>
-<span class="date">Initial publication: March 19th, 2019</span>
-<hr>
-
-<p>
-	I've been meaning to improve my reverse engineering skills for a while now, and with the recent release of Ghidra, I've finally been motivated to attempt a game modding project.
-</p>
-
-<p>
-	I chose to look at Mario Pinball Land for GBA, as it's a game which doesn't have a substantial existing modding community (unusual for a Mario title), and has lots of quirks which I'd like to try to improve!
-</p>
-
-<p>
-	The most common complaints with this game are:
-</p>
-
-<p>
-	Limited controls:
-</p>
-
-<ul>
-	<li>Binary flipper controls for a pinball game are not ideal,</li>
-	<li>Lack of table nudge control,</li>
-</ul>
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Reverse Engineering and Modding Mario Pinball Land (GBA)</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Reverse Engineering and Modding Mario Pinball Land (GBA)</h1> <span class=date >Initial publication: March 19th, 2019</span> <hr> <p> I've been meaning to improve my reverse engineering skills for a while now, and with the recent release of Ghidra, I've finally been motivated to attempt a game modding project. </p> <p> I chose to look at Mario Pinball Land for GBA, as it's a game which doesn't have a substantial existing modding community (unusual for a Mario title), and has lots of quirks which I'd like to try to improve! </p> <p> The most common complaints with this game are: </p> <p> Limited controls: </p> <ul> <li>Binary flipper controls for a pinball game are not ideal, <li>Lack of table nudge control, </ul> <br> <p> Misc: </p> <ul> <li>Some of the soundtrack is very generic, <li>If you power-off without pressing "SAVE & QUIT" your save will be erased, </ul> <br> <p> Lack of gameplay variety: </p> <ul> <li>Rooms are simple and feature no scrolling, <li>Bosses are reused, </ul> <br> <p> Artificial gameplay difficulty: </p> <ul> <li>If you open all doors in a stage they all shut, <li>Falling down some holes takes you back further than 1 room, <li>When accidentally leaving a room, your progress there is lost, as the room resets once you re-enter, </ul> <br> <p> The last point in particular is very frequently cited as the most annoying problem, and is explained well in IGN's review of the game: </p> <div class=quote > But what makes the game unbelievably irritating is its insistence of resetting the playfield if the ball (Mario) ever leaves the area. In other words, if the player was one target away from earning that screen's Star, and they accidentally shoot the ball through the gate into another board, the previous board will be completely reset as if it was the player's first appearance in the area. This happens a lot in Mario Pinball Land, and it's absolutely unfair to the player since there are so many instances where the ball will leave the playing field...either by the hand of the player or simply due to a random bounce on the board. It's this element that artificially inflates the difficulty and length of the game, and what's more, it really makes Mario Pinball Land an absolute chore to play. If it were a memory restriction we might be able to forgive it...but the game seems to have no problem tracking Yoshi balls when a player knocks it into another board in a given area. </div> <div class=quote-reference > - <a href="https://uk.ign.com/articles/2004/10/04/mario-pinball-land">IGN</a> </div> <br> <br> <p> In this article I provide notes of my first impressions using Ghidra to reverse engineer the game, and use these notes to try to address some of these complaints by modifying several game mechanics. Perhaps in a future article I will actually add new content such as new stages, music, and boss fights. </p> <br> <h2>Prior work</h2> <p> Before diving into reversing the game, let's outline all prior research on this game publicly available. </p> <br> <h3>Cheats</h3> <p> There are some <a href="https://wescastro.com/codetwink/cheats.codetwink.com/gba/view/5023/default.htm">cheat codes</a> which give us the addresses of a few useful variables: </p> <ul> <li>Lives - <code class=language-c >0x3000000</code> <li>Score - <code class=language-c >0x3000004</code> <li>Yellow Coins - <code class=language-c >0x3000008</code> <li>Blue Coins - <code class=language-c >0x300000C</code> and <code class=language-c >0x300001C</code> <li>Stars - <code class=language-c >0x3000014</code> and <code class=language-c >0x300578C</code> <li>Item - <code class=language-c >0x300002C</code> <li>Stage - <code class=language-c >0x3000030</code> </ul> <br> <h3>Documented regional differences</h3> <p> <a href="https://tcrf.net/Mario_Pinball_Land">The Cutting Room Floor</a> states that the flipper physics were altered between the original Japanese release, and the later versions. </p> <br> <h2>Tools and setup</h2> <p> Aside from <a href="https://ghidra-sre.org/">Ghidra</a>, I'll be using <a href="https://problemkaputt.de/gba.htm">NO$GBA</a> as my main emulator, for its excellent debugging capabilities, and occasionally <a href="https://vba-m.com/">VisualBoyAdvance-M</a> for its cheat finder functionality. </p> <p> Importing the file into Ghidra will automatically detect it as a "Raw Binary", so just set the language for Little Endian ARMv4t and map the ROM section at <code class=language-c >0x8000000 - 0xA000000</code>. </p> <div class=center > <img src="images/pinball/load.png" /> </div> <br> <p> The other sections (EWRAM, IWRAM, IO, VRAM, ...) should be mapped to the addresses as documented on <a href="https://problemkaputt.de/gbatek.htm#gbamemorymap">gbatek</a>). Additionally this cartridge has an EEPROM chip; since the ROM size is not greater than 16MB, EEPROM is mapped at <code class=language-c >0xD000000</code> (see <a href="https://problemkaputt.de/gbatek.htm#gbacartbackupeeprom">here</a> on gbatek). </p> <div class=center > <img src="images/pinball/memory.png" /> </div> <br> <p> Since the game doesn't utilize compression for code, all code is now mapped out correctly for any static analysis. </p> <br> <h2>Fixing game saving</h2> <p> If you turn off the power without having selected to "SAVE & QUIT" your save game will be invalidated, and on the next boot you will only be given the option to start a "NEW GAME". </p> <p> The developers' reasoning for this quirk was probably to prevent people from being able to rollback their mistakes. Consider for example saving your progress once you make it to a boss, and then if you accidentally fall down just restarting the game to immediately retry at the boss, without having to make it back there again. </p> <p> Personally, I think the player should be allowed to use this trick if they want to, and that blocking it just contributes to the common frustrations of the game's difficulty. However, the bigger problem from forcibly erasing progress this way is the massive inconvenience induced by triggering it on accident; this can easily happen if the player doesn't know about the quirk and just wants to put the game down after a quick session, or even deliberately doesn't attempt to save as a courtesy if they are borrowing the cartridge. Even if everyone who plays the game knows about the quirk, it still prevents you from playing the game once you reach low battery (a reasonable scenario for a handheld device) for fear of losing your entire progress if the system powers off! </p> <p> Assuming that the EEPROM save data would be DMAed somewhere into RAM, I decided to search for references to the <a href="https://problemkaputt.de/gbatek.htm#gbadmatransfers">DMA registers</a>. I quickly realized that Ghidra wasn't detecting all references as it hadn't detected all functions in the program, which was a little disappointing: </p> <div class=center > <img src="images/pinball/noFunction.png" /> </div> <br> <p> After manually creating the functions I had found with dynamic analysis, I quickly found all uses of DMA channel 3. One in particular is the function at <code class=language-c >0x803645C</code>, which is a wrapper for starting a data transfer using DMA channel 3 and waiting for it to complete. After naming the parameters and IO registers the decompilation output looks like this: </p> <div class=center > <img src="images/pinball/waitForDma3.png" /> </div> <br> <p> Although this is a relatively simple function, there are a lot of things we can notice from the decompiler output. The obvious things are: </p> <ul> <li>Lack of spacing - it would look much nicer if there were spaces after commas. I found no way to configure the syntax, but since it's open source I expect this to be addressed at some point. <li>Redundant <code class=language-c >return</code> statement at the end of the function. <li>Since the IO section is mapped as <code class=language-c >volatile</code>, the decompiler wraps all loads and stores it detects to this region with <code class=language-c >read/write_volatile_x</code> functions. I find this slightly less readable, but I suppose it's useful to have these operations marked more explicitly than non-volatile read/writes. </ul> <p> A slightly more concerning thing is the weird choice of control flow when handling loops; it has repeated the load of <code class=language-c >DMACNT3_H</code>, even though in the assembly there is only a single load instruction. A much more natural choice would have been to display the loop condition once: </p> <pre><code class=language-c >while (read_volatile_2(DMA3CNT._2_2_) & 0x8000);</code></pre>
 
 <br>
 
 <p>
-	Misc:
+	Even if it is desired to explicitly assign to an intermediate variable, the pseudo-code could still more accurately describe the assembly by using a <code class=language-c >do</code> statement:
 </p>
 
-<ul>
-	<li>Some of the soundtrack is very generic,</li>
-	<li>If you power-off without pressing "SAVE & QUIT" your save will be erased,</li>
-</ul>
-
-<br>
-
-<p>
-	Lack of gameplay variety:
-</p>
-
-<ul>
-	<li>Rooms are simple and feature no scrolling,</li>
-	<li>Bosses are reused,</li>
-</ul>
-
-<br>
-
-<p>
-	Artificial gameplay difficulty:
-</p>
-
-<ul>
-	<li>If you open all doors in a stage they all shut,</li>
-	<li>Falling down some holes takes you back further than 1 room,</li>
-	<li>When accidentally leaving a room, your progress there is lost, as the room resets once you re-enter,</li>
-</ul>
-
-<br>
-
-<p>
-	The last point in particular is very frequently cited as the most annoying problem, and is explained well in IGN's review of the game:
-</p>
-
-<div class="quote">
-	But what makes the game unbelievably irritating is its insistence of resetting the playfield if the ball (Mario) ever leaves the area. In other words, if the player was one target away from earning that screen's Star, and they accidentally shoot the ball through the gate into another board, the previous board will be completely reset as if it was the player's first appearance in the area. This happens a lot in Mario Pinball Land, and it's absolutely unfair to the player since there are so many instances where the ball will leave the playing field...either by the hand of the player or simply due to a random bounce on the board. It's this element that artificially inflates the difficulty and length of the game, and what's more, it really makes Mario Pinball Land an absolute chore to play. If it were a memory restriction we might be able to forgive it...but the game seems to have no problem tracking Yoshi balls when a player knocks it into another board in a given area. 
-</div>
-
-<div class="quote-reference">
-	- <a href="https://uk.ign.com/articles/2004/10/04/mario-pinball-land">IGN</a>
-</div>
-<br>
-
-<br>
-
-<p>
-	In this article I provide notes of my first impressions using Ghidra to reverse engineer the game, and use these notes to try to address some of these complaints by modifying several game mechanics. Perhaps in a future article I will actually add new content such as new stages, music, and boss fights.
-</p>
-
-<br>
-
-<h2>Prior work</h2>
-<p>
-	Before diving into reversing the game, let's outline all prior research on this game publicly available.
-</p>
-
-<br>
-
-<h3>Cheats</h3>
-<p>
-	There are some <a href="https://wescastro.com/codetwink/cheats.codetwink.com/gba/view/5023/default.htm">cheat codes</a> which give us the addresses of a few useful variables:
-</p>
-
-<ul>
-	<li>Lives - <code class="language-c">0x3000000</code></li>
-	<li>Score - <code class="language-c">0x3000004</code></li>
-	<li>Yellow Coins - <code class="language-c">0x3000008</code></li>
-	<li>Blue Coins - <code class="language-c">0x300000C</code> and <code class="language-c">0x300001C</code></li>
-	<li>Stars - <code class="language-c">0x3000014</code> and <code class="language-c">0x300578C</code></li>
-	<li>Item - <code class="language-c">0x300002C</code></li>
-	<li>Stage - <code class="language-c">0x3000030</code></li>
-</ul>
-
-<br>
-
-<h3>Documented regional differences</h3>
-<p>
-	<a href="https://tcrf.net/Mario_Pinball_Land">The Cutting Room Floor</a> states that the flipper physics were altered between the original Japanese release, and the later versions.
-</p>
-
-<br>
-
-<h2>Tools and setup</h2>
-<p>
-	Aside from <a href="https://ghidra-sre.org/">Ghidra</a>, I'll be using <a href="https://problemkaputt.de/gba.htm">NO$GBA</a> as my main emulator, for its excellent debugging capabilities, and occasionally <a href="https://vba-m.com/">VisualBoyAdvance-M</a> for its cheat finder functionality.
-</p>
-
-<p>
-	Importing the file into Ghidra will automatically detect it as a "Raw Binary", so just set the language for Little Endian ARMv4t and map the ROM section at <code class="language-c">0x8000000 - 0xA000000</code>.
-</p>
-
-<div class="center">
-	<img src="images/pinball/load.png" />
-</div>
-<br>
-
-<p>
-	The other sections (EWRAM, IWRAM, IO, VRAM, ...) should be mapped to the addresses as documented on <a href="https://problemkaputt.de/gbatek.htm#gbamemorymap">gbatek</a>). Additionally this cartridge has an EEPROM chip; since the ROM size is not greater than 16MB, EEPROM is mapped at <code class="language-c">0xD000000</code> (see <a href="https://problemkaputt.de/gbatek.htm#gbacartbackupeeprom">here</a> on gbatek).
-</p>
-
-<div class="center">
-	<img src="images/pinball/memory.png" />
-</div>
-<br>
-
-<p>
-	Since the game doesn't utilize compression for code, all code is now mapped out correctly for any static analysis.
-</p>
-
-<br>
-
-<h2>Fixing game saving</h2>
-<p>
-	If you turn off the power without having selected to "SAVE & QUIT" your save game will be invalidated, and on the next boot you will only be given the option to start a "NEW GAME".
-</p>
-
-<p>
-	The developers' reasoning for this quirk was probably to prevent people from being able to rollback their mistakes. Consider for example saving your progress once you make it to a boss, and then if you accidentally fall down just restarting the game to immediately retry at the boss, without having to make it back there again.
-</p>
-
-<p>
-	Personally, I think the player should be allowed to use this trick if they want to, and that blocking it just contributes to the common frustrations of the game's difficulty. However, the bigger problem from forcibly erasing progress this way is the massive inconvenience induced by triggering it on accident; this can easily happen if the player doesn't know about the quirk and just wants to put the game down after a quick session, or even deliberately doesn't attempt to save as a courtesy if they are borrowing the cartridge. Even if everyone who plays the game knows about the quirk, it still prevents you from playing the game once you reach low battery (a reasonable scenario for a handheld device) for fear of losing your entire progress if the system powers off!
-</p>
-
-<p>
-	Assuming that the EEPROM save data would be DMAed somewhere into RAM, I decided to search for references to the <a href="https://problemkaputt.de/gbatek.htm#gbadmatransfers">DMA registers</a>. I quickly realized that Ghidra wasn't detecting all references as it hadn't detected all functions in the program, which was a little disappointing:
-</p>
-
-<div class="center">
-	<img src="images/pinball/noFunction.png" />
-</div>
-<br>
-
-<p>
-	After manually creating the functions I had found with dynamic analysis, I quickly found all uses of DMA channel 3. One in particular is the function at <code class="language-c">0x803645C</code>, which is a wrapper for starting a data transfer using DMA channel 3 and waiting for it to complete. After naming the parameters and IO registers the decompilation output looks like this:
-</p>
-
-<div class="center">
-	<img src="images/pinball/waitForDma3.png" />
-</div>
-<br>
-
-<p>
-	Although this is a relatively simple function, there are a lot of things we can notice from the decompiler output. The obvious things are:
-</p>
-
-<ul>
-	<li>Lack of spacing - it would look much nicer if there were spaces after commas. I found no way to configure the syntax, but since it's open source I expect this to be addressed at some point.</li>
-	<li>Redundant <code class="language-c">return</code> statement at the end of the function.</li>
-	<li>Since the IO section is mapped as <code class="language-c">volatile</code>, the decompiler wraps all loads and stores it detects to this region with <code class="language-c">read/write_volatile_x</code> functions. I find this slightly less readable, but I suppose it's useful to have these operations marked more explicitly than non-volatile read/writes.</li>
-</ul>
-
-<p>
-	A slightly more concerning thing is the weird choice of control flow when handling loops; it has repeated the load of <code class="language-c">DMACNT3_H</code>, even though in the assembly there is only a single load instruction. A much more natural choice would have been to display the loop condition once:
-</p>
-
-<pre><code class="language-c">while (read_volatile_2(DMA3CNT._2_2_) & 0x8000);</code></pre>
-
-<br>
-
-<p>
-	Even if it is desired to explicitly assign to an intermediate variable, the pseudo-code could still more accurately describe the assembly by using a <code class="language-c">do</code> statement:
-</p>
-
-<pre><code class="language-c">do {
+<pre><code class=language-c >do {
 	dma_3_control = read_volatile_2(DMA3CNT._2_2_);
 } while (dma_3_control & 0x8000);</code></pre>
 
 <br>
 
 <p>
-	Small quirks aside, this is a strong decompilation effort, and it enables us to quickly understand what this function does. By then looking for function call references to this function, and inspecting the <code class="language-c">source</code> and <code class="language-c">destination</code> arguments passed, we can quickly find the 2 functions which copy to/from EEPROM (<code class="language-c">0xD000000</code>) and use this as a starting point for understanding how saving and loading works.
+	Small quirks aside, this is a strong decompilation effort, and it enables us to quickly understand what this function does. By then looking for function call references to this function, and inspecting the <code class=language-c >source</code> and <code class=language-c >destination</code> arguments passed, we can quickly find the 2 functions which copy to/from EEPROM (<code class=language-c >0xD000000</code>) and use this as a starting point for understanding how saving and loading works.
 </p>
 
 <p>
@@ -241,64 +22,64 @@
 
 <table>
 	<tr>
-		<th>Description</th>
-		<th>Offset</th>
-		<th>Size</th>
-	</tr>
+		<th>Description
+		<th>Offset
+		<th>Size
+	
 
 	<tr>
-		<td>Magic</td>
-		<td>0</td>
-		<td>8</td>
-	</tr>
+		<td>Magic
+		<td>0
+		<td>8
+	
 
 	<tr>
-		<td>High scores</td>
-		<td>8</td>
-		<td>140</td>
-	</tr>
+		<td>High scores
+		<td>8
+		<td>140
+	
 	<tr>
-		<td>High scores checksum</td>
-		<td>148</td>
-		<td>4</td>
-	</tr>
+		<td>High scores checksum
+		<td>148
+		<td>4
+	
 	<tr>
-		<td>Game state</td>
-		<td>152</td>
-		<td>348</td>
-	</tr>
+		<td>Game state
+		<td>152
+		<td>348
+	
 	<tr>
-		<td>Game state checksum</td>
-		<td>500</td>
-		<td>4</td>
-	</tr>
+		<td>Game state checksum
+		<td>500
+		<td>4
+	
 </table>
 
 <br>
 
 <p>
-	The magic for Mario Pinball land saves is <code class="language-c">05 f6 50 4d 6f 4d e6 5f</code>.
+	The magic for Mario Pinball land saves is <code class=language-c >05 f6 50 4d 6f 4d e6 5f</code>.
 </p>
 
 <p>
-	Checksums are calculated by simply adding every byte for the section, and adding each 4 bytes of the magic (so + <code class="language-c">0xAD374374</code> in total).
+	Checksums are calculated by simply adding every byte for the section, and adding each 4 bytes of the magic (so + <code class=language-c >0xAD374374</code> in total).
 </p>
 
 <p>
-	To identify how a save was being invalidated when loaded I copied the save after selecting to "SAVE & QUIT", and then copied the save immediately after loading it. <a href="https://www.cjmweb.net/vbindiff/">Diffing</a> the 2 files revealed 8 bytes from offset <code class="language-c">496</code> were different (the last 4 bytes of game state, and game state checksum).
+	To identify how a save was being invalidated when loaded I copied the save after selecting to "SAVE & QUIT", and then copied the save immediately after loading it. <a href="https://www.cjmweb.net/vbindiff/">Diffing</a> the 2 files revealed 8 bytes from offset <code class=language-c >496</code> were different (the last 4 bytes of game state, and game state checksum).
 </p>
 
 <p>
-	Breaking on the last 4 bytes of stage data revealed that it's the marker for whether the save is valid or not. When loading the save it is set to <code class="language-c">0xC769D9A9</code>, and when pressing "SAVE & QUIT" it is set to <code class="language-c">0x38962656</code>. I quickly located the code responsible for this, function <code class="language-c">restoreLoadedData</code> at <code class="language-c">0x8002CD0</code>:
+	Breaking on the last 4 bytes of stage data revealed that it's the marker for whether the save is valid or not. When loading the save it is set to <code class=language-c >0xC769D9A9</code>, and when pressing "SAVE & QUIT" it is set to <code class=language-c >0x38962656</code>. I quickly located the code responsible for this, function <code class=language-c >restoreLoadedData</code> at <code class=language-c >0x8002CD0</code>:
 </p>
 
-<div class="center">
+<div class=center >
 	<img src="images/pinball/restoreLoadedData.png" />
 </div>
 <br>
 
 <p>
-	To fix the problem, we can change the constant it sets <code class="language-c">saveValid</code> to from <code class="language-c">0xC769D9A9</code> to <code class="language-c">0x38962656</code>; the location of this constant in the ROM is located at <code class="language-c">0x8002D14</code>.
+	To fix the problem, we can change the constant it sets <code class=language-c >saveValid</code> to from <code class=language-c >0xC769D9A9</code> to <code class=language-c >0x38962656</code>; the location of this constant in the ROM is located at <code class=language-c >0x8002D14</code>.
 </p>
 
 <br>
@@ -316,21 +97,21 @@
 </p>
 
 <ul>
-	<li><code class="language-c">0x030014A8</code></li>
-	<li><code class="language-c">0x03002B20</code></li>
-	<li><code class="language-c">0x03002B30</code></li>
-	<li><code class="language-c">0x03004D10</code></li>
+	<li><code class=language-c >0x030014A8</code>
+	<li><code class=language-c >0x03002B20</code>
+	<li><code class=language-c >0x03002B30</code>
+	<li><code class=language-c >0x03004D10</code>
 </ul>
 
 <p>
-	We can then locate the code that is responsible for modifying these values by setting memory write breakpoints on those addresses (in NO$GBA notation this is <code class="language-c">[030014A8]!</code>), and then raising the flippers again.
+	We can then locate the code that is responsible for modifying these values by setting memory write breakpoints on those addresses (in NO$GBA notation this is <code class=language-c >[030014A8]!</code>), and then raising the flippers again.
 </p>
 
 <p>
-	As soon as I press L, the instruction at <code class="language-c">0x080153D0</code> writes <code class="language-c">0x55554</code> to <code class="language-c">0x030014A8</code>. We can lookup the enclosing function, starting at <code class="language-c">0x080153A4</code>, in Ghidra and try to understand what is going on. I came up with the following psuedo-code for this function (where <code class="language-c">flipperValue</code>'s address is <code class="language-c">0x030014A8</code>):
+	As soon as I press L, the instruction at <code class=language-c >0x080153D0</code> writes <code class=language-c >0x55554</code> to <code class=language-c >0x030014A8</code>. We can lookup the enclosing function, starting at <code class=language-c >0x080153A4</code>, in Ghidra and try to understand what is going on. I came up with the following psuedo-code for this function (where <code class=language-c >flipperValue</code>'s address is <code class=language-c >0x030014A8</code>):
 </p>
 
-<pre><code class="language-c">void updateFlipper(int flipper) {
+<pre><code class=language-c >void updateFlipper(int flipper) {
 	if(flipperPressed[flipper]) {
 		int flipperDelta = upper32bitsof64bitmultiply(0x147AE, flipperMultiplier);
 		
@@ -353,11 +134,11 @@
 <br>
 
 <p>
-	<code class="language-c">flipperMultiplier</code> is set to <code class="language-c">0x42AAA</code> during initialisation (at <code class="language-c">0x8028C02</code>), and then remains unchanged throughout the game.
+	<code class=language-c >flipperMultiplier</code> is set to <code class=language-c >0x42AAA</code> during initialisation (at <code class=language-c >0x8028C02</code>), and then remains unchanged throughout the game.
 </p>
 
 <p>
-	So in this function, the flipper is either incremented by <code class="language-c">((0x147ae * 0x42aaa) >> 32) = 0x55554</code> until <code class="language-c">0x2AAAAA</code>, or decremented by <code class="language-c">((0xA3D7 * 0x42aaa) >> 32) = 0x2AAAA</code> (half as quickly) until <code class="language-c">0</code>.
+	So in this function, the flipper is either incremented by <code class=language-c >((0x147ae * 0x42aaa) >> 32) = 0x55554</code> until <code class=language-c >0x2AAAAA</code>, or decremented by <code class=language-c >((0xA3D7 * 0x42aaa) >> 32) = 0x2AAAA</code> (half as quickly) until <code class=language-c >0</code>.
 </p>
 
 <br>
@@ -372,14 +153,14 @@
 </p>
 
 <p>
-	We have a slight problem in that when reading an analog value in a range like <code class="language-c">0 - 256</code>, it does not map perfectly to the game's <code class="language-c">0 - 0x2AAAAA</code> range; <code class="language-c">256 * 10922 = 0x2AAA00</code>, so we'll just add <code class="language-c">0xAA</code> after passing half way (this is less than 0.006% so shouldn't jerk too much).
+	We have a slight problem in that when reading an analog value in a range like <code class=language-c >0 - 256</code>, it does not map perfectly to the game's <code class=language-c >0 - 0x2AAAAA</code> range; <code class=language-c >256 * 10922 = 0x2AAA00</code>, so we'll just add <code class=language-c >0xAA</code> after passing half way (this is less than 0.006% so shouldn't jerk too much).
 </p>
 
 <p>
-	We also need to keep the size of our new function under <code class="language-c">0x7C</code> if we want to overwrite it inline. I came up with the following:
+	We also need to keep the size of our new function under <code class=language-c >0x7C</code> if we want to overwrite it inline. I came up with the following:
 </p>
 
-<pre><code class="language-c">#define analogReading ((unsigned int *)0x4000400)
+<pre><code class=language-c >#define analogReading ((unsigned int *)0x4000400)
 #define flipperValue ((int *)0x30014A8)
 
 void updateFlipper(int flipper) {
@@ -401,19 +182,19 @@ void updateFlipper(int flipper) {
 <br>
 
 <p>
-	Compile as thumb code and insert into ROM file at offset <code class="language-c">0x153A4</code>:
+	Compile as thumb code and insert into ROM file at offset <code class=language-c >0x153A4</code>:
 </p>
 
-<pre><code class="language-c">arm-none-eabi-gcc updateFlipper.c -mthumb -Os -nostartfiles -nostdlib -o updateFlipper.elf -Ttext=0x080153A4
+<pre><code class=language-c >arm-none-eabi-gcc updateFlipper.c -mthumb -Os -nostartfiles -nostdlib -o updateFlipper.elf -Ttext=0x080153A4
 arm-none-eabi-objcopy -O binary updateFlipper.elf updateFlipper.bin</code></pre>
 
 <br>
 
 <p>
-	Note that as our code modifications get more complex and will require more than just a text section (data section, etc), we will need to ensure that the compiler and linker do not insert any padding between the sections, to keep our binaries as small as possible. Compiling with <code class="language-c">-Wl,-z,max-page-size=0x1</code> and removing all calls to <code class="language-c">ALIGN</code> in the linker script, such as the below, seems to work (run <code class="language-c">arm-none-eabi-ld -verbose</code> to get the default linker script):
+	Note that as our code modifications get more complex and will require more than just a text section (data section, etc), we will need to ensure that the compiler and linker do not insert any padding between the sections, to keep our binaries as small as possible. Compiling with <code class=language-c >-Wl,-z,max-page-size=0x1</code> and removing all calls to <code class=language-c >ALIGN</code> in the linker script, such as the below, seems to work (run <code class=language-c >arm-none-eabi-ld -verbose</code> to get the default linker script):
 </p>
 
-<pre><code class="language-c">  /* Adjust the address for the data segment.  We want to adjust up to
+<pre><code class=language-c >  /* Adjust the address for the data segment.  We want to adjust up to
 	 the same address within the page on the next page up.  */
   . = ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1));
 </code></pre>
@@ -427,7 +208,7 @@ arm-none-eabi-objcopy -O binary updateFlipper.elf updateFlipper.bin</code></pre>
 	For now, let's just modify VisualBoyAdvance-M, to expose the analog values we want at an unused IO address:
 </p>
 
-<pre><code class="language-c">static inline uint32_t CPUReadMemory(uint32_t address)
+<pre><code class=language-c >static inline uint32_t CPUReadMemory(uint32_t address)
 {
 	switch (address >> 24) {
 	...
@@ -460,14 +241,14 @@ arm-none-eabi-objcopy -O binary updateFlipper.elf updateFlipper.bin</code></pre>
 </p>
 
 <p>
-	From reversing the <code class="language-c">updateFlipper</code> function, we know that there exist <code class="language-c">flipperPressed</code> variables, which are likely to be controlling this.
+	From reversing the <code class=language-c >updateFlipper</code> function, we know that there exist <code class=language-c >flipperPressed</code> variables, which are likely to be controlling this.
 </p>
 
 <p>
-	The only function which reads this value is the one at <code class="language-c">0x801531C</code>, which seems to be updating a value likely used for the velocity calculation:
+	The only function which reads this value is the one at <code class=language-c >0x801531C</code>, which seems to be updating a value likely used for the velocity calculation:
 </p>
 
-<pre><code class="language-c">const int leftFlipper1_rightFlipperMinus1[2] = { 1, -1 };
+<pre><code class=language-c >const int leftFlipper1_rightFlipperMinus1[2] = { 1, -1 };
 
 void updateFlipperVelocity(int flipper) {
   int *vel = &flipperVelocity[flipper];
@@ -489,14 +270,14 @@ void updateFlipperVelocity(int flipper) {
 <br>
 
 <p>
-	Those constants match what we saw in <code class="language-c">updateFlipper</code>, which is a good sign we're looking at the right thing.
+	Those constants match what we saw in <code class=language-c >updateFlipper</code>, which is a good sign we're looking at the right thing.
 </p>
 
 <p>
-	Let's try modifying this function to use the delta of the analog readings (again, the values don't divide perfectly, <code class="language-c">0x55554 / 4 = 0x15555</code>, which is not exactly <code class="language-c">0x147AE</code>):
+	Let's try modifying this function to use the delta of the analog readings (again, the values don't divide perfectly, <code class=language-c >0x55554 / 4 = 0x15555</code>, which is not exactly <code class=language-c >0x147AE</code>):
 </p>
 
-<pre><code class="language-c">#define analogReading ((unsigned int *)0x4000400)
+<pre><code class=language-c >#define analogReading ((unsigned int *)0x4000400)
 #define flipperValue ((int *)0x30014A8)
 #define flipperVelocity ((int *)0x30014B8)
 #define leftFlipper1_rightFlipperMinus1 ((int *)0x81DEAAC)
@@ -535,7 +316,7 @@ void updateFlipperVelocity(int flipper) {
 <br>
 
 <p>
-	Our new function is too big to be inserted over the original function, so let's place a jump there, and insert the function at some free space at the end of the ROM (<code class="language-c">0x87FD3D4</code>).
+	Our new function is too big to be inserted over the original function, so let's place a jump there, and insert the function at some free space at the end of the ROM (<code class=language-c >0x87FD3D4</code>).
 </p>
 
 <p>
@@ -550,15 +331,15 @@ void updateFlipperVelocity(int flipper) {
 </p>
 
 <p>
-	The door data is located at <code class="language-c">0x300140C</code>; it's an array of <code class="language-c">20</code> byte structures. The first field is the door number (<code class="language-c">4 bytes</code>), which I'm not sure why is required considering you can just access doors by index without requiring a loop, and the second field is the door's state (<code class="language-c">4 bytes</code>). The door state can be one of the following:
+	The door data is located at <code class=language-c >0x300140C</code>; it's an array of <code class=language-c >20</code> byte structures. The first field is the door number (<code class=language-c >4 bytes</code>), which I'm not sure why is required considering you can just access doors by index without requiring a loop, and the second field is the door's state (<code class=language-c >4 bytes</code>). The door state can be one of the following:
 </p>
 
 <ul>
-	<li>0 - closed and unopenable</li>
-	<li>1 - closed but openable</li>
-	<li>2 - opening</li>
-	<li>3 - open</li>
-	<li>4 - closing</li>
+	<li>0 - closed and unopenable
+	<li>1 - closed but openable
+	<li>2 - opening
+	<li>3 - open
+	<li>4 - closing
 </ul>
 
 <p>
@@ -566,11 +347,11 @@ void updateFlipperVelocity(int flipper) {
 </p>
 
 <p>
-	<code class="language-c">checkAllDoorsOpen</code> at <code class="language-c">0x8014280</code> has a loop which checks if all doors (<code class="language-c">numberOfDoors</code> at <code class="language-c">0x3001448</code>) are <code class="language-c">3</code> (open), and if so, sets them all to <code class="language-c">4</code> (closing).
+	<code class=language-c >checkAllDoorsOpen</code> at <code class=language-c >0x8014280</code> has a loop which checks if all doors (<code class=language-c >numberOfDoors</code> at <code class=language-c >0x3001448</code>) are <code class=language-c >3</code> (open), and if so, sets them all to <code class=language-c >4</code> (closing).
 </p>
 
 <p>
-	We can just replace the first instruction of this function with <code class="language-c">bx lr</code> to immediately return, which disables this functionality.
+	We can just replace the first instruction of this function with <code class=language-c >bx lr</code> to immediately return, which disables this functionality.
 </p>
 
 <br>
@@ -581,10 +362,10 @@ void updateFlipperVelocity(int flipper) {
 </p>
 
 <p>
-	Doors are created in each stage's setup function (we will go over stage control flow in more detail later) by calling <code class="language-c">createDoor</code>. For example, stage 2 creates 2 doors, with identifiers <code class="language-c">0</code> and <code class="language-c">1</code>, resources <code class="language-c">0xBF</code> and <code class="language-c">0xCA</code>, and the same palette at address <code class="language-c">0x87FB15C</code>:
+	Doors are created in each stage's setup function (we will go over stage control flow in more detail later) by calling <code class=language-c >createDoor</code>. For example, stage 2 creates 2 doors, with identifiers <code class=language-c >0</code> and <code class=language-c >1</code>, resources <code class=language-c >0xBF</code> and <code class=language-c >0xCA</code>, and the same palette at address <code class=language-c >0x87FB15C</code>:
 </p>
 
-<pre><code class="language-c">createDoor(0, 0xBF, (struct palette *)0x87FB15C);
+<pre><code class=language-c >createDoor(0, 0xBF, (struct palette *)0x87FB15C);
 createDoor(1, 0xCA, (struct palette *)0x87FB15C);</code></pre>
 
 <br>
@@ -593,7 +374,7 @@ createDoor(1, 0xCA, (struct palette *)0x87FB15C);</code></pre>
 	The star limits are implemented in each stage's loop function. For example, stage 2 loop function has the following code to control door access:
 </p>
 
-<pre><code class="language-c">if(getStars() > 0 || inTimeAttackMode())
+<pre><code class=language-c >if(getStars() > 0 || inTimeAttackMode())
 	allowOpeningDoor(0);
 if(getStars() > 1)
 	allowOpeningDoor(1);
@@ -602,7 +383,7 @@ if(getStars() > 1)
 <br>
 
 <p>
-	Swapping the resource number passed to <code class="language-c">createDoor</code> for a different door sprite, and modifying the check in the stages's loop function is sufficient to lower the star requirement of a door.
+	Swapping the resource number passed to <code class=language-c >createDoor</code> for a different door sprite, and modifying the check in the stages's loop function is sufficient to lower the star requirement of a door.
 </p>
 
 <br>
@@ -613,15 +394,15 @@ if(getStars() > 1)
 </p>
 
 <p>
-	The game doesn't use any dynamic memory allocation for IWRAM (<code class="language-c">0x3000000 - 0x3007FFF</code>), everything has been statically pre-assigned an address, which makes it relatively easy to see that the developers have used practically everything!
+	The game doesn't use any dynamic memory allocation for IWRAM (<code class=language-c >0x3000000 - 0x3007FFF</code>), everything has been statically pre-assigned an address, which makes it relatively easy to see that the developers have used practically everything!
 </p>
 
 <p>
-	EWRAM (<code class="language-c">0x2000000 - 0x203FFFF</code>) on the other hand is a bit more interesting as the entirety of it is just used as a massive buffer to decompress data to. There is a pointer, <code class="language-c">nextSpaceForDecompressedData</code> (<code class="language-c">0x300531C</code>), which is used to track where to decompress data to. This pointer is set to the start of EWRAM (<code class="language-c">0x2000000</code>) when transitioning to a new stage, and is then advanced each time the stage decompresses a resource by calling <code class="language-c">decompressResource</code> (<code class="language-c">0x802E6A0</code>).
+	EWRAM (<code class=language-c >0x2000000 - 0x203FFFF</code>) on the other hand is a bit more interesting as the entirety of it is just used as a massive buffer to decompress data to. There is a pointer, <code class=language-c >nextSpaceForDecompressedData</code> (<code class=language-c >0x300531C</code>), which is used to track where to decompress data to. This pointer is set to the start of EWRAM (<code class=language-c >0x2000000</code>) when transitioning to a new stage, and is then advanced each time the stage decompresses a resource by calling <code class=language-c >decompressResource</code> (<code class=language-c >0x802E6A0</code>).
 </p>
 
 <p>
-	Different stages require a different amount of data, for example stage 1 requires <code class="language-c">0x18020</code> bytes and stage 3 requires <code class="language-c">0x3e824</code> bytes. We could try to identify the area of the game which uses the most space for decompressed data, and then use whatever is left over as free space (maybe something like 5000 bytes).
+	Different stages require a different amount of data, for example stage 1 requires <code class=language-c >0x18020</code> bytes and stage 3 requires <code class=language-c >0x3e824</code> bytes. We could try to identify the area of the game which uses the most space for decompressed data, and then use whatever is left over as free space (maybe something like 5000 bytes).
 </p>
 
 <p>
@@ -636,24 +417,24 @@ if(getStars() > 1)
 
 <h3>Extracting resources</h3>
 <p>
-	The resource table starts at <code class="language-c">0x87FCCD8</code>, it's an array of pointers to resources structured the following way:
+	The resource table starts at <code class=language-c >0x87FCCD8</code>, it's an array of pointers to resources structured the following way:
 </p>
 
-<pre><code class="language-c">1 byte - type
+<pre><code class=language-c >1 byte - type
 3 bytes - decompressedSize
 [data]</code></pre>
 
 <br>
 
 <p>
-	The <code class="language-c">type</code> is either <code class="language-c">0</code> if the resource is not compressed, or <code class="language-c">0x10</code> if it is compressed with LZ77 (to be decompressed via GBA BIOS function <code class="language-c">0x11</code>); many open source decompressors for this exist, such as <a href="https://gbatemp.net/threads/nintendo-ds-gba-compressors.313278/">CUE's DS/GBA compressors</a>.
+	The <code class=language-c >type</code> is either <code class=language-c >0</code> if the resource is not compressed, or <code class=language-c >0x10</code> if it is compressed with LZ77 (to be decompressed via GBA BIOS function <code class=language-c >0x11</code>); many open source decompressors for this exist, such as <a href="https://gbatemp.net/threads/nintendo-ds-gba-compressors.313278/">CUE's DS/GBA compressors</a>.
 </p>
 
 <p>
-	The following resources use their entry in the resource table for uncompressed metadata, and their real compressed data is stored elsewhere (to be fetched by calling <code class="language-c">getCompressedData</code> (<code class="language-c">0x802D7A4</code>)):
+	The following resources use their entry in the resource table for uncompressed metadata, and their real compressed data is stored elsewhere (to be fetched by calling <code class=language-c >getCompressedData</code> (<code class=language-c >0x802D7A4</code>)):
 </p>
 
-<pre><code class="language-c">0x64 - 0x8382C48
+<pre><code class=language-c >0x64 - 0x8382C48
 0xa7 - 0x852E36C
 0xf9 - 0x85C5BB4
 0x91 - 0x849C568
@@ -673,7 +454,7 @@ if(getStars() > 1)
 	I wrote a small hacky program which can decompress all of these resources and then update the resource table to point to the decompressed data. Note that some of the resources overlap, so I decided to do this in a couple of stages (extract all resources without writing anything, then copy the decompressed resources and write to the resource table).
 </p>
 
-<pre><code class="language-c">unsigned int resourceAddressAddress(int resource, int resolve) {
+<pre><code class=language-c >unsigned int resourceAddressAddress(int resource, int resolve) {
 	if(resolve) {
 		switch(resource) {
 			case 0x64: return 0x802D834;
@@ -727,10 +508,10 @@ if(getStars() > 1)
 <br>
 
 <p>
-	There's just one final modification we need to make. Since the game expects certain resources to have been decompressed when requested, it tries to locate the data by calling <code class="language-c">getDecompressedData</code> (<code class="language-c">0x802FB04</code>); this function will return <code class="language-c">NULL</code> if the resource has not been decompressed. To fix this, we'll update the function to return the resource's uncompressed address either from the resource table or from <code class="language-c">getCompressedData</code>:
+	There's just one final modification we need to make. Since the game expects certain resources to have been decompressed when requested, it tries to locate the data by calling <code class=language-c >getDecompressedData</code> (<code class=language-c >0x802FB04</code>); this function will return <code class=language-c >NULL</code> if the resource has not been decompressed. To fix this, we'll update the function to return the resource's uncompressed address either from the resource table or from <code class=language-c >getCompressedData</code>:
 </p>
 
-<pre><code class="language-c">void *(*getCompressedData)(int resource) = (void *)(0x802D7A4 + 1);
+<pre><code class=language-c >void *(*getCompressedData)(int resource) = (void *)(0x802D7A4 + 1);
 
 #define compressedDataAddresses ((void **)0x87FCCD8)
 
@@ -755,7 +536,7 @@ void *_start(int resource) {
 
 <h2>Understanding stage control flow</h2>
 <p>
-	We already know from the cheat codes that the current stage number is located at <code class="language-c">0x3000030</code>, so we can search for references to it in our disassembler or break on writing it to identify the pertinent functions.
+	We already know from the cheat codes that the current stage number is located at <code class=language-c >0x3000030</code>, so we can search for references to it in our disassembler or break on writing it to identify the pertinent functions.
 </p>
 
 <p>
@@ -763,22 +544,22 @@ void *_start(int resource) {
 </p>
 
 <ul>
-	<li><code class="language-c">0x08000A8C</code> - <code class="language-c">switchStage</code></li>
-	<li><code class="language-c">0x0801EC64</code> - <code class="language-c">enterGameRoom</code></li>
-	<li><code class="language-c">0x0801E6C8</code> - <code class="language-c">setupStage</code></li>
-	<li>(stage specific setup function)</li>
-	<li><code class="language-c">0x0801E9F0</code> - <code class="language-c">mainGameFunction</code></li>
-	<li>(stage specific loop function)</li>
-	<li><code class="language-c">0x8034150</code> - <code class="language-c">isReadyForSetup</code></li>
-	<li><code class="language-c">0x801E8DC</code> - <code class="language-c">clearUpStage</code></li>
-	<li>(stage specific clear up function)</li>
+	<li><code class=language-c >0x08000A8C</code> - <code class=language-c >switchStage</code>
+	<li><code class=language-c >0x0801EC64</code> - <code class=language-c >enterGameRoom</code>
+	<li><code class=language-c >0x0801E6C8</code> - <code class=language-c >setupStage</code>
+	<li>(stage specific setup function)
+	<li><code class=language-c >0x0801E9F0</code> - <code class=language-c >mainGameFunction</code>
+	<li>(stage specific loop function)
+	<li><code class=language-c >0x8034150</code> - <code class=language-c >isReadyForSetup</code>
+	<li><code class=language-c >0x801E8DC</code> - <code class=language-c >clearUpStage</code>
+	<li>(stage specific clear up function)
 </ul>
 
 <p>
-	<code class="language-c">enterGameRoom</code> calls <code class="language-c">setupStage</code> once, and then <code class="language-c">mainGameFunction</code> in a loop until the status is changed, and finally <code class="language-c">clearUpStage</code>:
+	<code class=language-c >enterGameRoom</code> calls <code class=language-c >setupStage</code> once, and then <code class=language-c >mainGameFunction</code> in a loop until the status is changed, and finally <code class=language-c >clearUpStage</code>:
 </p>
 
-<pre><code class="language-c">int enterGameRoom(...) {
+<pre><code class=language-c >int enterGameRoom(...) {
 	int result;
 
 	if (stageIsShop(currentStage)) {
@@ -801,10 +582,10 @@ void *_start(int resource) {
 <br>
 
 <p>
-	<code class="language-c">setupStage</code>, <code class="language-c">mainGameFunction</code> and <code class="language-c">clearUpStage</code> have switch statements to execute a different function according to the current stage, such as <code class="language-c">setupStage1</code> (<code class="language-c">0x801F290</code>), <code class="language-c">stage1</code> (<code class="language-c">0x801F52C</code>), and <code class="language-c">clearUpStage1</code> (<code class="language-c">0x801F5DC</code>):
+	<code class=language-c >setupStage</code>, <code class=language-c >mainGameFunction</code> and <code class=language-c >clearUpStage</code> have switch statements to execute a different function according to the current stage, such as <code class=language-c >setupStage1</code> (<code class=language-c >0x801F290</code>), <code class=language-c >stage1</code> (<code class=language-c >0x801F52C</code>), and <code class=language-c >clearUpStage1</code> (<code class=language-c >0x801F5DC</code>):
 </p>
 
-<pre><code class="language-c">int setupStage(...) {
+<pre><code class=language-c >int setupStage(...) {
 	...
 	switch (stage) {
 		case 0:
@@ -821,10 +602,10 @@ void *_start(int resource) {
 <br>
 
 <p>
-	Many of the stage specific loop functions call <code class="language-c">isReadyForSetup</code>, which returns <code class="language-c">1</code> once the ball's Y passes above a certain position, and then <code class="language-c">0</code> for all future calls. The idea is that the stage specific setup functions execute whilst the screen is still faded out, but some routines such as creating enemies need to be done later so that they can be seen appearing:
+	Many of the stage specific loop functions call <code class=language-c >isReadyForSetup</code>, which returns <code class=language-c >1</code> once the ball's Y passes above a certain position, and then <code class=language-c >0</code> for all future calls. The idea is that the stage specific setup functions execute whilst the screen is still faded out, but some routines such as creating enemies need to be done later so that they can be seen appearing:
 </p>
 
-<pre><code class="language-c">int stage12() {
+<pre><code class=language-c >int stage12() {
 	...
 
 	if (isReadyForSetup()) {
@@ -842,38 +623,38 @@ void *_start(int resource) {
 </p>
 
 <ul>
-	<li>Stage 1 loop function detects you went through the ghost door, which sets <code class="language-c">ball[0].state</code> from <code class="language-c">13</code> to <code class="language-c">0</code>,</li>
-	<li>This causes <code class="language-c">enterGameRoom</code> to break out of the loop that was executing <code class="language-c">mainGameFunction</code>,</li>
-	<li><code class="language-c">enterGameRoom</code> calls <code class="language-c">clearUpStage</code>,</li>
-	<li><code class="language-c">clearUpStage</code> switches on the stage number (<code class="language-c">0</code>), and calls <code class="language-c">clearUpStage1</code>,</li>
-	<li>The clear up functions return and <code class="language-c">enterGameRoom</code> returns to <code class="language-c">switchRoom</code>,</li>
-	<li><code class="language-c">switchRoom</code> changes <code class="language-c">stage</code> to <code class="language-c">1</code> (stage 1-2),</li>
-	<li><code class="language-c">switchRoom</code> continues its loop which calls <code class="language-c">enterGameRoom</code>,</li>
-	<li><code class="language-c">enterGameRoom</code> calls <code class="language-c">setupStage</code>,</li>
-	<li><code class="language-c">setupStage</code> switches on stage number (<code class="language-c">1</code>), and calls <code class="language-c">setupStage12</code>,</li>
-	<li><code class="language-c">setupStage12</code> calls some functions to decompress some data, reset the setup variable, and set enemy type to ghost (<code class="language-c">0xd</code>),</li>
-	<li>The setup functions return to <code class="language-c">enterGameRoom</code>,</li>
-	<li><code class="language-c">enterGameRoom</code> enters its loop which calls <code class="language-c">mainGameFunction</code>,</li>
-	<li><code class="language-c">mainGameFunction</code> switches on the stage number (<code class="language-c">1</code>), and calls <code class="language-c">stage12</code>,</li>
-	<li><code class="language-c">stage12</code> checks the setup variable, and if it's ready will create the ghosts,</li>
+	<li>Stage 1 loop function detects you went through the ghost door, which sets <code class=language-c >ball[0].state</code> from <code class=language-c >13</code> to <code class=language-c >0</code>,
+	<li>This causes <code class=language-c >enterGameRoom</code> to break out of the loop that was executing <code class=language-c >mainGameFunction</code>,
+	<li><code class=language-c >enterGameRoom</code> calls <code class=language-c >clearUpStage</code>,
+	<li><code class=language-c >clearUpStage</code> switches on the stage number (<code class=language-c >0</code>), and calls <code class=language-c >clearUpStage1</code>,
+	<li>The clear up functions return and <code class=language-c >enterGameRoom</code> returns to <code class=language-c >switchRoom</code>,
+	<li><code class=language-c >switchRoom</code> changes <code class=language-c >stage</code> to <code class=language-c >1</code> (stage 1-2),
+	<li><code class=language-c >switchRoom</code> continues its loop which calls <code class=language-c >enterGameRoom</code>,
+	<li><code class=language-c >enterGameRoom</code> calls <code class=language-c >setupStage</code>,
+	<li><code class=language-c >setupStage</code> switches on stage number (<code class=language-c >1</code>), and calls <code class=language-c >setupStage12</code>,
+	<li><code class=language-c >setupStage12</code> calls some functions to decompress some data, reset the setup variable, and set enemy type to ghost (<code class=language-c >0xd</code>),
+	<li>The setup functions return to <code class=language-c >enterGameRoom</code>,
+	<li><code class=language-c >enterGameRoom</code> enters its loop which calls <code class=language-c >mainGameFunction</code>,
+	<li><code class=language-c >mainGameFunction</code> switches on the stage number (<code class=language-c >1</code>), and calls <code class=language-c >stage12</code>,
+	<li><code class=language-c >stage12</code> checks the setup variable, and if it's ready will create the ghosts,
 </ul>
 
 <br>
 
 <h3>Stage links</h3>
 <p>
-	The only other thing to understand is how the game desides the target of the next stage in <code class="language-c">switchStage</code>. This will be useful for us, as we want to change one stage transition to take us to a different stage.
+	The only other thing to understand is how the game desides the target of the next stage in <code class=language-c >switchStage</code>. This will be useful for us, as we want to change one stage transition to take us to a different stage.
 </p>
 
 <p>
-	There is a hole in stage 3-3 (<code class="language-c">0x12</code>) which will send you to the underwater stage, 3-4 (<code class="language-c">0x13</code>), however if you fall from stage 3-4 you will be sent all the way back to stage 3 (<code class="language-c">0x0f</code>), not stage 3-3!
+	There is a hole in stage 3-3 (<code class=language-c >0x12</code>) which will send you to the underwater stage, 3-4 (<code class=language-c >0x13</code>), however if you fall from stage 3-4 you will be sent all the way back to stage 3 (<code class=language-c >0x0f</code>), not stage 3-3!
 </p>
 
 <p>
-	To modify the game to return from stage 3-4 (<code class="language-c">0x13</code>) to stage 3-3 (<code class="language-c">0x12</code>), instead of stage 3 (<code class="language-c">0x0f</code>), we need to understand the data structure which stores the relationships between stages:
+	To modify the game to return from stage 3-4 (<code class=language-c >0x13</code>) to stage 3-3 (<code class=language-c >0x12</code>), instead of stage 3 (<code class=language-c >0x0f</code>), we need to understand the data structure which stores the relationships between stages:
 </p>
 
-<pre><code class="language-c">struct stageLink {
+<pre><code class=language-c >struct stageLink {
 	int stage;
 	int forwardsTransition;
 	int linkedStage;
@@ -883,10 +664,10 @@ void *_start(int resource) {
 <br>
 
 <p>
-	There is an array of these structures, <code class="language-c">stageLinks</code>, starting at <code class="language-c">0x87F5618</code>, which is used by <code class="language-c">switchStage</code> to determine the next stage like so:
+	There is an array of these structures, <code class=language-c >stageLinks</code>, starting at <code class=language-c >0x87F5618</code>, which is used by <code class=language-c >switchStage</code> to determine the next stage like so:
 </p>
 
-<pre><code class="language-c">if stageLinks[i].stage == currentStage && transitionMechanic == stageLinks[i].forwardsTransition {
+<pre><code class=language-c >if stageLinks[i].stage == currentStage && transitionMechanic == stageLinks[i].forwardsTransition {
 	nextStage = stageLinks[i].linkedStage;
 }
 else if stageLinks[i].linkedStage == currentStage && transitionMechanic == stageLinks[i].backwardsTransition {
@@ -897,25 +678,25 @@ else if stageLinks[i].linkedStage == currentStage && transitionMechanic == stage
 <br>
 
 <p>
-	Where falling passed the flippers is mechanic <code class="language-c">0xa</code>. This is enough information for us to search through the table for stage numbers <code class="language-c">0x12</code>, <code class="language-c">0x13</code>, and <code class="language-c">0x0f</code>, yielding the entries at indexes <code class="language-c">46</code> and <code class="language-c">48</code>:
+	Where falling passed the flippers is mechanic <code class=language-c >0xa</code>. This is enough information for us to search through the table for stage numbers <code class=language-c >0x12</code>, <code class=language-c >0x13</code>, and <code class=language-c >0x0f</code>, yielding the entries at indexes <code class=language-c >46</code> and <code class=language-c >48</code>:
 </p>
 
-<pre><code class="language-c">87f58f8: stageLink { 0x12, 1, 0x13, 4 }
+<pre><code class=language-c >87f58f8: stageLink { 0x12, 1, 0x13, 4 }
 ...
 87f5918: stageLink { 0x13, 0xA, 0xF, 2 }</code></pre>
 
 <br>
 
 <p>
-	Entry <code class="language-c">46</code> states that you can transition from stage <code class="language-c">0x12</code> to <code class="language-c">0x13</code> by going through transition mechanic 1 (the ice whole), but cannot return from stage <code class="language-c">0x13</code> to stage <code class="language-c">0x12</code> as there is nothing in stage <code class="language-c">0x13</code> that sets transition mechanic 4.
+	Entry <code class=language-c >46</code> states that you can transition from stage <code class=language-c >0x12</code> to <code class=language-c >0x13</code> by going through transition mechanic 1 (the ice whole), but cannot return from stage <code class=language-c >0x13</code> to stage <code class=language-c >0x12</code> as there is nothing in stage <code class=language-c >0x13</code> that sets transition mechanic 4.
 </p>
 
 <p>
-	Entry <code class="language-c">48</code> states that you can transition from stage <code class="language-c">0x13</code> to <code class="language-c">0xf</code> by falling (transition mechanic <code class="language-c">0xa</code>), but cannot return from stage <code class="language-c">0xf</code> to <code class="language-c">0x13</code> as there is nothing in stage <code class="language-c">0xf</code> that sets transition mechanic <code class="language-c">2</code>.
+	Entry <code class=language-c >48</code> states that you can transition from stage <code class=language-c >0x13</code> to <code class=language-c >0xf</code> by falling (transition mechanic <code class=language-c >0xa</code>), but cannot return from stage <code class=language-c >0xf</code> to <code class=language-c >0x13</code> as there is nothing in stage <code class=language-c >0xf</code> that sets transition mechanic <code class=language-c >2</code>.
 </p>
 
 <p>
-	To fix the problem, we can either modify entry <code class="language-c">46</code>'s backwards transition to <code class="language-c">0xa</code>, or entry <code class="language-c">48</code>'s <code class="language-c">linkedStage</code> to <code class="language-c">0x12</code>.
+	To fix the problem, we can either modify entry <code class=language-c >46</code>'s backwards transition to <code class=language-c >0xa</code>, or entry <code class=language-c >48</code>'s <code class=language-c >linkedStage</code> to <code class=language-c >0x12</code>.
 </p>
 
 <br>
@@ -926,7 +707,7 @@ else if stageLinks[i].linkedStage == currentStage && transitionMechanic == stage
 </p>
 
 <p>
-	The only stage data that is currently preserved across stage transitions is the <code class="language-c">stageFlags</code> array, located directly after the <code class="language-c">stage</code> variable, at <code class="language-c">0x3000034</code>. This is a 32-bit integer per stage, which holds information about the actions you have completed in the stage, such as whether you have collected the star, opened the question boxes, raised the pyramid, etc.
+	The only stage data that is currently preserved across stage transitions is the <code class=language-c >stageFlags</code> array, located directly after the <code class=language-c >stage</code> variable, at <code class=language-c >0x3000034</code>. This is a 32-bit integer per stage, which holds information about the actions you have completed in the stage, such as whether you have collected the star, opened the question boxes, raised the pyramid, etc.
 </p>
 
 <p>
@@ -938,41 +719,41 @@ else if stageLinks[i].linkedStage == currentStage && transitionMechanic == stage
 </p>
 
 <ul>
-	<li>0x00 - Stage 1</li>
-	<li>0x01 - Stage 1-2</li>
-	<li>0x07 - Stage 2</li>
-	<li>0x08 - Stage 2-2</li>
-	<li>0x0A - Stage 2-3</li>
-	<li>0x0B - Stage 2-4</li>
-	<li>0x0C - Stage 2-5</li>
-	<li>0x0D - Stage 2-6</li>
-	<li>0x0E - Stage 2-7</li>
-	<li>0x0F - Stage 3</li>
-	<li>0x10 - Stage 3-2</li>
-	<li>0x12 - Stage 3-3</li>
-	<li>0x13 - Stage 3-4</li>
-	<li>0x14 - Stage 3-5</li>
-	<li>0x15 - Stage 3-6</li>
-	<li>0x16 - Stage 4</li>
-	<li>0x17 - Stage 4-2</li>
-	<li>0x18 - Stage 4-3</li>
-	<li>0x19 - Stage 4-4</li>
-	<li>0x1A - Stage 4-5</li>
-	<li>0x1B - Stage 4-6</li>
-	<li>0x1C - Stage 4-7</li>
-	<li>0x1E - Stage 4-8</li>
-	<li>0x1F - Stage 5</li>
-	<li>0x21 - Stage 5-2</li>
-	<li>0x22 - Stage 5-3</li>
-	<li>0x23 - Stage 5-4</li>
-	<li>0x27 - Stage 5-8</li>
+	<li>0x00 - Stage 1
+	<li>0x01 - Stage 1-2
+	<li>0x07 - Stage 2
+	<li>0x08 - Stage 2-2
+	<li>0x0A - Stage 2-3
+	<li>0x0B - Stage 2-4
+	<li>0x0C - Stage 2-5
+	<li>0x0D - Stage 2-6
+	<li>0x0E - Stage 2-7
+	<li>0x0F - Stage 3
+	<li>0x10 - Stage 3-2
+	<li>0x12 - Stage 3-3
+	<li>0x13 - Stage 3-4
+	<li>0x14 - Stage 3-5
+	<li>0x15 - Stage 3-6
+	<li>0x16 - Stage 4
+	<li>0x17 - Stage 4-2
+	<li>0x18 - Stage 4-3
+	<li>0x19 - Stage 4-4
+	<li>0x1A - Stage 4-5
+	<li>0x1B - Stage 4-6
+	<li>0x1C - Stage 4-7
+	<li>0x1E - Stage 4-8
+	<li>0x1F - Stage 5
+	<li>0x21 - Stage 5-2
+	<li>0x22 - Stage 5-3
+	<li>0x23 - Stage 5-4
+	<li>0x27 - Stage 5-8
 </ul>
 
 <p>
 	It's kind of annoying that they are not perfectly in order, but we can just use an array to map from stage number to preservation index:
 </p>
 
-<pre><code class="language-c">const unsigned char stageToStageDataIndex[] = {
+<pre><code class=language-c >const unsigned char stageToStageDataIndex[] = {
 	/*0x00:*/ 0,
 	/*0x01:*/ 1,
 	/*0x02:*/ 0xff,
@@ -1027,21 +808,21 @@ else if stageLinks[i].linkedStage == currentStage && transitionMechanic == stage
 <br>
 
 <p>
-	If we were to use the whole of EWRAM, we would have more than 9000 bytes per stage (<code class="language-c">256 * 1024 / 28</code>), so storage space shouldn't be a problem.
+	If we were to use the whole of EWRAM, we would have more than 9000 bytes per stage (<code class=language-c >256 * 1024 / 28</code>), so storage space shouldn't be a problem.
 </p>
 
 <br>
 
 <h3>Hijacking control flow (optimizing compiled ARM code for space)</h3>
 <p>
-	Now that we understand the control flow when transitioning between stages, we need to find a way to execute our own code at key points; preserving data before <code class="language-c">clearUpStage</code>, and restoring data after <code class="language-c">setupStage</code>.
+	Now that we understand the control flow when transitioning between stages, we need to find a way to execute our own code at key points; preserving data before <code class=language-c >clearUpStage</code>, and restoring data after <code class=language-c >setupStage</code>.
 </p>
 
 <p>
-	In armv4t there's no <code class="language-c">blx memory</code>, or even <code class="language-c">blx register</code> instruction, so you have to set the target, set the return address, and then execute the branch in 3 different instructions. It turns out that we need at least 10 bytes for an arbitrary call, the same amount of space required for a 64bit call on x86_64!
+	In armv4t there's no <code class=language-c >blx memory</code>, or even <code class=language-c >blx register</code> instruction, so you have to set the target, set the return address, and then execute the branch in 3 different instructions. It turns out that we need at least 10 bytes for an arbitrary call, the same amount of space required for a 64bit call on x86_64!
 </p>
 
-<pre><code class="language-c">ldr r3, [pc, #x]
+<pre><code class=language-c >ldr r3, [pc, #x]
 mov lr, pc
 bx r3
 
@@ -1053,7 +834,7 @@ bx r3
 <br>
 
 <p>
-	This is assuming that you are using exclusively Thumb code; if you wanted to support interopability with ARM functions, you would need an additional instruction to add 1 to that <code class="language-c">lr</code> value so that the target function would know to return to Thumb code and not ARM (there is no <code class="language-c">add lr, pc, #1</code> instruction to do this in a single instruction).
+	This is assuming that you are using exclusively Thumb code; if you wanted to support interopability with ARM functions, you would need an additional instruction to add 1 to that <code class=language-c >lr</code> value so that the target function would know to return to Thumb code and not ARM (there is no <code class=language-c >add lr, pc, #1</code> instruction to do this in a single instruction).
 </p>
 
 <p>
@@ -1066,25 +847,25 @@ bx r3
 
 <br>
 
-<h4><code class="language-c">setupStage</code></h4>
+<h4><code class=language-c >setupStage</code></h4>
 <p>
-	This function has a <code class="language-c">switch</code> statement, which completely throws off Ghidra and causes it to try to disassemble the code as ARM instead of Thumb, even though the whole function is Thumb:
+	This function has a <code class=language-c >switch</code> statement, which completely throws off Ghidra and causes it to try to disassemble the code as ARM instead of Thumb, even though the whole function is Thumb:
 </p>
 
-<div class="center">
+<div class=center >
 	<img src="images/pinball/setupStage.png" />
 </div>
 <br>
 
 <p>
-	The instruction it cites as confusing it is the last instruction of the final <code class="language-c">switch</code> <code class="language-c">case</code>, which is a 4-byte <code class="language-c">bl</code> Thumb instruction. Perhaps the root cause is that it somewhere mistakenly checks for ARM/Thumb mode based on instruction size, assuming all Thumb instructions are 2-bytes?
+	The instruction it cites as confusing it is the last instruction of the final <code class=language-c >switch</code> <code class=language-c >case</code>, which is a 4-byte <code class=language-c >bl</code> Thumb instruction. Perhaps the root cause is that it somewhere mistakenly checks for ARM/Thumb mode based on instruction size, assuming all Thumb instructions are 2-bytes?
 </p>
 
 <p>
-	Ignoring the disappointment of Ghidra's ARM disassembler, the <code class="language-c">setupStage</code> function has the following prologue and epilogue (from a different disassembler):
+	Ignoring the disappointment of Ghidra's ARM disassembler, the <code class=language-c >setupStage</code> function has the following prologue and epilogue (from a different disassembler):
 </p>
 
-<pre><code class="language-c">0801E6C8 setupStage:
+<pre><code class=language-c >0801E6C8 setupStage:
 0801E6C8                 sub             sp, sp, #8
 0801E6CA                 push            {r4-r6, lr}
 ...
@@ -1106,18 +887,18 @@ bx r3
 </p>
 
 <ul>
-	<li>R4</li>
-	<li>R5</li>
-	<li>R6</li>
-	<li>LR</li>
-	<li>8 bytes local variables (R2 and R3)</li>
+	<li>R4
+	<li>R5
+	<li>R6
+	<li>LR
+	<li>8 bytes local variables (R2 and R3)
 </ul>
 
 <p>
 	Where the local stack variables are just used for storing arguments 2 and 3, to be used later for a single function call:
 </p>
 
-<pre><code class="language-c">0801E6D0                 str             r2, [sp, #0x18+var_8]
+<pre><code class=language-c >0801E6D0                 str             r2, [sp, #0x18+var_8]
 0801E6D2                 str             r3, [sp, #0x18+var_4]
 
 ...
@@ -1135,16 +916,16 @@ bx r3
 </p>
 
 <ul>
-	<li>Eliminate <code class="language-c">add</code> by <code class="language-c">pop</code>ping into trashed registers,</li>
-	<li>Eliminate <code class="language-c">bx</code> instruction by <code class="language-c">pop</code>ping into <code class="language-c">pc</code>,</li>
-	<li>Combine 2 <code class="language-c">pop</code>s into 1 by reordering data,</li>
+	<li>Eliminate <code class=language-c >add</code> by <code class=language-c >pop</code>ping into trashed registers,
+	<li>Eliminate <code class=language-c >bx</code> instruction by <code class=language-c >pop</code>ping into <code class=language-c >pc</code>,
+	<li>Combine 2 <code class=language-c >pop</code>s into 1 by reordering data,
 </ul>
 
 <p>
 	It turns out that the 8 instructions originally used for the prologue and epilogue can be reduced to just 2 instructions!
 </p>
 
-<pre><code class="language-c">prologue:
+<pre><code class=language-c >prologue:
 	push {r2-r6, lr}
 
 epilogue:
@@ -1158,23 +939,23 @@ epilogue:
 </p>
 
 <ul>
-	<li>R2</li>
-	<li>R3</li>
-	<li>R4</li>
-	<li>R5</li>
-	<li>R6</li>
-	<li>LR</li>
+	<li>R2
+	<li>R3
+	<li>R4
+	<li>R5
+	<li>R6
+	<li>LR
 </ul>
 
 <p>
-	Which just means we have to edit the 2 instructions which reference the local stack variables holding <code class="language-c">R2</code> and <code class="language-c">R3</code>:
+	Which just means we have to edit the 2 instructions which reference the local stack variables holding <code class=language-c >R2</code> and <code class=language-c >R3</code>:
 </p>
 
 <p>
 	Before:
 </p>
 
-<pre><code class="language-c">ldr r0, [sp, #16]
+<pre><code class=language-c >ldr r0, [sp, #16]
 ldr r1, [sp, #20]
 </code></pre>
 
@@ -1184,25 +965,25 @@ ldr r1, [sp, #20]
 	After:
 </p>
 
-<pre><code class="language-c">ldr r0, [sp, #0]
+<pre><code class=language-c >ldr r0, [sp, #0]
 ldr r1, [sp, #4]
 </code></pre>
 
 <br>
 
 <p>
-	Since there are also 2 bytes of padding between the end of <code class="language-c">setupStage</code> and the next function (<code class="language-c">clearUpStage</code>), we now have 8 bytes of space for code before <code class="language-c">setupStage</code> epilogue, just 2 bytes short of being able to insert a call.
+	Since there are also 2 bytes of padding between the end of <code class=language-c >setupStage</code> and the next function (<code class=language-c >clearUpStage</code>), we now have 8 bytes of space for code before <code class=language-c >setupStage</code> epilogue, just 2 bytes short of being able to insert a call.
 </p>
 
 <p>
-	Note that even though our call will be the last instruction in the <code class="language-c">setupStage</code> function, we can't perform a <a href="https://en.wikipedia.org/wiki/Tail_call">tail call optimization</a> (<code class="language-c">setupStage call -> loadStageData return -> setupStage return</code> to just <code class="language-c">setupStage branch -> loadStageData return</code>) to reduce the number of instructions since there is no way of <code class="language-c">pop</code>ping directly into <code class="language-c">lr</code>.
+	Note that even though our call will be the last instruction in the <code class=language-c >setupStage</code> function, we can't perform a <a href="https://en.wikipedia.org/wiki/Tail_call">tail call optimization</a> (<code class=language-c >setupStage call -> loadStageData return -> setupStage return</code> to just <code class=language-c >setupStage branch -> loadStageData return</code>) to reduce the number of instructions since there is no way of <code class=language-c >pop</code>ping directly into <code class=language-c >lr</code>.
 </p>
 
 <p>
-	Instead, our strategy at this point is to use the free space we created in the prologue to move the target into the stack, and then we can take advantage of being able to <code class="language-c">pop</code> into <code class="language-c">pc</code> to combine the load of the target, and the branch, into a single instruction:
+	Instead, our strategy at this point is to use the free space we created in the prologue to move the target into the stack, and then we can take advantage of being able to <code class=language-c >pop</code> into <code class=language-c >pc</code> to combine the load of the target, and the branch, into a single instruction:
 </p>
 
-<pre><code class="language-c">prologue:
+<pre><code class=language-c >prologue:
 	...
 	
 	ldr r5, [pc, #0x20C]
@@ -1224,21 +1005,21 @@ loadCurrentStageTarget:
 <br>
 
 <p>
-	Note that I also pushed <code class="language-c">r2</code> in order to <a href="http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.faqs/ka4127.html">keep <code class="language-c">sp</code> 8-byte aligned</a>.
+	Note that I also pushed <code class=language-c >r2</code> in order to <a href="http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.faqs/ka4127.html">keep <code class=language-c >sp</code> 8-byte aligned</a>.
 </p>
 
 <p>
-	Once again, this changes the stack layout, so we'll have to adjust all instructions accessing stack memory (to use offset <code class="language-c">+8</code>), but this is still less effort than relocating the whole function body up a few instructions to move the free space in the prologue to the epilogue.
+	Once again, this changes the stack layout, so we'll have to adjust all instructions accessing stack memory (to use offset <code class=language-c >+8</code>), but this is still less effort than relocating the whole function body up a few instructions to move the free space in the prologue to the epilogue.
 </p>
 
 <br>
 
-<h4><code class="language-c">clearUpStage</code></h4>
+<h4><code class=language-c >clearUpStage</code></h4>
 <p>
-	For <code class="language-c">clearUpStage</code> our aim is to create space to insert a function call at the start of the function, instead of at the end (but we can store the branch target at the end of the function so we don't have to jump over it).
+	For <code class=language-c >clearUpStage</code> our aim is to create space to insert a function call at the start of the function, instead of at the end (but we can store the branch target at the end of the function so we don't have to jump over it).
 </p>
 
-<pre><code class="language-c">0801E8DC clearUpStage:
+<pre><code class=language-c >0801E8DC clearUpStage:
 0801E8DC                 push            {r4, lr}
 0801E8DE                 movs            r4, r0
 
@@ -1255,7 +1036,7 @@ loadCurrentStageTarget:
 	This one is pretty simple to optimize the epilogue for:
 </p>
 
-<pre><code class="language-c">pop {r4, pc}
+<pre><code class=language-c >pop {r4, pc}
 </code></pre>
 
 <br>
@@ -1268,7 +1049,7 @@ loadCurrentStageTarget:
 	Now we just need to optimize the start of the function to create enough space for a new call:
 </p>
 
-<pre><code class="language-c">0801E8DC clearUpStage:
+<pre><code class=language-c >0801E8DC clearUpStage:
 0801E8DC                 push            {r4, lr}
 0801E8DE                 movs            r4, r0
 0801E8E0                 bl              sub_8033F34
@@ -1286,22 +1067,22 @@ loadCurrentStageTarget:
 <br>
 
 <p>
-	As you can see, it's saving <code class="language-c">R0</code> in <code class="language-c">R4</code> before executing the 3 calls, but it's then immediately shifting it. Why don't we eliminate the redundant save and just shift it immediately (<code class="language-c">lsls r4, r0, #2</code>)? This saves us 2 bytes.
+	As you can see, it's saving <code class=language-c >R0</code> in <code class=language-c >R4</code> before executing the 3 calls, but it's then immediately shifting it. Why don't we eliminate the redundant save and just shift it immediately (<code class=language-c >lsls r4, r0, #2</code>)? This saves us 2 bytes.
 </p>
 
 <p>
-	The switch code is also sub-optimal, the <code class="language-c">ADDS</code> and <code class="language-c">LDR</code> for the switch table can be combined into a single operation (<code class="language-c">ldr r0, [r1, r4]</code>), which saves another 2 bytes.
+	The switch code is also sub-optimal, the <code class=language-c >ADDS</code> and <code class=language-c >LDR</code> for the switch table can be combined into a single operation (<code class=language-c >ldr r0, [r1, r4]</code>), which saves another 2 bytes.
 </p>
 
 <p>
-	The comparison would have been generated to handle the <code class="language-c">default</code> case where the stage number is none of the ones specified, but since we already know the that the stage number is always within the range we can omit the check here, which will save another 4 bytes.
+	The comparison would have been generated to handle the <code class=language-c >default</code> case where the stage number is none of the ones specified, but since we already know the that the stage number is always within the range we can omit the check here, which will save another 4 bytes.
 </p>
 
 <p>
 	Overall, this function can be shrunk to give us an additional 8 bytes at the start:
 </p>
 
-<pre><code class="language-c">clearUpStage:
+<pre><code class=language-c >clearUpStage:
 	push {r4, lr}
 	lsls r4, r0, #2
 	
@@ -1319,7 +1100,7 @@ loadCurrentStageTarget:
 <br>
 
 <p>
-	We now have enough space to perform a call at the start of <code class="language-c">clearUpStage</code>, with the target stored after the epilogue using the free space we optimized there.
+	We now have enough space to perform a call at the start of <code class=language-c >clearUpStage</code>, with the target stored after the epilogue using the free space we optimized there.
 </p>
 
 <br>
@@ -1330,14 +1111,14 @@ loadCurrentStageTarget:
 </p>
 
 <p>
-	Because of the way that <code class="language-c">numberOfDoors</code> gets set (initialized to <code class="language-c">0</code> on stage transition, and then incremented each time <code class="language-c">createDoor</code> is called), it is very hard to statically know the number of doors for each stage.
+	Because of the way that <code class=language-c >numberOfDoors</code> gets set (initialized to <code class=language-c >0</code> on stage transition, and then incremented each time <code class=language-c >createDoor</code> is called), it is very hard to statically know the number of doors for each stage.
 </p>
 
 <p>
 	Instead, I decided to use a data structure which stores the number of doors dynamically:
 </p>
 
-<pre><code class="language-c">struct stageDataEntry {
+<pre><code class=language-c >struct stageDataEntry {
 	unsigned char dataType, count;
 	unsigned char data[0];
 };
@@ -1349,7 +1130,7 @@ loadCurrentStageTarget:
 	So a stage with three doors would be stored as:
 </p>
 
-<pre><code class="language-c">struct stageDataEntry {
+<pre><code class=language-c >struct stageDataEntry {
 	DATA_TYPE_DOOR,
 	3,
 	struct door[3] = {
@@ -1366,7 +1147,7 @@ loadCurrentStageTarget:
 	I came up with the following save and load functions:
 </p>
 
-<pre><code class="language-c">void *(*copy)(void *destination, void *source, unsigned int size) = (void *)(0x8036798 + 1);
+<pre><code class=language-c >void *(*copy)(void *destination, void *source, unsigned int size) = (void *)(0x8036798 + 1);
 
 #define numberOfDoors (*((int *)0x3001448))
 #define doorData ((struct door *)0x300140C)
@@ -1421,10 +1202,10 @@ void loadStageData(struct stageDataEntry *d) {
 <br>
 
 <p>
-	Link the target of the function calls we added to <code class="language-c">setupStage</code> and <code class="language-c">cleanUpStage</code> to the following two wrappers and door state will be preserved across the desired stages!
+	Link the target of the function calls we added to <code class=language-c >setupStage</code> and <code class=language-c >cleanUpStage</code> to the following two wrappers and door state will be preserved across the desired stages!
 </p>
 
-<pre><code class="language-c">void saveCurrentStageData(void) {
+<pre><code class=language-c >void saveCurrentStageData(void) {
 	int i = stageToStageDataIndex[stage];
 	
 	if(i != 0xff) {
@@ -1455,19 +1236,19 @@ void loadCurrentStageData(void) {
 </p>
 
 <ul>
-	<li>If we open a door and then die by falling through the last hole, when we respawn the door state will be open, but the closed door frame will still appear.</li>
-	<li>If we open a door, go through, and then fall back, the door will be open for Mario to fall through, but will then close itself.</li>
+	<li>If we open a door and then die by falling through the last hole, when we respawn the door state will be open, but the closed door frame will still appear.
+	<li>If we open a door, go through, and then fall back, the door will be open for Mario to fall through, but will then close itself.
 </ul>
 
 <p>
-	For the first issue, we can call <code class="language-c">setAnimationFrame</code> (<code class="language-c">0x802F0C4</code>) on all doors after loading the new door states.
+	For the first issue, we can call <code class=language-c >setAnimationFrame</code> (<code class=language-c >0x802F0C4</code>) on all doors after loading the new door states.
 </p>
 
 <p>
-	For the second issue, we can find the code responsible for closing the door after Mario falls through, by setting a memory write breakpoint on the door state, it's in <code class="language-c">handleDoors</code> (<code class="language-c">0x8014300</code>), and looks something like this:
+	For the second issue, we can find the code responsible for closing the door after Mario falls through, by setting a memory write breakpoint on the door state, it's in <code class=language-c >handleDoors</code> (<code class=language-c >0x8014300</code>), and looks something like this:
 </p>
 
-<pre><code class="language-c">if(numberOfDoors > 0) {
+<pre><code class=language-c >if(numberOfDoors > 0) {
 	for(doorIndex = 0; doorIndex < numberOfDoors; doorIndex++) {
 		if(doorData[doorIndex]->number == fellThroughDoor) {
 			int *doorState = &doorData[doorIndex].state;
@@ -1486,14 +1267,14 @@ void loadCurrentStageData(void) {
 <br>
 
 <p>
-	We could <code class="language-c">nop</code> out this snippet to disable this functionality, but we want to keep the functionality present in the game for when the player wants to reset the next room by holding L+R. Instead, we can set the <code class="language-c">fellThroughDoor</code> variable to a non-existant door when loading stage data to prevent the above snippet from having any effect.
+	We could <code class=language-c >nop</code> out this snippet to disable this functionality, but we want to keep the functionality present in the game for when the player wants to reset the next room by holding L+R. Instead, we can set the <code class=language-c >fellThroughDoor</code> variable to a non-existant door when loading stage data to prevent the above snippet from having any effect.
 </p>
 
 <p>
-	With these two fixes, <code class="language-c">loadCurrentStageData</code> now looks like:
+	With these two fixes, <code class=language-c >loadCurrentStageData</code> now looks like:
 </p>
 
-<pre><code class="language-c">void loadCurrentStageData(void) {
+<pre><code class=language-c >void loadCurrentStageData(void) {
 	if(!(REG_KEYINPUT & (KEY_L | KEY_R))) {
 		return;
 	}
@@ -1528,151 +1309,151 @@ void loadCurrentStageData(void) {
 
 <table>
 	<tr>
-		<th>Number</th>
-		<th>Name</th>
-		<th>Address</th>
-		<th>Size * Count</th>
-	</tr>
+		<th>Number
+		<th>Name
+		<th>Address
+		<th>Size * Count
+	
 
 	<tr>
-		<td>0x0</td>
-		<td>goomba</td>
-		<td>0x300166C</td>
-		<td>72 * 5</td>
-	</tr>
+		<td>0x0
+		<td>goomba
+		<td>0x300166C
+		<td>72 * 5
+	
 
 	<tr>
-		<td>0x1</td>
-		<td>bee</td>
-		<td>0x3001AB0</td>
-		<td>20 * 3?</td>
-	</tr>
+		<td>0x1
+		<td>bee
+		<td>0x3001AB0
+		<td>20 * 3?
+	
 
 	<tr>
-		<td>0x2</td>
-		<td>koopa</td>
-		<td>0x3002784</td>
-		<td>40 * 6</td>
-	</tr>
+		<td>0x2
+		<td>koopa
+		<td>0x3002784
+		<td>40 * 6
+	
 
 	<tr>
-		<td>0x3</td>
-		<td>shy guy</td>
-		<td>0x300308C</td>
-		<td>52 * 4</td>
-	</tr>
+		<td>0x3
+		<td>shy guy
+		<td>0x300308C
+		<td>52 * 4
+	
 
 	<tr>
-		<td>0x4</td>
-		<td>snowman</td>
-		<td>0x30031E8</td>
-		<td>44 * 4?</td>
-	</tr>
+		<td>0x4
+		<td>snowman
+		<td>0x30031E8
+		<td>44 * 4?
+	
 
 	<tr>
-		<td>0x5</td>
-		<td>penguin</td>
-		<td>0x3002DE8</td>
-		<td>40 * 4</td>
-	</tr>
+		<td>0x5
+		<td>penguin
+		<td>0x3002DE8
+		<td>40 * 4
+	
 
 	<tr>
-		<td>0x6</td>
-		<td>fish</td>
-		<td>0x3000760</td>
-		<td>52 * 6</td>
-	</tr>
+		<td>0x6
+		<td>fish
+		<td>0x3000760
+		<td>52 * 6
+	
 
 	<tr>
-		<td>0x7</td>
-		<td>pokey</td>
-		<td>0x3002EF8</td>
-		<td>44 * 4</td>
-	</tr>
+		<td>0x7
+		<td>pokey
+		<td>0x3002EF8
+		<td>44 * 4
+	
 
 	<tr>
-		<td>0x8</td>
-		<td>spiny</td>
-		<td>0x3003368</td>
-		<td>40 * 4</td>
-	</tr>
+		<td>0x8
+		<td>spiny
+		<td>0x3003368
+		<td>40 * 4
+	
 
 	<tr>
-		<td>0x9</td>
-		<td>klepto</td>
-		<td>0x300593C</td>
-		<td>40 * 4</td>
-	</tr>
+		<td>0x9
+		<td>klepto
+		<td>0x300593C
+		<td>40 * 4
+	
 
 	<tr>
-		<td>0xa</td>
-		<td>snake</td>
-		<td>0x30009C0</td>
-		<td>36 * 6</td>
-	</tr>
+		<td>0xa
+		<td>snake
+		<td>0x30009C0
+		<td>36 * 6
+	
 
 	<tr>
-		<td>0xb</td>
-		<td>?</td>
-		<td>0x30019FC</td>
-		<td>44 * 4</td>
-	</tr>
+		<td>0xb
+		<td>?
+		<td>0x30019FC
+		<td>44 * 4
+	
 
 	<tr>
-		<td>0xc</td>
-		<td>mole</td>
-		<td>0x3002D50</td>
-		<td>48 * 1?</td>
-	</tr>
+		<td>0xc
+		<td>mole
+		<td>0x3002D50
+		<td>48 * 1?
+	
 
 	<tr>
-		<td>0xd</td>
-		<td>ghosts</td>
-		<td>0x30004D4</td>
-		<td>48 * 4</td>
-	</tr>
+		<td>0xd
+		<td>ghosts
+		<td>0x30004D4
+		<td>48 * 4
+	
 
 	<tr>
-		<td>0xe</td>
-		<td>robot</td>
-		<td>0x3002884</td>
-		<td>36 * 3</td>
-	</tr>
+		<td>0xe
+		<td>robot
+		<td>0x3002884
+		<td>36 * 3
+	
 
 	<tr>
-		<td>0xf</td>
-		<td>?</td>
-		<td>0x3000428</td>
-		<td>40 * 4</td>
-	</tr>
+		<td>0xf
+		<td>?
+		<td>0x3000428
+		<td>40 * 4
+	
 
 	<tr>
-		<td>0x10</td>
-		<td>?</td>
-		<td>0x3000668</td>
-		<td>36 * 4</td>
-	</tr>
+		<td>0x10
+		<td>?
+		<td>0x3000668
+		<td>36 * 4
+	
 
 	<tr>
-		<td>0x11</td>
-		<td>?</td>
-		<td>0x3000924</td>
-		<td>36 * 4</td>
-	</tr>
+		<td>0x11
+		<td>?
+		<td>0x3000924
+		<td>36 * 4
+	
 
 	<tr>
-		<td>0x12</td>
-		<td>flying shy guy</td>
-		<td>0x30014CC</td>
-		<td>44 * 6</td>
-	</tr>
+		<td>0x12
+		<td>flying shy guy
+		<td>0x30014CC
+		<td>44 * 6
+	
 
 	<tr>
-		<td>?</td>
-		<td>lakitu</td>
-		<td>0x3002904</td>
-		<td>40</td>
-	</tr>
+		<td>?
+		<td>lakitu
+		<td>0x3002904
+		<td>40
+	
 </table>
 
 <br>
@@ -1698,5 +1479,3 @@ void loadCurrentStageData(void) {
 		</div>
 
 		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>

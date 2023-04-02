@@ -1,115 +1,4 @@
-﻿<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Hacking the PS4, part 2 - Userland code execution</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>Hacking the PS4, part 2</h1>
-				<h2>Userland code execution</h2>
-				<span class="date">Initial publication: September 4th, 2015</span>
-				<hr>
-				
-				<p>
-					<b>Note</b>: This article is part of a 3 part series:
-				</p>
-				
-				<ul>
-					<li><a href="ps4.html">Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</a></li>
-					<li><b><a href="ps4-2.html">Hacking the PS4, part 2 - Userland code execution</a></b></li>
-					<li><a href="ps4-3.html">Hacking the PS4, part 3 - Kernel exploitation</a></li>
-				</ul>
-				
-				<p>
-					See also: <a href="dlclose-overflow.html">Analysis of <code>sys_dynlib_prepare_dlclose</code> PS4 kernel heap overflow</a>
-				</p>
-				
-				<br>
-				
-				<h2>Introduction</h2>
-				<p>
-					Since <a href="ps4.html">my first article on the PS4's security</a>, I have made some new discoveries, aided by the fact that I now have code execution within the WebKit process.
-				</p>
-				
-				<p>
-					Whilst I don't want to release my code execution solution yet, I have made my <a href="https://github.com/CTurt/PS4-SDK">PS4-SDK</a> open source, and will try to explain everything I have managed to do with it.
-				</p>
-				
-				<p>
-					This article is less focused on exploitation, and more on what is possible with userland code execution under the WebKit process.
-				</p>
-				
-				<br>
-				
-				<h2>Update</h2>
-				<p>
-					After gaining kernel code execution, I've gone back to this article to update some of the uncertainties I had whilst researching with just userland code execution.
-				</p>
-				
-				<p>
-					I've also since posted the method for gaining userland code execution, along with a ROP chain to load binaries sent over TCP; it is explained in <a href="ps4-3.html#code-execution">part 3 of this series</a>.
-				</p>
-				
-				<br>
-				
-				<h2>Code execution</h2>
-				<p>
-					As explained in my previous article, ROP is just executing existing code loaded in memory in a smart way; whilst ROP can technically be <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a>, it really isn't practical for anything more complex than some basic tests.
-				</p>
-				
-				<p>
-					With the help of flatz, I've been able to leverage ROP to setup memory in such a way that I can write my own code into it, and execute it.
-				</p>
-				
-				<p>
-					Simply, this means that I can compile C code, such as these <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples">examples included in PS4-SDK</a>, and execute them as native x86_64 code.
-				</p>
-				
-				<p>
-					Whilst this is big progress, we are still running within the Internet Browser, and have the same restrictions as before (like sandboxing).
-				</p>
-				
-				<p>
-					As a little side note; with the recent <a href="http://llvm.org/releases/download.html">release of LLVM 3.7</a>, if we specify <code>-target x86_64-scei-ps4</code> to <code>clang</code>, we can compile code with the exact same options that Sony uses to compile official code for the PS4.
-				</p>
-				
-				<br>
-				
-				<h2>WebKit process limitations</h2>
-				<p>
-					As stated in my previous article, the Internet Browser actually consists of 2 separate processes. The one which we hijack for code execution is the core WebKit process (which handles parsing HTML and CSS, decoding images, and executing JavaScript for example).
-				</p>
-				
-				<p>
-					We can use the following code to dump all memory which our process has access to:
-				</p>
-				
-				<pre><code class="language-c">struct memoryRegionInfo info;
+﻿<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Hacking the PS4, part 2 - Userland code execution</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Hacking the PS4, part 2</h1> <h2>Userland code execution</h2> <span class=date >Initial publication: September 4th, 2015</span> <hr> <p> <b>Note</b>: This article is part of a 3 part series: </p> <ul> <li><a href=ps4.html >Hacking the PS4, part 1 - Introduction to PS4's security, and userland ROP</a> <li><b><a href=ps4-2.html >Hacking the PS4, part 2 - Userland code execution</a></b> <li><a href=ps4-3.html >Hacking the PS4, part 3 - Kernel exploitation</a> </ul> <p> See also: <a href=dlclose-overflow.html >Analysis of <code>sys_dynlib_prepare_dlclose</code> PS4 kernel heap overflow</a> </p> <br> <h2>Introduction</h2> <p> Since <a href=ps4.html >my first article on the PS4's security</a>, I have made some new discoveries, aided by the fact that I now have code execution within the WebKit process. </p> <p> Whilst I don't want to release my code execution solution yet, I have made my <a href="https://github.com/CTurt/PS4-SDK">PS4-SDK</a> open source, and will try to explain everything I have managed to do with it. </p> <p> This article is less focused on exploitation, and more on what is possible with userland code execution under the WebKit process. </p> <br> <h2>Update</h2> <p> After gaining kernel code execution, I've gone back to this article to update some of the uncertainties I had whilst researching with just userland code execution. </p> <p> I've also since posted the method for gaining userland code execution, along with a ROP chain to load binaries sent over TCP; it is explained in <a href="ps4-3.html#code-execution">part 3 of this series</a>. </p> <br> <h2>Code execution</h2> <p> As explained in my previous article, ROP is just executing existing code loaded in memory in a smart way; whilst ROP can technically be <a href="https://en.wikipedia.org/wiki/Turing_completeness">Turing-complete</a>, it really isn't practical for anything more complex than some basic tests. </p> <p> With the help of flatz, I've been able to leverage ROP to setup memory in such a way that I can write my own code into it, and execute it. </p> <p> Simply, this means that I can compile C code, such as these <a href="https://github.com/CTurt/PS4-SDK/tree/master/examples">examples included in PS4-SDK</a>, and execute them as native x86_64 code. </p> <p> Whilst this is big progress, we are still running within the Internet Browser, and have the same restrictions as before (like sandboxing). </p> <p> As a little side note; with the recent <a href="http://llvm.org/releases/download.html">release of LLVM 3.7</a>, if we specify <code>-target x86_64-scei-ps4</code> to <code>clang</code>, we can compile code with the exact same options that Sony uses to compile official code for the PS4. </p> <br> <h2>WebKit process limitations</h2> <p> As stated in my previous article, the Internet Browser actually consists of 2 separate processes. The one which we hijack for code execution is the core WebKit process (which handles parsing HTML and CSS, decoding images, and executing JavaScript for example). </p> <p> We can use the following code to dump all memory which our process has access to: </p> <pre><code class=language-c >struct memoryRegionInfo info;
 struct otherMemoryRegionInfo otherInfo;
 
 void *m = NULL;
@@ -130,45 +19,7 @@ for(i = 0; i &lt; 107; i++) {
 	}
 	
 	m = info.end;
-}</code></pre>
-				
-				<br>
-				
-				<p>
-					Within this dump, you won't be able to find strings used by the other process, such as "Options", "Close Window", "Refresh", or "There is not enough free system memory".
-				</p>
-				
-				<br>
-				
-				<h2>Graphics</h2>
-				<p>
-					One of the main implications of this is clear: if the other process handles displaying graphics, we can't easily hijack the active <code>libSceVideoOut</code> handle.
-				</p>
-				
-				<p>
-					I've been working with <a href="https://github.com/xerpi">xerpi</a> to try to reinitialise <code>libSceVideoOut</code>, but even though all functions are returning good values, we can't get the screen to change from the browser view.
-				</p>
-				
-				<p>
-					Just to be certain that our process can't access any existing video handles created by the other process, we tried brute forcing all positive integers to see if any were valid.
-				</p>
-				
-				<br>
-				
-				<h2>Brute forcing with code execution</h2>
-				<p>
-					Brute forcing things with the ROP framework was very impractical. I relied on redirecting the page after each test, and since the exploit isn't 100% reliable, the brute forcer would get stuck after left for just a minute or so.
-				</p>
-				
-				<p>
-					With real code execution, we can try to brute force more ambitious things, such as a video handle that the Internet Browser has opened. And we can use sockets to track the progress remotely from a PC.
-				</p>
-				
-				<p>
-					<code>sceVideoOutWaitVblank</code> will return an error if it is given an invalid handle, and 0 if it's given a valid handle:
-				</p>
-				
-				<pre><code class="language-c">int i;
+}</code></pre> <br> <p> Within this dump, you won't be able to find strings used by the other process, such as "Options", "Close Window", "Refresh", or "There is not enough free system memory". </p> <br> <h2>Graphics</h2> <p> One of the main implications of this is clear: if the other process handles displaying graphics, we can't easily hijack the active <code>libSceVideoOut</code> handle. </p> <p> I've been working with <a href="https://github.com/xerpi">xerpi</a> to try to reinitialise <code>libSceVideoOut</code>, but even though all functions are returning good values, we can't get the screen to change from the browser view. </p> <p> Just to be certain that our process can't access any existing video handles created by the other process, we tried brute forcing all positive integers to see if any were valid. </p> <br> <h2>Brute forcing with code execution</h2> <p> Brute forcing things with the ROP framework was very impractical. I relied on redirecting the page after each test, and since the exploit isn't 100% reliable, the brute forcer would get stuck after left for just a minute or so. </p> <p> With real code execution, we can try to brute force more ambitious things, such as a video handle that the Internet Browser has opened. And we can use sockets to track the progress remotely from a PC. </p> <p> <code>sceVideoOutWaitVblank</code> will return an error if it is given an invalid handle, and 0 if it's given a valid handle: </p> <pre><code class=language-c >int i;
 for(i = 0; i &lt; 0x7FFFFFFF; i++) {
 	if(!sceVideoOutWaitVblank(i)) return i;
 	if(i % 0x10000 == 0) debug(sock, "At %08x\n", i);
@@ -176,30 +27,7 @@ for(i = 0; i &lt; 0x7FFFFFFF; i++) {
 
 sceNetSocketClose(sock);
 
-return 0;</code></pre>
-				
-				<br>
-				
-				<p>
-					After running this for several hours it returned 0, confirming that our process has no access to the other process' video handle.
-				</p>
-				
-				<br>
-				
-				<h2>Canvas</h2>
-				<p>
-					There is a partial solution to this though. If we create an HTML5 canvas and fill it with a single colour, we can find the address of its framebuffer in RAM, and create a new thread to render to it from native code, leaving the original thread to update the canvas as normal.
-				</p>
-				
-				<p>
-					I've added <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/canvas/source/main.c">an example of this</a> to the PS4-SDK.
-				</p>
-				
-				<p>
-					If the canvas has too high of a resolution, it is harder to locate its address, and will often have a poor refresh rate. However, we can stretch a low resolution image to be fullscreen, and it will work fine:
-				</p>
-				
-				<pre><code>var body = document.getElementsByTagName("body")[0];
+return 0;</code></pre> <br> <p> After running this for several hours it returned 0, confirming that our process has no access to the other process' video handle. </p> <br> <h2>Canvas</h2> <p> There is a partial solution to this though. If we create an HTML5 canvas and fill it with a single colour, we can find the address of its framebuffer in RAM, and create a new thread to render to it from native code, leaving the original thread to update the canvas as normal. </p> <p> I've added <a href="https://github.com/CTurt/PS4-SDK/blob/master/examples/canvas/source/main.c">an example of this</a> to the PS4-SDK. </p> <p> If the canvas has too high of a resolution, it is harder to locate its address, and will often have a poor refresh rate. However, we can stretch a low resolution image to be fullscreen, and it will work fine: </p> <pre><code>var body = document.getElementsByTagName("body")[0];
 
 // Create canvas
 var canvas = document.createElement("canvas");
@@ -221,25 +49,9 @@ canvas.style.top = "0px";
 canvas.style.width = "100%";
 canvas.style.height = "100%";
 
-body.appendChild(canvas);</code></pre>
-				
-				<br>
-				
-				<p>
-					Another thing you may want to do is remove all other elements before creating the canvas, as a slight performance boost, but also to prevent being able to scroll:
-				</p>
-				
-				<pre><code>while(body.firstChild) {
+body.appendChild(canvas);</code></pre> <br> <p> Another thing you may want to do is remove all other elements before creating the canvas, as a slight performance boost, but also to prevent being able to scroll: </p> <pre><code>while(body.firstChild) {
 	body.removeChild(body.firstChild);
-}</code></pre>
-				
-				<br>
-				
-				<p>
-					And finally, you will want to hide the cursor:
-				</p>
-				
-				<pre><code>document.body.style.cursor = "none";</code></pre>
+}</code></pre> <br> <p> And finally, you will want to hide the cursor: </p> <pre><code>document.body.style.cursor = "none";</code></pre>
 				
 				<br>
 				
@@ -283,7 +95,7 @@ body.appendChild(canvas);</code></pre>
 					For example, the following <code>libusb</code> code:
 				</p>
 				
-				<pre><code class="language-c">libusb_context *context;
+				<pre><code class=language-c >libusb_context *context;
 libusb_init(&amp;context);
 libusb_exit(context);</code></pre>
 				
@@ -293,7 +105,7 @@ libusb_exit(context);</code></pre>
 					Would translate to this <code>libSceUsbd</code> code:
 				</p>
 				
-				<pre><code class="language-c">sceUsbdInit();
+				<pre><code class=language-c >sceUsbdInit();
 sceUsbdExit();</code></pre>
 				
 				<br>
@@ -339,11 +151,11 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 				
 				<h2>Cinoop</h2>
 				<p>
-					<a href="cinoop.html">Cinoop</a> is a GameBoy emulator I wrote a while ago. Whilst it isn't one of the best GameBoy emulators out there, I thought it would be a fun project to port to PS4 to show what code execution within the Internet Browser is capable of (using all of the workarounds explained above).
+					<a href=cinoop.html >Cinoop</a> is a GameBoy emulator I wrote a while ago. Whilst it isn't one of the best GameBoy emulators out there, I thought it would be a fun project to port to PS4 to show what code execution within the Internet Browser is capable of (using all of the workarounds explained above).
 				</p>
 				
-				<div class="center">
-					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/94Q91xDJatE" frameborder="0" allowfullscreen></iframe>
+				<div class=center >
+					<iframe class=youtube  width=560  height=315  src="https://www.youtube.com/embed/94Q91xDJatE" frameborder=0  allowfullscreen></iframe>
 				</div>
 				
 				<br>
@@ -410,7 +222,7 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 					We can load modules from their name using <code>sceKernelLoadStartModule</code> from <code>libkernel</code>:
 				</p>
 				
-				<pre><code class="language-c">int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
+				<pre><code class=language-c >int libPad = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, 0, 0);</pre></code>
 				
 				<br>
 				
@@ -437,7 +249,7 @@ MSG AutomounterMelUtil(void sceAutomounterMelUtil::callbackMountAll(void **) 203
 					In C, it can be used like this:
 				</p>
 				
-				<pre><code class="language-c">struct kld_sym_lookup data;
+				<pre><code class=language-c >struct kld_sym_lookup data;
 data.version = sizeof(struct kld_sym_lookup);
 data.symname = "sys_getpid";
 
@@ -530,7 +342,7 @@ chain.execute(function() {
 					To demonstrate this, we can create a thread which will launch the Internet Browser after an arbitrary timeout:
 				</p>
 				
-				<pre><code class="language-c">int (*sceSystemServiceLaunchWebBrowser)(const char *uri, void *);
+				<pre><code class=language-c >int (*sceSystemServiceLaunchWebBrowser)(const char *uri, void *);
 
 void *t(void *n) {
 	sceKernelSleep(10);
@@ -559,8 +371,8 @@ int _main(void) {
 				
 				<br>
 				
-				<div class="center">
-					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/tBev5h8vOtg" frameborder="0" allowfullscreen></iframe>
+				<div class=center >
+					<iframe class=youtube  width=560  height=315  src="https://www.youtube.com/embed/tBev5h8vOtg" frameborder=0  allowfullscreen></iframe>
 				</div>
 				
 				<br>
@@ -779,12 +591,12 @@ CompositorClient                0x118e000000    0x200000    0x33</code></pre>
 				</p>
 				
 				<ul>
-					<li>CPU Read - 1</li>
-					<li>CPU Write - 2</li>
-					<li>CPU Execute - 4</li>
-					<li>GPU Execute - 8</li>
-					<li>GPU Read - 16</li>
-					<li>GPU Write - 32</li>
+					<li>CPU Read - 1
+					<li>CPU Write - 2
+					<li>CPU Execute - 4
+					<li>GPU Execute - 8
+					<li>GPU Read - 16
+					<li>GPU Write - 32
 				</ul>
 				
 				<p>
@@ -1009,7 +821,7 @@ chain.execute(function() {
 					I was able to load and initialise this module successfully:
 				</p>
 				
-				<pre><code class="language-c">int libSave = sceKernelLoadStartModule("libSceSaveData.sprx", 0, NULL, 0, 0, 0);
+				<pre><code class=language-c >int libSave = sceKernelLoadStartModule("libSceSaveData.sprx", 0, NULL, 0, 0, 0);
 
 int (*sceSaveDataInitialize)(void *);
 RESOLVE(libSave, sceSaveDataInitialize);
@@ -1045,18 +857,16 @@ sceSaveDataInitialize(NULL);</code></pre>
 				
 				<h2>Thanks</h2>
 				<ul>
-					<li>flatz</li>
-					<li>SKFU</li>
-					<li>droogie</li>
-					<li>Xerpi</li>
-					<li>bigboss</li>
-					<li>Hunger</li>
-					<li>Takezo</li>
-					<li>Proxima</li>
+					<li>flatz
+					<li>SKFU
+					<li>droogie
+					<li>Xerpi
+					<li>bigboss
+					<li>Hunger
+					<li>Takezo
+					<li>Proxima
 				</ul>
 			</div>
 		</div>
 
 		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>

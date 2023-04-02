@@ -1,65 +1,5 @@
-<!DOCTYPE html>
-<br>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>mast1c0re: Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Compiler Attack</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>mast1c0re: Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Compiler Attack</h1>
-				<span class="date">Initial publication: April 2nd, 2023</span>
-				<hr>
-				
-<p>In the <a href="mast1c0re.html">previous article</a> I explained how I successfully escaped the PS2 emulator used in the PS4 and PS5 (through PS4 backwards compatibility) to allow execution of native ROP chains.</p>
-<p>In this article, I&#39;ll explain how I used this context to attack the compiler process, with the goal of gaining fully arbitrary native code execution on the PS5 (not just ROP).</p>
-
-<br>
-
-<h2 id="output-manipulation">Output Manipulation?</h2>
-<p>As mentioned in <a href="mast1c0re.html#ps2-emulator-anatomy">the previous post</a>, the emulator consists of 2 separate processes. We have so far taken over the <strong>application process</strong>, but need to also take over the <strong>compiler process</strong> in order to be able to run arbitrary native code on the PS5.</p>
-<p>But let&#39;s step back for a second: do we really need to exploit the compiler process? Since we can jump anywhere in the application process, it would be sufficient to just get the compiler to produce continuous bytes of controlled content anywhere in the JIT output.</p>
-<p>There&#39;s good reason to suspect that this may be possible. In one of my old PS4 articles I&#39;ve previously <a href="https://cturt.github.io/ps4.html#finding-gadgets">described</a> how in variable-length instruction sets like x86/64, you can find unintended instructions by decoding at offsets within existing instructions, which can be used as ROP gadgets.</p>
-<p>What I didn&#39;t mention is that in a process performing dynamic code generation (JIT), we actually have even more control because we can directly influence what code is being written. For example, if we use some constant in our PS2 code we can get the compiler to output native PS4 instructions like the following:</p>
-<pre><code class="language-c">mov esi, 0x41414141
-</code></pre>
-<br>
-<p>The raw bytes for the above instruction (<code>be 41 41 41 41</code>) clearly contain 4-bytes of controlled content for the instruction&#39;s immediate value. We can encode arbitrary hidden instructions within these immediates.</p>
-<p>Executing arbitrary single instructions is quite useful for writing ROP chains, but if we wanted to write continuously arbitrary data, we would need some way of producing overlapping code. Whilst I didn&#39;t investigate this deeply enough to rule it out entirely, unfortunately it seems unlikely to be possible; resetting the JIT cache state seems to also overwrite old JIT code with repeated invalid instructions.</p>
-<br>
-<h2 id="application---compiler-communication">Application &lt;-&gt; Compiler Communication</h2>
-<p>The application and child process establish a socket between each other (<code>sceSystemServiceGetParentSocketForPs2Emu</code>). This socket isn&#39;t really for transmitting data, but just used to signal when the application would like to initiate a request to the compiler (by sending a single byte), and for the compiler to notify the application of the request&#39;s completion.</p>
-<p>A couple of the possible requests are then handled immediately, like <code>0x30</code> which is used for initialisation, and <code>0x42</code>, which terminates the compiler, but the other request types (<code>0x31</code> for PS2 EE processor, and <code>0x32</code> for PS2 IOP processor) trigger handling from dedicated threads so that compilation of various PS2 chips can be handled concurrently.</p>
-<p>The main channel of communication is the bridge region, <code>ps2_bridge_comm_rw</code>, which is mapped at the fixed address <code>0x914104000</code> in both processes as shared memory.</p>
-<br>
-<h2 id="race-conditions">Race Conditions</h2>
-<p>Given a shared memory communication channel between a lower and higher privilege process, my initial instict was to look for race condition bugs like double-fetch / TOCTOU.</p>
-<p>Race conditions seem quite common in this code; as one example, here&#39;s a snippet from <code>0x100e201</code> in Okage 1.01&#39;s compiler binary, it&#39;s a bounds check ensuring the number of requested iterations to be less than <code>0x10</code>, but it reads the number from shared memory again on every loop iteration:</p>
-<pre><code class="language-c">if (0xf &lt; *(uint *)((long)ptrWithinBridge + 0x3ce0)) {
+<!DOCTYPE html> <br> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>mast1c0re: Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Compiler Attack</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>mast1c0re: Hacking the PS4 / PS5 through the PS2 Emulator - Part 2 - Compiler Attack</h1> <span class=date >Initial publication: April 2nd, 2023</span> <hr> <p>In the <a href=mast1c0re.html >previous article</a> I explained how I successfully escaped the PS2 emulator used in the PS4 and PS5 (through PS4 backwards compatibility) to allow execution of native ROP chains.</p> <p>In this article, I&#39;ll explain how I used this context to attack the compiler process, with the goal of gaining fully arbitrary native code execution on the PS5 (not just ROP).</p> <br> <h2 id=output-manipulation >Output Manipulation?</h2> <p>As mentioned in <a href="mast1c0re.html#ps2-emulator-anatomy">the previous post</a>, the emulator consists of 2 separate processes. We have so far taken over the <strong>application process</strong>, but need to also take over the <strong>compiler process</strong> in order to be able to run arbitrary native code on the PS5.</p> <p>But let&#39;s step back for a second: do we really need to exploit the compiler process? Since we can jump anywhere in the application process, it would be sufficient to just get the compiler to produce continuous bytes of controlled content anywhere in the JIT output.</p> <p>There&#39;s good reason to suspect that this may be possible. In one of my old PS4 articles I&#39;ve previously <a href="https://cturt.github.io/ps4.html#finding-gadgets">described</a> how in variable-length instruction sets like x86/64, you can find unintended instructions by decoding at offsets within existing instructions, which can be used as ROP gadgets.</p> <p>What I didn&#39;t mention is that in a process performing dynamic code generation (JIT), we actually have even more control because we can directly influence what code is being written. For example, if we use some constant in our PS2 code we can get the compiler to output native PS4 instructions like the following:</p> <pre><code class=language-c >mov esi, 0x41414141
+</code></pre> <br> <p>The raw bytes for the above instruction (<code>be 41 41 41 41</code>) clearly contain 4-bytes of controlled content for the instruction&#39;s immediate value. We can encode arbitrary hidden instructions within these immediates.</p> <p>Executing arbitrary single instructions is quite useful for writing ROP chains, but if we wanted to write continuously arbitrary data, we would need some way of producing overlapping code. Whilst I didn&#39;t investigate this deeply enough to rule it out entirely, unfortunately it seems unlikely to be possible; resetting the JIT cache state seems to also overwrite old JIT code with repeated invalid instructions.</p> <br> <h2 id=application---compiler-communication >Application &lt;-&gt; Compiler Communication</h2> <p>The application and child process establish a socket between each other (<code>sceSystemServiceGetParentSocketForPs2Emu</code>). This socket isn&#39;t really for transmitting data, but just used to signal when the application would like to initiate a request to the compiler (by sending a single byte), and for the compiler to notify the application of the request&#39;s completion.</p> <p>A couple of the possible requests are then handled immediately, like <code>0x30</code> which is used for initialisation, and <code>0x42</code>, which terminates the compiler, but the other request types (<code>0x31</code> for PS2 EE processor, and <code>0x32</code> for PS2 IOP processor) trigger handling from dedicated threads so that compilation of various PS2 chips can be handled concurrently.</p> <p>The main channel of communication is the bridge region, <code>ps2_bridge_comm_rw</code>, which is mapped at the fixed address <code>0x914104000</code> in both processes as shared memory.</p> <br> <h2 id=race-conditions >Race Conditions</h2> <p>Given a shared memory communication channel between a lower and higher privilege process, my initial instict was to look for race condition bugs like double-fetch / TOCTOU.</p> <p>Race conditions seem quite common in this code; as one example, here&#39;s a snippet from <code>0x100e201</code> in Okage 1.01&#39;s compiler binary, it&#39;s a bounds check ensuring the number of requested iterations to be less than <code>0x10</code>, but it reads the number from shared memory again on every loop iteration:</p> <pre><code class=language-c >if (0xf &lt; *(uint *)((long)ptrWithinBridge + 0x3ce0)) {
   pcVar4 = (char *)0x0;
   goto LAB_0100e2ba;
 }
@@ -69,14 +9,7 @@ do {
   i++;
   ...
 } while (i &lt; *(uint *)((long)ptrWithinBridge + 0x3ce0));
-</code></pre>
-<br>
-<p>I didn&#39;t fully analyse this bug, because there are similar loops that forget the bounds checks entirely (EG: at <code>0x100e0be</code>), but these don't seem to be useful as they only lead to out-of-bounds read on the bridge memory region which we fully control anyway.</p>
-<br>
-<h2 id="vulnerability-1---pointers-in-shared-memory">Vulnerability 1 - Pointers in Shared Memory!</h2>
-<p>The next observation was that, for some inexplicable reason, the compiler process puts 2 pointers, pointing within its data section, into the shared memory region! Shoutout to TheFlow for initially spotting this.</p>
-<p>It sets these two fields (at offsets <code>0x9CA3C0</code> and <code>0x9CED90</code>) in <code>main</code> during initialisation of <code>ps2_bridge_comm_rw</code> contents:</p>
-<pre><code class="language-c">*(_QWORD *)(ps2_bridge_comm_rw + 0x9CA3C0) = &amp;off_1E81E8; // &lt;--- Pointer written to bridge!
+</code></pre> <br> <p>I didn&#39;t fully analyse this bug, because there are similar loops that forget the bounds checks entirely (EG: at <code>0x100e0be</code>), but these don't seem to be useful as they only lead to out-of-bounds read on the bridge memory region which we fully control anyway.</p> <br> <h2 id=vulnerability-1---pointers-in-shared-memory >Vulnerability 1 - Pointers in Shared Memory!</h2> <p>The next observation was that, for some inexplicable reason, the compiler process puts 2 pointers, pointing within its data section, into the shared memory region! Shoutout to TheFlow for initially spotting this.</p> <p>It sets these two fields (at offsets <code>0x9CA3C0</code> and <code>0x9CED90</code>) in <code>main</code> during initialisation of <code>ps2_bridge_comm_rw</code> contents:</p> <pre><code class=language-c >*(_QWORD *)(ps2_bridge_comm_rw + 0x9CA3C0) = &amp;off_1E81E8; // &lt;--- Pointer written to bridge!
 v196 = 0LL;
 do
 {
@@ -87,16 +20,7 @@ do
 }
 while ( v196 != 4096 );
 *(_QWORD *)(ps2_bridge_comm_rw + 0x9CED90) = &amp;off_1E8208; // &lt;--- Pointer written to bridge!
-</code></pre>
-<br>
-<p>Reading these pointers from our compromised application process lets us defeat ASLR of the compiler&#39;s text and data sections.</p>
-<p>Unfortunately, overwriting the pointers doesn't seem to trigger any corruption in the compiler process because they never seem to be used.</p>
-<br>
-<h2 id="vulnerability-2---oob-write-in-manuallyinjectfunction">Vulnerability 2 - OOB Write in <code>manuallyInjectFunction</code></h2>
-<p>The application process can manually request a handful of specialised functions be outputted by the compiler. Strings in the binary reveal some of their names: <code>Kernel_ICacheClear</code>, <code>Kernel_CacheClearNOP</code>, <code>Kernel_ERET_EnableInts</code>, and <code>Psychonauts_compareFunction_EMeshFrag</code>.</p>
-<p>Based on an error handling string this function references (<code>&quot;Invalid manual injection index = %d&quot;</code>), I named this function <code>manuallyInjectFunction</code>, and it is where I found the first memory corruption vulnerability.</p>
-<p>After generating the requested function, it finishes by adding the resultant native code entry into the compiler&#39;s cache of PS2 addresses -&gt; native code entries, and then writing its response to the bridge region, where the application can ultimately read it. Here&#39;s a decompilation of this snippet from <code>0x108e675</code>:</p>
-<pre><code class="language-c">  this-&gt;instructionMappingCache[instructionMappingIndexMasked] = iVar6;
+</code></pre> <br> <p>Reading these pointers from our compromised application process lets us defeat ASLR of the compiler&#39;s text and data sections.</p> <p>Unfortunately, overwriting the pointers doesn't seem to trigger any corruption in the compiler process because they never seem to be used.</p> <br> <h2 id=vulnerability-2---oob-write-in-manuallyinjectfunction >Vulnerability 2 - OOB Write in <code>manuallyInjectFunction</code></h2> <p>The application process can manually request a handful of specialised functions be outputted by the compiler. Strings in the binary reveal some of their names: <code>Kernel_ICacheClear</code>, <code>Kernel_CacheClearNOP</code>, <code>Kernel_ERET_EnableInts</code>, and <code>Psychonauts_compareFunction_EMeshFrag</code>.</p> <p>Based on an error handling string this function references (<code>&quot;Invalid manual injection index = %d&quot;</code>), I named this function <code>manuallyInjectFunction</code>, and it is where I found the first memory corruption vulnerability.</p> <p>After generating the requested function, it finishes by adding the resultant native code entry into the compiler&#39;s cache of PS2 addresses -&gt; native code entries, and then writing its response to the bridge region, where the application can ultimately read it. Here&#39;s a decompilation of this snippet from <code>0x108e675</code>:</p> <pre><code class=language-c >  this-&gt;instructionMappingCache[instructionMappingIndexMasked] = iVar6;
   ptrWithinBridgeRegion = this[1].field_0x70;
 
   controlledIndex = *(int *)(ptrWithinBridgeRegion + 0x3c58); // &lt;-(1)-------
@@ -109,15 +33,7 @@ while ( v196 != 4096 );
     *(uint *)(ptrWithinBridgeRegion + 0x3c58) = controlledIndexPlus1Masked;
     return;
   }
-</code></pre>
-<br>
-<p>Debugging this code revealed that <code>ptrWithinBridgeRegion</code> points to <code>0x914105B30</code>, which resides in the bridge shared memory region, making the vulnerability quite apparent: we can have the compiler read an arbitrary 4-byte <code>signed</code> integer into <code>controlledIndex</code> at (1), and then have it used as an array index write at (2), without any bounds checks between!</p>
-<p>As the bridge is mapped at a constant address, we can even calculate the exact range of addresses that this out-of-bounds index will let us write to in the compiler: anywhere from <code>0x314106790</code> (<code>0x914105B30 + 0xc60 - 0x80000000 * 0xc</code>) to <code>0xF14106784</code> (<code>0x914105B30 + 0xc60 + 0x7fffffff * 0xc</code>), at <code>0xc</code> byte intervals.</p>
-<p>The value written, <code>instructionMappingIndexMasked</code>, is derived from the requested PS2 address as specified by bridge memory, calculated as <code>((arbitrary_4bytes_read_from_bridge &gt;&gt; 2) &amp; 0xffffff) * 4</code>, so can be any multiple of 4 from <code>0</code> to <code>0x3fffffc</code>.</p>
-<br>
-<h2 id="vulnerability-3---oob-write-in-writerelativejump">Vulnerability 3 - OOB Write in <code>writeRelativeJump</code></h2>
-<p>Here&#39;s the code that generates relative jump instructions (x86 instructions <code>0xe9</code> and <code>0xeb</code>) at (2) and (3); however, just before then it has this 16-byte AVX write into an array in shared bridge memory at (1), using an index that is also read from the bridge:</p>
-<pre><code class="language-c">    _anotherPointerWithinBridge = anotherPointerWithinBridge;
+</code></pre> <br> <p>Debugging this code revealed that <code>ptrWithinBridgeRegion</code> points to <code>0x914105B30</code>, which resides in the bridge shared memory region, making the vulnerability quite apparent: we can have the compiler read an arbitrary 4-byte <code>signed</code> integer into <code>controlledIndex</code> at (1), and then have it used as an array index write at (2), without any bounds checks between!</p> <p>As the bridge is mapped at a constant address, we can even calculate the exact range of addresses that this out-of-bounds index will let us write to in the compiler: anywhere from <code>0x314106790</code> (<code>0x914105B30 + 0xc60 - 0x80000000 * 0xc</code>) to <code>0xF14106784</code> (<code>0x914105B30 + 0xc60 + 0x7fffffff * 0xc</code>), at <code>0xc</code> byte intervals.</p> <p>The value written, <code>instructionMappingIndexMasked</code>, is derived from the requested PS2 address as specified by bridge memory, calculated as <code>((arbitrary_4bytes_read_from_bridge &gt;&gt; 2) &amp; 0xffffff) * 4</code>, so can be any multiple of 4 from <code>0</code> to <code>0x3fffffc</code>.</p> <br> <h2 id=vulnerability-3---oob-write-in-writerelativejump >Vulnerability 3 - OOB Write in <code>writeRelativeJump</code></h2> <p>Here&#39;s the code that generates relative jump instructions (x86 instructions <code>0xe9</code> and <code>0xeb</code>) at (2) and (3); however, just before then it has this 16-byte AVX write into an array in shared bridge memory at (1), using an index that is also read from the bridge:</p> <pre><code class=language-c >    _anotherPointerWithinBridge = anotherPointerWithinBridge;
     auVar6 = vmovaps_avx(*param_2);
     auVar2 = vmovaps_avx(auVar6);
     *(undefined (*) [16])(anotherPointerWithinBridge + 0x40a0 + (long)*(int *)(anotherPointerWithinBridge + 0x4090) * 0x10) = auVar2; // &lt;-(1)-------
@@ -140,50 +56,7 @@ while ( v196 != 4096 );
       *(char *)(lVar9 + 1) = (char)jumpTarget + -2;
       lVar9 = *(long *)((long)&amp;this-&gt;jitOutput + 4) + 1;
     }
-</code></pre>
-<br>
-<p>Once again, as the bridge has a constant address, we can calculate the exact range of addresses that this out-of-bounds write will let us write to in the compiler. In this case, from <code>0x914AD2D90 + 0x40a0 - 0x80000000 * 0x10 = 0x114AD6E30</code> to <code>0x914AD2D90 + 0x40a0 + 0x7fffffff * 0x10 = 0x1114AD6E20</code>.</p>
-<p>Note that there&#39;s also another OOB write in the handling of a &quot;generic rewrite request&quot; (EE request type <code>0x215</code>), but since it writes the value <code>0</code>, it&#39;s slightly less interesting.</p>
-<br>
-<h2 id="choosing-a-mapping-to-corrupt">Choosing a Mapping to Corrupt</h2>
-<p>Now we need to decide which OOB vulnerability to use, and what to corrupt with it.</p>
-<p>Since both OOB writes occur relative to an array within the bridge region, which we already control the entirety of, our corruption target will need to be in a separate memory mapping to be useful, which will be a random number of pages away due to ASLR.</p>
-<p>Because of this, Vulnerability 3 is much more attractive because its stride (<code>0x10</code>) is a factor of the page size, and so the offsets within different pages that we can corrupt will be consistent across different runs.</p>
-<p>We already know where the compiler processes&#39; data section is, thanks to Vulnerability 1 (pointers in the bridge), but unfortunately it&#39;s too far away for us to try to corrupt (it&#39;s one of the first things mapped in the process and will have a relatively low address like <code>0x7d7cc000</code>, whilst the lowest we can write to with Vulnerability 3 is <code>0x114AD6E30</code>).</p>
-<br>
-<h3 id="locating-the-heap">Locating the Heap</h3>
-<p>A target we could reach would be the heap, but again, due to ASLR we don&#39;t know its exact address.</p>
-<p>Here&#39;s a sample of base addresses for the <code>0x7000000</code>-byte sized <code>sceLibcHeap</code> mapping across various runs:</p>
-<ul>
-<li><code>0x200000000 - 0x207000000</code> (ASLR disabled)</li>
-<li><code>0x20043C000 - 0x20743C000</code></li>
-<li><code>0x2006B8000 - 0x2076B8000</code></li>
-<li><code>0x200048000 - 0x207048000</code></li>
-</ul>
-<p>Experimentally we can see that just 10 of those 64 bits are not constant, so we know almost 85% of the heap&#39;s base address with no prior knowledge. So even though we don&#39;t know the heap&#39;s exact base address, we know for certain that an address like <code>0x201000860</code> will always fall inside this heap mapping.</p>
-<p>Let&#39;s go back to that <code>instructionMappingCache</code> array I mentioned when describing Vulnerability 1: it&#39;s an array that maps every possible PS2 address that could be executed into a 4-byte native function index. It is allocated on the heap early during initialisation (giving it offset <code>0x860</code> in the heap), and is <code>0x04000000</code> bytes... this turns out to be almost 60% of the heap!</p>
-<p>Putting these 2 pieces together, you&#39;ll realise that there just isn&#39;t enough entropy to hide <code>instructionMappingCache</code>. If we pick an index that will target address <code>0x201000860</code> with OOB write Vulnerability 3, it is guaranteed to corrupt <code>instructionMappingCache</code>, at 1 of <code>2^10 == 1024</code> possible offsets.</p>
-<p>Once we&#39;ve corrupted one of the possible entries in <code>instructionMappingCache</code>, we can attempt an oracle attack to find exactly which entry was corrupted: request the compiler process to JIT each of the 1024 PS2 addresses that possibly correspond with the corrupted <code>instructionMappingCache</code> entry, until we find the anomalous result. Once we know which index into the array was corrupted, we can calculate the array&#39;s base address, and thus the base address of the heap (<code>-0x860</code>), with which we can derive the address of anything else on the heap (since the heap itself doesn&#39;t employ any randomisation).</p>
-<br>
-<h2 id="unfinished">(Unfinished)</h2>
-<p>I never finished the exploit, sorry.</p>
-<p>But when summarising the primitives outlined already, it seems reasonable that it would be possible to develop this into a complete exploit taking over the compiler process:<p>
-<ul>
-<li>Being able to place large amounts of arbitrary data into the compiler at a known address using the bridge shared memory,</li>
-<li>Defeating ASLR of the compiler binary&#39;s sections through leaked pointers in the bridge,</li>
-<li>Having an out of bounds write vulnerability that spans the entire heap,</li>
-<li>Writing out of bounds into the heap to corrupt <code>instructionMappingCache</code>, and using an oracle to determine which index was corrupted to learn the exact base address of the heap,</li>
-</ul>
-<br>
-<h2 id="aftermath">Aftermath</h2>
-<p>As discussed in my <a href="mast1c0re.html">previous post</a>, for various reasons the Operating System was not designed to enforce games to be on their latest version, and so the fact that there are games with special privileges is an oversight in their security model, as it leaves privileged code with no readily available mechanism to be patched.</p>
-<p>Some commenters disagreed with the above interpretation because PlayStation could still <em>technically</em> prevent exploitation on later updates (even though I already addressed this in my original post). I stand by my assessment because the options for doing so would be terrible: creating a software deny-list that would have to include some physical discs, or bundling binary patches for games in the OS itself.</p>
-<p>Anyway, as I predicted, PlayStation decided not to re-design their security model and build a mechanism for enforcement of game patches. Instead they have accepted the reality of JIT compiler processes potentially being permanently compromisable, and attempted to limit the consequences of this.</p>
-<p>Whilst I can only speculate on PlayStation's motivations, I believe their main concern regards the theoretical scenario of this being used to load patched retail PS4 games into the process and trying to boot them. PlayStation decided that they could mitigate this risk by placing a limit on the amount of JIT code allocatable. The limit is 65MB.</p>
-<br>
-<h3 id="patch-analysis">Patch Analysis</h3>
-<p>PS5 firmware 6.00 (and equivalent for PS4) introduce a new global variable that I call <code>allocatedJitMemoryTowardsLimit</code>; its main use is in <code>sys_jitshm_create</code> in file <code>sys/freebsd/sys/kern/kern_jitshm.c</code>, which looks something like this:</p>
-<pre><code class="language-c">        if ((requestedProt &amp; PROT_EXEC) == 0) {
+</code></pre> <br> <p>Once again, as the bridge has a constant address, we can calculate the exact range of addresses that this out-of-bounds write will let us write to in the compiler. In this case, from <code>0x914AD2D90 + 0x40a0 - 0x80000000 * 0x10 = 0x114AD6E30</code> to <code>0x914AD2D90 + 0x40a0 + 0x7fffffff * 0x10 = 0x1114AD6E20</code>.</p> <p>Note that there&#39;s also another OOB write in the handling of a &quot;generic rewrite request&quot; (EE request type <code>0x215</code>), but since it writes the value <code>0</code>, it&#39;s slightly less interesting.</p> <br> <h2 id=choosing-a-mapping-to-corrupt >Choosing a Mapping to Corrupt</h2> <p>Now we need to decide which OOB vulnerability to use, and what to corrupt with it.</p> <p>Since both OOB writes occur relative to an array within the bridge region, which we already control the entirety of, our corruption target will need to be in a separate memory mapping to be useful, which will be a random number of pages away due to ASLR.</p> <p>Because of this, Vulnerability 3 is much more attractive because its stride (<code>0x10</code>) is a factor of the page size, and so the offsets within different pages that we can corrupt will be consistent across different runs.</p> <p>We already know where the compiler processes&#39; data section is, thanks to Vulnerability 1 (pointers in the bridge), but unfortunately it&#39;s too far away for us to try to corrupt (it&#39;s one of the first things mapped in the process and will have a relatively low address like <code>0x7d7cc000</code>, whilst the lowest we can write to with Vulnerability 3 is <code>0x114AD6E30</code>).</p> <br> <h3 id=locating-the-heap >Locating the Heap</h3> <p>A target we could reach would be the heap, but again, due to ASLR we don&#39;t know its exact address.</p> <p>Here&#39;s a sample of base addresses for the <code>0x7000000</code>-byte sized <code>sceLibcHeap</code> mapping across various runs:</p> <ul> <li><code>0x200000000 - 0x207000000</code> (ASLR disabled) <li><code>0x20043C000 - 0x20743C000</code> <li><code>0x2006B8000 - 0x2076B8000</code> <li><code>0x200048000 - 0x207048000</code> </ul> <p>Experimentally we can see that just 10 of those 64 bits are not constant, so we know almost 85% of the heap&#39;s base address with no prior knowledge. So even though we don&#39;t know the heap&#39;s exact base address, we know for certain that an address like <code>0x201000860</code> will always fall inside this heap mapping.</p> <p>Let&#39;s go back to that <code>instructionMappingCache</code> array I mentioned when describing Vulnerability 1: it&#39;s an array that maps every possible PS2 address that could be executed into a 4-byte native function index. It is allocated on the heap early during initialisation (giving it offset <code>0x860</code> in the heap), and is <code>0x04000000</code> bytes... this turns out to be almost 60% of the heap!</p> <p>Putting these 2 pieces together, you&#39;ll realise that there just isn&#39;t enough entropy to hide <code>instructionMappingCache</code>. If we pick an index that will target address <code>0x201000860</code> with OOB write Vulnerability 3, it is guaranteed to corrupt <code>instructionMappingCache</code>, at 1 of <code>2^10 == 1024</code> possible offsets.</p> <p>Once we&#39;ve corrupted one of the possible entries in <code>instructionMappingCache</code>, we can attempt an oracle attack to find exactly which entry was corrupted: request the compiler process to JIT each of the 1024 PS2 addresses that possibly correspond with the corrupted <code>instructionMappingCache</code> entry, until we find the anomalous result. Once we know which index into the array was corrupted, we can calculate the array&#39;s base address, and thus the base address of the heap (<code>-0x860</code>), with which we can derive the address of anything else on the heap (since the heap itself doesn&#39;t employ any randomisation).</p> <br> <h2 id=unfinished >(Unfinished)</h2> <p>I never finished the exploit, sorry.</p> <p>But when summarising the primitives outlined already, it seems reasonable that it would be possible to develop this into a complete exploit taking over the compiler process:<p> <ul> <li>Being able to place large amounts of arbitrary data into the compiler at a known address using the bridge shared memory, <li>Defeating ASLR of the compiler binary&#39;s sections through leaked pointers in the bridge, <li>Having an out of bounds write vulnerability that spans the entire heap, <li>Writing out of bounds into the heap to corrupt <code>instructionMappingCache</code>, and using an oracle to determine which index was corrupted to learn the exact base address of the heap, </ul> <br> <h2 id=aftermath >Aftermath</h2> <p>As discussed in my <a href=mast1c0re.html >previous post</a>, for various reasons the Operating System was not designed to enforce games to be on their latest version, and so the fact that there are games with special privileges is an oversight in their security model, as it leaves privileged code with no readily available mechanism to be patched.</p> <p>Some commenters disagreed with the above interpretation because PlayStation could still <em>technically</em> prevent exploitation on later updates (even though I already addressed this in my original post). I stand by my assessment because the options for doing so would be terrible: creating a software deny-list that would have to include some physical discs, or bundling binary patches for games in the OS itself.</p> <p>Anyway, as I predicted, PlayStation decided not to re-design their security model and build a mechanism for enforcement of game patches. Instead they have accepted the reality of JIT compiler processes potentially being permanently compromisable, and attempted to limit the consequences of this.</p> <p>Whilst I can only speculate on PlayStation's motivations, I believe their main concern regards the theoretical scenario of this being used to load patched retail PS4 games into the process and trying to boot them. PlayStation decided that they could mitigate this risk by placing a limit on the amount of JIT code allocatable. The limit is 65MB.</p> <br> <h3 id=patch-analysis >Patch Analysis</h3> <p>PS5 firmware 6.00 (and equivalent for PS4) introduce a new global variable that I call <code>allocatedJitMemoryTowardsLimit</code>; its main use is in <code>sys_jitshm_create</code> in file <code>sys/freebsd/sys/kern/kern_jitshm.c</code>, which looks something like this:</p> <pre><code class=language-c >        if ((requestedProt &amp; PROT_EXEC) == 0) {
           applyJitLimit = false;
         }
         else {
@@ -207,36 +80,4 @@ while ( v196 != 4096 );
 
             allocatedJitMemoryTowardsLimit += requestedJitMemoryTowardsLimit;
             mtx_unlock(&amp;jitCounterLock);
-</code></pre>
-<br>
-<p>And there&#39;s corresponding code to decrease the counter when freeing JIT memory.</p>
-<p>The mitigation itself seems to be implemented correctly; there&#39;s locking so the check can&#39;t be raced, integer overflow isn&#39;t possible because we can&#39;t request large enough allocations for separate reasons, <code>sys_jitshm_create</code> can&#39;t create objects with the GPU executable bit instead, and we can&#39;t later add the executable protection to aliases through <code>sys_jitshm_alias</code> if the original doesn&#39;t have it, etc.</p>
-<p>But the wider implications of this mitigation strategy are more interesting than the implementation itself.</p>
-<br>
-<h3 id="patch-implications">Patch Implications</h3>
-<p>The mitigation does indeed prevent you from loading large programs completely into memory all at once. But is that strictly necessary for them to be run?</p>
-<p>There are a couple of tricks that come with some performance overhead, but I believe would make it possible to &quot;run&quot; larger amounts of code than the imposed limit:</p>
-<ol>
-<li><p>Since not all code is constantly required, it could be dynamically paged in as needed. A more sophisticated approach could even use profiling to identify &quot;hot paths&quot; and prioritise using the JIT budget for those to maximise performance.</p>
-</li>
-<li><p>The 65MB JIT budget could be used to write an efficient x86-64 emulator in native x86-64. Specifically, in other platforms where JIT is limited, we've seen an interesting technique of using weird machine control flow to efficiently jump directly between ROP-like gadgets that emulate individual instructions, as opposed to the more traditional interpreter emulation loop. I first <a href="https://twitter.com/CTurtE/status/1383695597312434178">saw this technique</a> in the &#39;goombacolor&#39; GameBoy Color emulator for GameBoy Advance (where the game has to reside in cartridge ROM instead of size-limited RAM, where it obviously can't be rewritten), but a more modern example is in the <a href="https://github.com/utmapp/UTM#utm-se">UTM SE</a> project (described <a href="https://twitter.com/snfernandez/status/1383394958317551616">here</a>) which shows how efficient this type of emulator can be on more modern platforms like iOS (where JIT is disallowed).</p>
-</li>
-</ol>
-<p>
-    Furthermore, when considering the scenario of trying to run PS4 games on the PS5, some amount of overhead might even be offset by the fact that the PS5 runs faster than the PS4 anyway.
-</p>
-<br>
-<h2 id="conclusion">Conclusion</h2>
-<p>There&#39;s a reasonably good chance that with enough motivation the vulnerabilities described in this post could be exploited to take over the compiler process.</p>
-<p>The exploit would allow arbitrary code execution on the latest firmwares of the PS4 and PS5, allowing native homebrew applications to be run off USB storage for example.</p>
-<p>Even with the mitigation Sony shipped in response to this research to limit the size of applications that could be run, I still believe it would be possible to to run larger applications albeit with the performance overhead of them being partially emulated or dynamically paged in and out. With the amount of work required, I don&#39;t realistically think we'll see polished demos of Linux or retail PS4 games running, but it&#39;s fun to think that there&#39;s a good chance that theoretically those things might at least be technically possible.</p>
-
-<br>
-<h2 id="thanks">Thanks</h2>
-<p>flatz, balika011, theflow0, chicken(s), PlayStation</p>
-
-			<script src="js/prism.js" type="text/javascript"></script>
-			</div>
-		</div>
-	</body>
-</html>
+</code></pre> <br> <p>And there&#39;s corresponding code to decrease the counter when freeing JIT memory.</p> <p>The mitigation itself seems to be implemented correctly; there&#39;s locking so the check can&#39;t be raced, integer overflow isn&#39;t possible because we can&#39;t request large enough allocations for separate reasons, <code>sys_jitshm_create</code> can&#39;t create objects with the GPU executable bit instead, and we can&#39;t later add the executable protection to aliases through <code>sys_jitshm_alias</code> if the original doesn&#39;t have it, etc.</p> <p>But the wider implications of this mitigation strategy are more interesting than the implementation itself.</p> <br> <h3 id=patch-implications >Patch Implications</h3> <p>The mitigation does indeed prevent you from loading large programs completely into memory all at once. But is that strictly necessary for them to be run?</p> <p>There are a couple of tricks that come with some performance overhead, but I believe would make it possible to &quot;run&quot; larger amounts of code than the imposed limit:</p> <ol> <li><p>Since not all code is constantly required, it could be dynamically paged in as needed. A more sophisticated approach could even use profiling to identify &quot;hot paths&quot; and prioritise using the JIT budget for those to maximise performance.</p> <li><p>The 65MB JIT budget could be used to write an efficient x86-64 emulator in native x86-64. Specifically, in other platforms where JIT is limited, we've seen an interesting technique of using weird machine control flow to efficiently jump directly between ROP-like gadgets that emulate individual instructions, as opposed to the more traditional interpreter emulation loop. I first <a href="https://twitter.com/CTurtE/status/1383695597312434178">saw this technique</a> in the &#39;goombacolor&#39; GameBoy Color emulator for GameBoy Advance (where the game has to reside in cartridge ROM instead of size-limited RAM, where it obviously can't be rewritten), but a more modern example is in the <a href="https://github.com/utmapp/UTM#utm-se">UTM SE</a> project (described <a href="https://twitter.com/snfernandez/status/1383394958317551616">here</a>) which shows how efficient this type of emulator can be on more modern platforms like iOS (where JIT is disallowed).</p> </ol> <p> Furthermore, when considering the scenario of trying to run PS4 games on the PS5, some amount of overhead might even be offset by the fact that the PS5 runs faster than the PS4 anyway. </p> <br> <h2 id=conclusion >Conclusion</h2> <p>There&#39;s a reasonably good chance that with enough motivation the vulnerabilities described in this post could be exploited to take over the compiler process.</p> <p>The exploit would allow arbitrary code execution on the latest firmwares of the PS4 and PS5, allowing native homebrew applications to be run off USB storage for example.</p> <p>Even with the mitigation Sony shipped in response to this research to limit the size of applications that could be run, I still believe it would be possible to to run larger applications albeit with the performance overhead of them being partially emulated or dynamically paged in and out. With the amount of work required, I don&#39;t realistically think we'll see polished demos of Linux or retail PS4 games running, but it&#39;s fun to think that there&#39;s a good chance that theoretically those things might at least be technically possible.</p> <br> <h2 id=thanks >Thanks</h2> <p>flatz, balika011, theflow0, chicken(s), PlayStation</p> <script src="js/prism.js" type="text/javascript"></script> </div> </div>

@@ -1,71 +1,4 @@
-﻿<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>VertexNet malware analysis</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>Reverse engineering VertexNet malware</h1>
-				<span class="date">Initial publication: May 8th, 2015</span>
-				<hr>
-				
-				<p>
-					I wanted to improve my reverse engineering skills, and I decided that doing some malware analysis was the best way to do this. Malware can be an excellent target for reverse engineering not only because there are far less ethical considerations than if you were reverse engineering a legitimate application, but also because most malware employs obfuscation and anti-debugger protections, which most legitimate applications don't bother with; these force you to develop a much more advanced understanding of reverse engineering.
-				</p>
-				
-				<p>
-					This article shows how I approached the reverse engineering of a piece of malware in the hope that it can be useful to others who are also relatively new to reverse engineering.
-				</p>
-				
-				<p>
-					I searched for a simple target on <a href="http://kernelmode.info">KernelMode.info</a> (as I'm a beginner to malware analysis) and came across <a href="http://www.kernelmode.info/forum/viewtopic.php?f=16&amp;t=1128">Win32 VertexNet</a>. Apparently it was written in C++ and has very little obfuscation, so it should be a great target for me to start with.
-				</p>
-				
-				<p>
-					Before I go on, I did all of this analysis in a Windows XP virtual machine; you should never try to reverse engineer any malware on a computer that you care about!
-				</p>
-				
-				<br>
-				<h2>Unpacking</h2>
-				
-				<p>
-					Loading the executable into IDA Pro gives a small section of code that does some kind of loop. IDA couldn't find any functions, and it looked like it had been programmed directly in x86. It certainly wasn't the payload!
-				</p>
-				
-				<p>
-					I could have debugged the executable to unpack its payload manually; but I discovered two sections called <code>UPX0</code> and <code>UPX1</code> which, after a quick search, lead me to the application which it had been packed with, <a href="http://upx.sourceforge.net/">UPX</a>.
-				</p>
-								
-				<p>
-					After downloading UPX, I was able to unpack the executable with the following command line:
-				</p>
-				
-				<pre><code>upx VNet.exe -d -o unpacked.exe</code></pre>
+﻿<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>VertexNet malware analysis</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Reverse engineering VertexNet malware</h1> <span class=date >Initial publication: May 8th, 2015</span> <hr> <p> I wanted to improve my reverse engineering skills, and I decided that doing some malware analysis was the best way to do this. Malware can be an excellent target for reverse engineering not only because there are far less ethical considerations than if you were reverse engineering a legitimate application, but also because most malware employs obfuscation and anti-debugger protections, which most legitimate applications don't bother with; these force you to develop a much more advanced understanding of reverse engineering. </p> <p> This article shows how I approached the reverse engineering of a piece of malware in the hope that it can be useful to others who are also relatively new to reverse engineering. </p> <p> I searched for a simple target on <a href="http://kernelmode.info">KernelMode.info</a> (as I'm a beginner to malware analysis) and came across <a href="http://www.kernelmode.info/forum/viewtopic.php?f=16&amp;t=1128">Win32 VertexNet</a>. Apparently it was written in C++ and has very little obfuscation, so it should be a great target for me to start with. </p> <p> Before I go on, I did all of this analysis in a Windows XP virtual machine; you should never try to reverse engineer any malware on a computer that you care about! </p> <br> <h2>Unpacking</h2> <p> Loading the executable into IDA Pro gives a small section of code that does some kind of loop. IDA couldn't find any functions, and it looked like it had been programmed directly in x86. It certainly wasn't the payload! </p> <p> I could have debugged the executable to unpack its payload manually; but I discovered two sections called <code>UPX0</code> and <code>UPX1</code> which, after a quick search, lead me to the application which it had been packed with, <a href="http://upx.sourceforge.net/">UPX</a>. </p> <p> After downloading UPX, I was able to unpack the executable with the following command line: </p> <pre><code>upx VNet.exe -d -o unpacked.exe</code></pre>
 				
 				<br>
 				
@@ -84,7 +17,7 @@
 					Let's start analysing <code>WinMain</code>; there is no obfuscation on this function, and you can generate the following pseudo code by pressing <code>F5</code>:
 				</p>
 				
-				<pre><code class="language-c">int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+				<pre><code class=language-c >int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
   struct tagMSG Msg; // [sp+4h] [bp-1Ch]@1
 
@@ -111,7 +44,7 @@
 					From here we can see some more function calls which we will come back to later, but the most apparent are the two calls to <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms682453%28v=vs.85%29.aspx">CreateThread</a>:
 				</p>
 				
-				<pre><code class="language-c">CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &amp;ThreadId);
+				<pre><code class=language-c >CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_404400, NULL, 0, &amp;ThreadId);
 return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &amp;ThreadId);</pre></code>
 				
 				<br>
@@ -131,7 +64,7 @@ return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)sub_406300, NULL, 0, &amp;T
 					Initially, this function looked quite daunting:
 				</p>
 				
-				<pre><code class="language-c">int __usercall sub_4022B0&lt;eax&gt;(unsigned int a1&lt;eax&gt;, int a2&lt;edx&gt;, int a3&lt;ecx&gt;)
+				<pre><code class=language-c >int __usercall sub_4022B0&lt;eax&gt;(unsigned int a1&lt;eax&gt;, int a2&lt;edx&gt;, int a3&lt;ecx&gt;)
 {
   unsigned int v3; // esi@1
   signed int v4; // eax@5
@@ -185,7 +118,7 @@ LABEL_4:
 					One of the best ways I've found to help understand what a function does is by adding and removing whitespace to make it match your own style. Whilst doing this it became clear what the function does: it performs a string comparison. The reason that the pointers are dereferenced to integers instead of characters at the start is just an optimisation; it is faster to compare blocks of 4 bytes at a time than to compare all bytes individually.
 				</p>
 				
-				<pre><code class="language-c">int compareStrings(unsigned int length, char *string1, char *string2) {
+				<pre><code class=language-c >int compareStrings(unsigned int length, char *string1, char *string2) {
 	unsigned int i = length;
 	
 	if(length &lt; 4) {
@@ -261,16 +194,16 @@ LABEL_4:
 				</p>
 				
 				<ul>
-					<li><b>DEFPATH</b> %DEFDRIVE%</li>
-					<li><b>GCMDINT</b> 30</li>
-					<li><b>HKNAME</b> vnet</li>
-					<li><b>HPORT</b> 80</li>
-					<li><b>INSTALL</b> 1</li>
-					<li><b>IPATH</b> dropped.exe</li>
-					<li><b>KAINT</b> 120</li>
-					<li><b>MUTEX</b> VN_MUTEX1656721546</li>
-					<li><b>PANELPATH</b> /admtriii/v/</li>
-					<li><b>ROOTURL</b> www.cg1.fr</li>
+					<li><b>DEFPATH</b> %DEFDRIVE%
+					<li><b>GCMDINT</b> 30
+					<li><b>HKNAME</b> vnet
+					<li><b>HPORT</b> 80
+					<li><b>INSTALL</b> 1
+					<li><b>IPATH</b> dropped.exe
+					<li><b>KAINT</b> 120
+					<li><b>MUTEX</b> VN_MUTEX1656721546
+					<li><b>PANELPATH</b> /admtriii/v/
+					<li><b>ROOTURL</b> www.cg1.fr
 				</ul>
 				
 				<p>
@@ -312,9 +245,9 @@ LABEL_4:
 				</p>
 				
 				<ul>
-					<li>Close the process in Task Manager (or ignore this stage and just restart your computer afterwards)</li>
-					<li>Delete the original executable and <code>vnlogs.log</code> in the same directory if there is one</li>
-					<li>Delete the copy located at <code>C:\dropped.exe</code> and <code>vnlogs.log</code> in the same directory if there is one</li>
+					<li>Close the process in Task Manager (or ignore this stage and just restart your computer afterwards)
+					<li>Delete the original executable and <code>vnlogs.log</code> in the same directory if there is one
+					<li>Delete the copy located at <code>C:\dropped.exe</code> and <code>vnlogs.log</code> in the same directory if there is one
 					<li>Remove the registry entry <code>vnet</code> at <code>HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\</code>
 				</ul>
 				
@@ -330,28 +263,28 @@ LABEL_4:
 				</p>
 				
 				<ul>
-					<li>msg::</li>
-					<li>ERROR</li>
-					<li>exec::</li>
-					<li>close</li>
-					<li>getproc</li>
-					<li>getmodules::</li>
-					<li>setkeylogger::</li>
-					<li>getklogs</li>
-					<li>readfile::</li>
-					<li>uninstall</li>
-					<li>update::</li>
-					<li>urldl::</li>
-					<li>httpflood::</li>
-					<li>remoteshell::</li>
-					<li>visitpage::</li>
+					<li>msg::
+					<li>ERROR
+					<li>exec::
+					<li>close
+					<li>getproc
+					<li>getmodules::
+					<li>setkeylogger::
+					<li>getklogs
+					<li>readfile::
+					<li>uninstall
+					<li>update::
+					<li>urldl::
+					<li>httpflood::
+					<li>remoteshell::
+					<li>visitpage::
 				</ul>
 				
 				<p>
 					When the <code>setkeylogger::</code> command is received, a new thread is created (<code>sub_404300</code>):
 				</p>
 				
-				<pre><code class="language-c">CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &amp;ThreadId);</code></pre>
+				<pre><code class=language-c >CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)keyloggerThread, NULL, 0, &amp;ThreadId);</code></pre>
 				
 				<br>
 				
@@ -381,5 +314,3 @@ LABEL_4:
 		</div>
 
 		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>

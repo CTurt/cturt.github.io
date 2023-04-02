@@ -1,96 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Hacking the PS2 with Yabasic</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-
-<h1>Hacking the PS2 with Yabasic</h1>
-<span class="date">Initial publication: Oct 19th, 2019</span>
-<hr>
-
-<h2 id="introduction">Introduction</h2>
-<p>
-	I recently stumbled upon a PS2 demo disc containing Yabasic, a simple Basic interpreter, and was curious to research whether it could be used for anything interesting. These <a href="https://wiki.pcsx2.net/Demo_Disc">demo discs</a> shipped with all PAL region PS2 consoles between 2000 - 2003 as an <a href="https://www.theregister.co.uk/2000/11/07/sony_adds_basic_to_playstation/">attempt</a> to classify the PS2 as a personal computer instead of a video game console for tax reasons (which <a href="https://www.theguardian.com/technology/2003/oct/01/business.games">ultimately</a> failed, however nowadays video game consoles are no longer subject to this import tax).
-<p>
-
-<p>
-	In particular, although there are existing methods of running homebrew on PS2 consoles, none of them are perfect since they all seem to have undesirable requirements like opening up your console or purchasing unofficial hardware, or are limited to only specific models.
-</p>
-
-<p>
-	The most desirable method is to use <a href="https://github.com/TnA-Plastic/FreeMcBoot">FreeMCBoot</a> to boot from a memory card, however installing this onto said memory card requires an already hacked console. Whilst you could purchase a memory card with FreeMCBoot pre-installed on it by someone else, it would be nice to have a way to install the exploit yourself. That's where I see a Yabasic exploit fitting in nicely, as an entry-point for launching the FreeMCBoot installer. In addition, a Yabasic exploit could be useful for people with the latest slim consoles, which are not vulnerable to FreeMCBoot.
-</p>
-
-<p>
-	In this article I will describe how I developed an exploit that allows running arbitrary code through Yabasic. Since these programs can be saved and loaded from the memory card, the exploit just need to be typed out once, and can then be reloaded more conveniently in the future. If you're just interested in using the exploit but not the technical analysis you can <a href="https://github.com/CTurt/PS2-Yabasic-Exploit">checkout the repository</a> for details.
-</p>
-
-<br>
-
-<h2 id="setup">Setup</h2>
-<p>
-	For the duration of this article, I will be analysing PBPX-95205, but all versions of Yabasic are vulnerable (the only difference will be finding the right addresses).
-</p>
-
-<br>
-
-<h3 id="tools">Tools</h3>
-<p>
-	I disassembled and decompiled using the <a href="https://github.com/beardypig/ghidra-emotionengine">PS2 plugin</a> for Ghidra. I debugged using the <a href="https://github.com/PCSX2/pcsx2">PCSX2</a> emulator, and a <a href="https://github.com/jackun/USBqemu-wheel/releases">plugin</a> which allows USB devices (storage and keyboard).
-</p>
-
-<br>
-
-<h3 id="source">Source</h3>
-<p>
-	Yabasic is <a href="http://www.yabasic.de/">open-source</a>, but the oldest version still available is <a href="https://github.com/marcIhm/yabasic/releases/tag/2.77.1">2.77.1</a>, released <a href="http://www.yabasic.de/content_log.html">late 2016</a>. This may seem like a big difference at first, but in reality the project was dormant for 9 years, and so there were only a few bug fixes made during the time between the PS2 release and 2.77.1. Whilst some of those bug fixes listed could be interesting, such as "A bug with the functions split() and token() has been fixed, which caused to coredumps in some cases.", I decided to just look for my own bugs rather than hunting down the root cause of those bugs.
-</p>
-
-<br>
-
-<h2 id="bug-hunting">Bug hunting</h2>
-<p>
-	Since Yabasic isn't intended to be a security boundary on modern PCs (you can just use <a href="http://www.yabasic.de/yabasic.htm#ref_system">system</a> to execute arbitrary commands), there haven't been many prior security reviews of the codebase.
-</p>
-
-<br>
-
-<h3 href="dotify">dotify</h3>
-<p>
-	There was one buffer overflow <a href="https://bugs.launchpad.net/ubuntu/+source/yabasic/+bug/424602">reported in 2009</a>, <a href="https://github.com/marcIhm/yabasic/commit/bb5994214f738290e03d111faaeedcd70e92c885">fixed in 2016</a>.
-</p>
-
-<p>
-	The PoC for this issue is pretty straight forward:
-</p>
-
-<pre><code>x=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code></pre>
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Hacking the PS2 with Yabasic</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Hacking the PS2 with Yabasic</h1> <span class=date >Initial publication: Oct 19th, 2019</span> <hr> <h2 id=introduction >Introduction</h2> <p> I recently stumbled upon a PS2 demo disc containing Yabasic, a simple Basic interpreter, and was curious to research whether it could be used for anything interesting. These <a href="https://wiki.pcsx2.net/Demo_Disc">demo discs</a> shipped with all PAL region PS2 consoles between 2000 - 2003 as an <a href="https://www.theregister.co.uk/2000/11/07/sony_adds_basic_to_playstation/">attempt</a> to classify the PS2 as a personal computer instead of a video game console for tax reasons (which <a href="https://www.theguardian.com/technology/2003/oct/01/business.games">ultimately</a> failed, however nowadays video game consoles are no longer subject to this import tax). <p> <p> In particular, although there are existing methods of running homebrew on PS2 consoles, none of them are perfect since they all seem to have undesirable requirements like opening up your console or purchasing unofficial hardware, or are limited to only specific models. </p> <p> The most desirable method is to use <a href="https://github.com/TnA-Plastic/FreeMcBoot">FreeMCBoot</a> to boot from a memory card, however installing this onto said memory card requires an already hacked console. Whilst you could purchase a memory card with FreeMCBoot pre-installed on it by someone else, it would be nice to have a way to install the exploit yourself. That's where I see a Yabasic exploit fitting in nicely, as an entry-point for launching the FreeMCBoot installer. In addition, a Yabasic exploit could be useful for people with the latest slim consoles, which are not vulnerable to FreeMCBoot. </p> <p> In this article I will describe how I developed an exploit that allows running arbitrary code through Yabasic. Since these programs can be saved and loaded from the memory card, the exploit just need to be typed out once, and can then be reloaded more conveniently in the future. If you're just interested in using the exploit but not the technical analysis you can <a href="https://github.com/CTurt/PS2-Yabasic-Exploit">checkout the repository</a> for details. </p> <br> <h2 id=setup >Setup</h2> <p> For the duration of this article, I will be analysing PBPX-95205, but all versions of Yabasic are vulnerable (the only difference will be finding the right addresses). </p> <br> <h3 id=tools >Tools</h3> <p> I disassembled and decompiled using the <a href="https://github.com/beardypig/ghidra-emotionengine">PS2 plugin</a> for Ghidra. I debugged using the <a href="https://github.com/PCSX2/pcsx2">PCSX2</a> emulator, and a <a href="https://github.com/jackun/USBqemu-wheel/releases">plugin</a> which allows USB devices (storage and keyboard). </p> <br> <h3 id=source >Source</h3> <p> Yabasic is <a href="http://www.yabasic.de/">open-source</a>, but the oldest version still available is <a href="https://github.com/marcIhm/yabasic/releases/tag/2.77.1">2.77.1</a>, released <a href="http://www.yabasic.de/content_log.html">late 2016</a>. This may seem like a big difference at first, but in reality the project was dormant for 9 years, and so there were only a few bug fixes made during the time between the PS2 release and 2.77.1. Whilst some of those bug fixes listed could be interesting, such as "A bug with the functions split() and token() has been fixed, which caused to coredumps in some cases.", I decided to just look for my own bugs rather than hunting down the root cause of those bugs. </p> <br> <h2 id=bug-hunting >Bug hunting</h2> <p> Since Yabasic isn't intended to be a security boundary on modern PCs (you can just use <a href="http://www.yabasic.de/yabasic.htm#ref_system">system</a> to execute arbitrary commands), there haven't been many prior security reviews of the codebase. </p> <br> <h3 href=dotify >dotify</h3> <p> There was one buffer overflow <a href="https://bugs.launchpad.net/ubuntu/+source/yabasic/+bug/424602">reported in 2009</a>, <a href="https://github.com/marcIhm/yabasic/commit/bb5994214f738290e03d111faaeedcd70e92c885">fixed in 2016</a>. </p> <p> The PoC for this issue is pretty straight forward: </p> <pre><code>x=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code></pre>
 <br>
 
 <p>
@@ -103,12 +11,12 @@
 
 <br>
 
-<h3 href="create_subr_link">create_subr_link</h3>
+<h3 href=create_subr_link >create_subr_link</h3>
 <p>
 	The <a href="https://github.com/marcIhm/yabasic/issues/32">first</a> vulnerability I found was another buffer overflow, similar to the above, but occurs on a stack buffer, rather than a static buffer:
 </p>
 
-<pre><code class="language-c">void
+<pre><code class=language-c >void
 create_subr_link (char *label)  /* create link to subroutine */
 {
 	char global[200];
@@ -153,7 +61,7 @@ end sub</code></pre>
 
 <br>
 
-<h3 href="dim">dim</h3>
+<h3 href=dim >dim</h3>
 <p>
 	The <a href="https://github.com/marcIhm/yabasic/issues/33">second</a> vulnerability I found was an integer overflow when calculating the size of an array.
 </p>
@@ -162,7 +70,7 @@ end sub</code></pre>
 	Yabasic supports declaring up to 10-dimensional arrays using the <code>dim</code> command, with the only restriction being that each dimension length must be greater than 0. The allocation size is calculated by adding 1 to all dimensions, multiplying them together, and then multiplying by the size of the type, where the arrays can either hold <code>char *</code> or <code>double</code>:
 </p>
 
-<pre><code class="language-c">void
+<pre><code class=language-c >void
 dim (struct command *cmd)	/* get room for array */
 {
 ...
@@ -204,7 +112,7 @@ dim (struct command *cmd)	/* get room for array */
 	The code will then crash when initializing the 8-byte buffer with <code>0x20000000</code> <code>0.0</code>s:
 </p>
 
-<pre><code class="language-c">	/* initialize Array */
+<pre><code class=language-c >	/* initialize Array */
 	for (i = 0; i < ntotal; i++) {
 		if (nar->type == 's') {
 			nul = my_malloc (sizeof (char));
@@ -219,14 +127,14 @@ dim (struct command *cmd)	/* get room for array */
 
 <br>
 
-<h2 href="exploiting-dim">Exploiting <code>dim</code></h2>
+<h2 href=exploiting-dim >Exploiting <code>dim</code></h2>
 <p>
 	Whilst it may not seem like it yet, the <code>dim</code> vulnerability gives us the most control, so it's the one we are going to move forward with.
 </p>
 
 <br>
 
-<h3 href="making-dim-bright">Making dim bright</h3>
+<h3 href=making-dim-bright >Making dim bright</h3>
 <p>
 	The above crash isn't very useful; let's see if we can control the contents instead of just writing <code>0.0</code>, or can prevent initialization.
 </p>
@@ -235,7 +143,7 @@ dim (struct command *cmd)	/* get room for array */
 	The <code>dim</code> command can also used to resize an existing array (it can only be grown, not shrunk), so my first idea was to declare a normal array and then resize it to invalid size, but this doesn't really solve the problem as it will still crash at initializing with <code>0.0</code> before the copy occurs:
 </p>
 
-<pre><code class="language-c">	/* initialize Array */
+<pre><code class=language-c >	/* initialize Array */
 	for (i = 0; i < ntotal; i++) {
 		if (nar->type == 's') {
 			nul = my_malloc (sizeof (char));
@@ -294,7 +202,7 @@ next i</code></pre>
 
 <br>
 
-<h3 id="relative">Relative to absolute read/write</h3>
+<h3 id=relative >Relative to absolute read/write</h3>
 <p>
 	Before we move onto using the vulnerability to perform any corruption, we need to know how to access arbitrary memory addresses relative to our buffer; for this, we just need to know where our array buffer is allocated.
 </p>
@@ -319,7 +227,7 @@ next i</code></pre>
 
 <br>
 
-<h3 id="hijacking">Hijacking control flow</h3>
+<h3 id=hijacking >Hijacking control flow</h3>
 <p>
 	With arbitrary read/write, let's move onto hijacking control flow. The obvious corruption target for this is a return address on the stack.
 </p>
@@ -383,7 +291,7 @@ pcsx2!AmdPowerXpressRequestHighPerformance+0x1abfc0e:
 
 <br>
 
-<h3 id="double">Double trouble</h3>
+<h3 id=double >Double trouble</h3>
 <p>
 	When I said we had arbitrary read/write of the entire address space, I wasn't entirely accurate. We can access any 8-bytes in the address space, but only as a <code>double</code>. We need to convert back and forth via IEEE 754 encoding when reading or writing memory through our <code>double</code> array to access "native" memory, just like you would do with an undersized <code>Float64</code> typed array in a JavaScript engine 0-day.
 </p>
@@ -412,7 +320,7 @@ print 8.991e308 = 8.992e308
 
 <br>
 
-<h4 id="writing-native">Writing native memory</h4>
+<h4 id=writing-native >Writing native memory</h4>
 <p>
 	Not being able to write arbitrary values is a big problem when trying to corrupt data structures, and it imposes large restrictions on the payload we can write.
 </p>
@@ -425,7 +333,7 @@ print 8.991e308 = 8.992e308
 	However, after setting some memory breakpoints, I quickly found the Yabasic source code that parses <code>double</code>s and realized that it's a <code>sscanf</code> call, meaning that its behaviour can be influenced just by changing the data passed to argument 2:
 </p>
 
-<pre><code class="language-c">case 200:
+<pre><code class=language-c >case 200:
 YY_RULE_SETUP
 {
   { double d;
@@ -460,7 +368,7 @@ x(0, 535696769) = 2261634.0035834485</code></pre>
 
 <br>
 
-<h4 id="reading-native">Reading native memory</h4>
+<h4 id=reading-native >Reading native memory</h4>
 <p>
 	Whilst not necessary if just writing and executing a payload, it may be useful to be able to read native memory too for debugging purposes when developing the exploit.
 </p>
@@ -469,7 +377,7 @@ x(0, 535696769) = 2261634.0035834485</code></pre>
 	Just like our patch for writing native memory, we'll aim to patch a format specifier instead of code itself to prevent cache coherency issues. This time we want to replace conversion of <code>double</code> to string with conversion of native number to string. In Yabasic, this conversion is done here:
 </p>
 
-<pre><code class="language-c">	case 'd':			/* print double value */
+<pre><code class=language-c >	case 'd':			/* print double value */
 		p = pop(stNUMBER);
 		d = p->value;
 		n = (int)d;
@@ -490,7 +398,7 @@ x(0, 535696769) = 2261634.0035834485</code></pre>
 	However, there is function <code>myformat</code> we can attack, it has a whitelist of allowed formats we can patch:
 </p>
 
-<pre><code class="language-c">		if (!strchr ("feEgG", c1) || form[i]) {
+<pre><code class=language-c >		if (!strchr ("feEgG", c1) || form[i]) {
 			return FALSE;
 		}
 		/* seems okay, let's print */
@@ -520,7 +428,7 @@ print x(0, 535777310) using "%0.8x"</code></pre>
 
 <br>
 
-<h2 id="ace">Arbitrary code execution</h2>
+<h2 id=ace >Arbitrary code execution</h2>
 <p>
 	With unrestricted arbitrary write, we can begin testing arbitrary code execution! For our first PoC, let's just write the address of the return address we corrupted to our unused memory address <code>0x480000</code>, and then return gracefully, so that we can inspect it in our "debugger" window.
 </p>
@@ -580,7 +488,7 @@ x(0,2509972)=550340272.0
 
 <br>
 
-<h2 id="payload">Using strings in payloads</h2>
+<h2 id=payload >Using strings in payloads</h2>
 <p>
 	Now that we can exploit Yabasic to run arbitrary native code, we need to write a payload which can load an ELF from a controlled source (USB, HDD, ethernet, iLink, burned disc). Whilst there's not really a hard limit on the size of the payload, preferably it should be as small as possible to prevent needing to type out too much.
 </p>
@@ -669,5 +577,3 @@ s$="cdrom0:\FIFADEMO\GAMEZ.ELF"</code></pre>
 		</div>
 
 		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>

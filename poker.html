@@ -1,57 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<title>How I hacked an online Poker site!</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>How I hacked an online Poker site!</h1>
-				<span class="date">Initial publication: March 28th, 2022</span>
-				<hr>
-
-<p>I&#39;ve recently started going through a bit of a Poker phase, and have been playing online using the website Replay Poker. This site isn&#39;t a real money gambling site, but just a place where you can play Poker with unwithdrawable in-game chips. Nevertheless, people do pay real money to gain more of these chips, so they&#39;re not exactly valueless.</p>
-
-<br>
-
-<h2 id="profile-page-hand-links">Profile page hand links</h2>
-<p>One day I browse to the <a href="https://www.replaypoker.com/profile/CTurt">profile page</a>, and notice there&#39;s an &quot;About Me&quot; input field I can control. Naturally, I spam a bunch of characters in there to see what would happen.</p>
-
-<p>Whilst there&#39;s some server side filtering of HTML tags, there was one thing that warranted a deeper investigation: when you mention a previous hand in the format <code>#n</code>, it will automatically insert a link to the replay of that hand (<a href="https://www.replaypoker.com/hand/replay/n">https://www.replaypoker.com/hand/replay/n</a>). This also works when sending messages to other players.</p>
-
-<p>I quickly realized that the sanitization wasn&#39;t quite right here, as this can be abused to link to other pages on the site. For example, <code>#69/../../../logout</code> would create a link that logs out the user when clicked.</p>
-
-<p>After a little more playing around, I discovered that if you add a <code>&quot;</code> character, you can close the link&#39;s <code>href</code> property and insert another property! For example, we can stylize the link to be red, however by doing this the link&#39;s display text will change to the rather conspicuous <code>https://www.replaypoker.com/hand/replay/69/../../../logout&quot;style=color:red;&quot;</code>:</p>
-
-<pre><code>#69/../../../logout"style=color:red;"</code></pre>
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <title>How I hacked an online Poker site!</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>How I hacked an online Poker site!</h1> <span class=date >Initial publication: March 28th, 2022</span> <hr> <p>I&#39;ve recently started going through a bit of a Poker phase, and have been playing online using the website Replay Poker. This site isn&#39;t a real money gambling site, but just a place where you can play Poker with unwithdrawable in-game chips. Nevertheless, people do pay real money to gain more of these chips, so they&#39;re not exactly valueless.</p> <br> <h2 id=profile-page-hand-links >Profile page hand links</h2> <p>One day I browse to the <a href="https://www.replaypoker.com/profile/CTurt">profile page</a>, and notice there&#39;s an &quot;About Me&quot; input field I can control. Naturally, I spam a bunch of characters in there to see what would happen.</p> <p>Whilst there&#39;s some server side filtering of HTML tags, there was one thing that warranted a deeper investigation: when you mention a previous hand in the format <code>#n</code>, it will automatically insert a link to the replay of that hand (<a href="https://www.replaypoker.com/hand/replay/n">https://www.replaypoker.com/hand/replay/n</a>). This also works when sending messages to other players.</p> <p>I quickly realized that the sanitization wasn&#39;t quite right here, as this can be abused to link to other pages on the site. For example, <code>#69/../../../logout</code> would create a link that logs out the user when clicked.</p> <p>After a little more playing around, I discovered that if you add a <code>&quot;</code> character, you can close the link&#39;s <code>href</code> property and insert another property! For example, we can stylize the link to be red, however by doing this the link&#39;s display text will change to the rather conspicuous <code>https://www.replaypoker.com/hand/replay/69/../../../logout&quot;style=color:red;&quot;</code>:</p> <pre><code>#69/../../../logout"style=color:red;"</code></pre>
 <br>
 
 <br>
 
-<h2 id="xss">XSS</h2>
+<h2 id=xss >XSS</h2>
 <p>Anyway, it should be pretty clear at this point that we can use this primitive to inject JavaScript code. We do have to avoid certain characters like spaces and quotes, but this doesn't limit the potential of our payload because you could always access these characters indirectly (EG: <code>String.fromCharCode(0x20)</code>).</p>
 
 	<p>
@@ -65,7 +17,7 @@
 
 <br>
 
-<h2 id="stealth">Making it more stealthy</h2>
+<h2 id=stealth >Making it more stealthy</h2>
 <p>On the profile page, these &quot;About Me&quot; texts start off truncated to 5 lines, with a button to display &quot;more&quot;. If we place the link at the end of where the text will be cut-off, the <code>onmouseover</code> part won&#39;t be displayed initially.<p>
 
 <p>Doing so also has another benefit: if the user clicks &quot;more&quot;, the next line to be displayed (the rest of our link) will occupy where the button previously was, immediately triggering the <code>mouseover</code> event without the user's knowledge!</p>
@@ -84,7 +36,7 @@
 
 <br>
 
-<h2 id="final-exploit">Final exploit</h2>
+<h2 id=final-exploit >Final exploit</h2>
 <p>The final profile text I came up with looks like this:</p>
 
 <pre><code>Welcome to my profile page.
@@ -96,8 +48,8 @@ bla bla bla
 <br>
 
 
-				<div class="center">
-					<iframe class="youtube" width="560" height="315" src="https://www.youtube.com/embed/TtCRfgCFREY" frameborder="0" allowfullscreen></iframe>
+				<div class=center >
+					<iframe class=youtube  width=560  height=315  src="https://www.youtube.com/embed/TtCRfgCFREY" frameborder=0  allowfullscreen></iframe>
 				</div>
 
 <br>
@@ -106,12 +58,10 @@ bla bla bla
 
 <br>
 
-<h2 id="disclosure">Disclosure</h2>
+<h2 id=disclosure >Disclosure</h2>
 <p>Instead of trying to ransom players for their accounts back, I decided to report the vulnerability to support@replaypoker.com the day of identifying it.</p>
 
 <p>They fixed it a couple of days later, and offered to give me a public acknowledgement on their site.</p>
 
 </div>
 		</div>
-	</body>
-</html>

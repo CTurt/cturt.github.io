@@ -1,80 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</title>
-	</head>
-	
-	<body>
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="index.html" class="header-element">
-						Home
-					</a>
-				</div>
-				
-				<h1>Analysis of CVE-2016-1886, <code>SETFKEY</code> FreeBSD kernel vulnerability</h1>
-				<span class="date">Initial publication: May 18th, 2016</span>
-				<hr>
-
-				<h2>Introduction</h2>
-				<p>
-					Every FreeBSD keyboard driver exposes its own <code>ioctl</code> interface to allow it to be configured from userland (through the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=kbdcontrol&amp;apropos=0&amp;sektion=1&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">kbdcontrol</a></code> utility for example). Typically, these <code>ioctl</code> handlers will implement any specific commands for the hardware, such as <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L898">enabling or disabling LEDs</a>, and will <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L981">delegate the rest of the commands to a common handler</a>, called <code>genkbd_commonioctl</code>.
-				</p>
-
-				<p>
-					I discovered a vulnerability in this common handler, which has been present since <a href="https://github.com/freebsd/freebsd/commit/f10c5df4354e9dcf241989c9490f57fcd2ced1fc#diff-098700524e1f7ee46a26bd3432ee17a4R885">the driver's introduction in 1999</a>.
-				</p>
-				
-				<p>
-					Due to a poor default <code>sysctl</code> variable, this bug can be triggered by an unprivileged user, so long as at least one keyboard driver is running (by default the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=atkbd&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">atkbd</a></code> driver is used), making its impact critical.
-				</p>
-				
-				<p>
-					I decided to report this bug to the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a> on April 22, 2016, the day after I had discovered it, and was able to exploit it about a week later. It has been assigned <a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-1886">CVE-2016-1886</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:18.atkbd.asc">Security Advisory 16:18</a>.
-				</p>
-				
-				<p>
-					In this article I will provide an explanation of the bug, and some of the methods which I considered for exploitation, including the one I had success with: using the corrupted <code>len</code> member of a <code>keytab</code> to trigger a powerful two way heap and stack overflow.
-				</p>
-				
-				<p>
-					As always, since my interest is just in finding and analysing bugs, and not in publishing any fully weaponised exploit source code, the aim of this article will just be to demonstrate the impact of the bug by gaining kernel code execution as an unprivileged user; I will leave any further development, such as privilege escalation and cleanly returning from the payload, as an exercise for the reader.
-				</p>
-				
-				<p>
-					All details and code excerpts for this article have been taken from FreeBSD 10.2-RELEASE (amd64), however, the vulnerability is present up to version 10.3 as well, and for all architectures supported by FreeBSD.
-				</p>
-				
-				<br>
-
-				<h2>Background</h2>
-				<p>
-					The <code><a href="https://www.freebsd.org/cgi/man.cgi?query=keyboard&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">keyboard</a></code> kernel struct contains a pointer to an array of tables, which are used to describe the function of a particular key. This array is allocated on the heap, with <code>16</code> bytes reserved for each description.
-				</p>
-
-				<p>
-					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L103">sys/sys/kbio.h</a></code>:
-				</p>
-
-				<pre><code class="language-c">#define MAXFK           16</code></pre>
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Analysis of CVE-2016-1886, SETFKEY FreeBSD kernel vulnerability</title> <div class=page > <div class=container > <div class=header > <a href=contact.html  class=header-element > Contact </a> <a href=about.html  class=header-element > About </a> <a href=articles.html  class=header-element > Articles </a> <a href=index.html  class=header-element > Home </a> </div> <h1>Analysis of CVE-2016-1886, <code>SETFKEY</code> FreeBSD kernel vulnerability</h1> <span class=date >Initial publication: May 18th, 2016</span> <hr> <h2>Introduction</h2> <p> Every FreeBSD keyboard driver exposes its own <code>ioctl</code> interface to allow it to be configured from userland (through the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=kbdcontrol&amp;apropos=0&amp;sektion=1&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">kbdcontrol</a></code> utility for example). Typically, these <code>ioctl</code> handlers will implement any specific commands for the hardware, such as <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L898">enabling or disabling LEDs</a>, and will <a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/atkbdc/atkbd.c#L981">delegate the rest of the commands to a common handler</a>, called <code>genkbd_commonioctl</code>. </p> <p> I discovered a vulnerability in this common handler, which has been present since <a href="https://github.com/freebsd/freebsd/commit/f10c5df4354e9dcf241989c9490f57fcd2ced1fc#diff-098700524e1f7ee46a26bd3432ee17a4R885">the driver's introduction in 1999</a>. </p> <p> Due to a poor default <code>sysctl</code> variable, this bug can be triggered by an unprivileged user, so long as at least one keyboard driver is running (by default the <code><a href="https://www.freebsd.org/cgi/man.cgi?query=atkbd&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">atkbd</a></code> driver is used), making its impact critical. </p> <p> I decided to report this bug to the <a href="https://www.freebsd.org/security/reporting.html">FreeBSD Security Team</a> on April 22, 2016, the day after I had discovered it, and was able to exploit it about a week later. It has been assigned <a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-1886">CVE-2016-1886</a> and <a href="https://www.freebsd.org/security/advisories/FreeBSD-SA-16:18.atkbd.asc">Security Advisory 16:18</a>. </p> <p> In this article I will provide an explanation of the bug, and some of the methods which I considered for exploitation, including the one I had success with: using the corrupted <code>len</code> member of a <code>keytab</code> to trigger a powerful two way heap and stack overflow. </p> <p> As always, since my interest is just in finding and analysing bugs, and not in publishing any fully weaponised exploit source code, the aim of this article will just be to demonstrate the impact of the bug by gaining kernel code execution as an unprivileged user; I will leave any further development, such as privilege escalation and cleanly returning from the payload, as an exercise for the reader. </p> <p> All details and code excerpts for this article have been taken from FreeBSD 10.2-RELEASE (amd64), however, the vulnerability is present up to version 10.3 as well, and for all architectures supported by FreeBSD. </p> <br> <h2>Background</h2> <p> The <code><a href="https://www.freebsd.org/cgi/man.cgi?query=keyboard&amp;apropos=0&amp;sektion=4&amp;manpath=FreeBSD+10.2-RELEASE&amp;arch=default&amp;format=html">keyboard</a></code> kernel struct contains a pointer to an array of tables, which are used to describe the function of a particular key. This array is allocated on the heap, with <code>16</code> bytes reserved for each description. </p> <p> <code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L103">sys/sys/kbio.h</a></code>: </p> <pre><code class=language-c >#define MAXFK           16</code></pre>
 
 				<br>
 
@@ -82,7 +6,7 @@
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbdreg.h#L52">sys/dev/kbd/kbdreg.h</a></code>:
 				</p>
 
-				<pre><code class="language-c">typedef struct keyboard keyboard_t;
+				<pre><code class=language-c >typedef struct keyboard keyboard_t;
 
 ...
 
@@ -99,7 +23,7 @@ struct keyboard {
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L218">sys/sys/kbio.h</a></code>:
 				</p>
 
-				<pre><code class="language-c">struct fkeytab {
+				<pre><code class=language-c >struct fkeytab {
 	u_char		str[MAXFK];
 	u_char		len;
 };</code></pre>
@@ -114,7 +38,7 @@ struct keyboard {
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L837">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code class="language-c">int
+				<pre><code class=language-c >int
 genkbd_commonioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 {
 	keymap_t *mapp;
@@ -181,7 +105,7 @@ genkbd_commonioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/kbio.h#L224">sys/sys/kbio.h</a></code>:
 				</p>
 
-				<pre><code class="language-c">struct fkeyarg {
+				<pre><code class=language-c >struct fkeyarg {
     u_short         keynum;
     char            keydef[MAXFK];
     char            flen;
@@ -199,7 +123,7 @@ typedef struct fkeyarg  fkeyarg_t;</code></pre>
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L85">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code class="language-c">SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
+				<pre><code class=language-c >SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
     &amp;keymap_restrict_change, 0, "restrict ability to change keymap");
 
 ...
@@ -242,7 +166,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					The handler attempts to do this by using <code>imin</code> to provide an upper limit of <code>MAXFK</code>. The problem is that no part of this code checks for negative values of <code>fkeyp->flen</code>!
 				</p>
 				
-				<pre><code class="language-c">kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);</code></pre>
+				<pre><code class=language-c >kbd->kb_fkeytab[fkeyp->keynum].len = imin(fkeyp->flen, MAXFK);</code></pre>
 				
 				<br>
 				
@@ -254,7 +178,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L57">sys/sys/libkern.h</a></code>:
 				</p>
 
-				<pre><code class="language-c">static __inline int imin(int a, int b) { return (a &lt; b ? a : b); }</code></pre>
+				<pre><code class=language-c >static __inline int imin(int a, int b) { return (a &lt; b ? a : b); }</code></pre>
 
 				<br>
 
@@ -281,7 +205,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/sys/libkern.h#L61">sys/sys/libkern.h</a></code>:
 				</p>
 
-				<pre><code class="language-c">static __inline u_int min(u_int a, u_int b) { return (a &lt; b ? a : b); }</code></pre>
+				<pre><code class=language-c >static __inline u_int min(u_int a, u_int b) { return (a &lt; b ? a : b); }</code></pre>
 
 				<br>
 				
@@ -304,7 +228,7 @@ fkey_change_ok(fkeytab_t *oldkey, fkeyarg_t *newkey, struct thread *td)
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/kern/sys_generic.c#L660">sys/kern/sys_generic.c</a></code>:
 				</p>
 
-				<pre><code class="language-c">int
+				<pre><code class=language-c >int
 sys_ioctl(struct thread *td, struct ioctl_args *uap)
 {
 	u_char smalldata[SYS_IOCTL_SMALL_SIZE] __aligned(SYS_IOCTL_SMALL_ALIGN);
@@ -373,7 +297,7 @@ out:
 					Immediately after setting the new length in <code>SETFKEY</code>, a <code>bcopy</code> will be performed from the user supplied <code>keydef</code> in the <code>ioctl</code> argument buffer on the stack, into the key description heap array.
 				</p>
 				
-				<pre><code class="language-c">bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
+				<pre><code class=language-c >bcopy(fkeyp->keydef, kbd->kb_fkeytab[fkeyp->keynum].str,
 	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
 				
 				<br>
@@ -393,7 +317,7 @@ out:
 					<code><a href="https://github.com/freebsd/freebsd/blob/release/10.2.0/sys/dev/kbd/kbd.c#L976">sys/dev/kbd/kbd.c</a></code>:
 				</p>
 
-				<pre><code class="language-c">bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
+				<pre><code class=language-c >bcopy(kbd->kb_fkeytab[fkeyp->keynum].str, fkeyp->keydef,
 	kbd->kb_fkeytab[fkeyp->keynum].len);</code></pre>
 				
 				<br>
@@ -463,7 +387,7 @@ out:
 					Below is some PoC code to demonstrate overflowing into a <code>keytab</code> with controlled contents:
 				</p>
 				
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+				<pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
 #include &lt;errno.h&gt;
@@ -563,7 +487,7 @@ flen: 16</code></pre>
 				
 				<br>
 				
-				<h3 id="frame">Stack frame</h3>
+				<h3 id=frame >Stack frame</h3>
 				<p>
 					By corrupting the key description's <code>len</code> value to be anything greater than <code>(128 - offsetof(fkeyarg_t, keydef) = 126)</code>, we will extend the stack overflow past the <code>smalldata</code> buffer into the rest of the stack frame.
 				</p>
@@ -588,7 +512,7 @@ rip (8)</code></pre>
 					The following PoC demonstrates this by leaking the stack guard.
 				</p>
 				
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+				<pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
 #include &lt;errno.h&gt;
@@ -647,9 +571,9 @@ int main(void) {
 				</p>
 				
 				<ul>
-					<li>Use <code>SETFKEY</code> to corrupt the length of a <code>keytab</code> and overflow from the stack onto the heap,</li>
-					<li>Modify any values in the heap data using <code>SETFKEY</code> on higher <code>keytab</code>s,</li>
-					<li>Use <code>GETFKEY</code> to overflow from the heap back onto the stack using the previously set length,</li>
+					<li>Use <code>SETFKEY</code> to corrupt the length of a <code>keytab</code> and overflow from the stack onto the heap,
+					<li>Modify any values in the heap data using <code>SETFKEY</code> on higher <code>keytab</code>s,
+					<li>Use <code>GETFKEY</code> to overflow from the heap back onto the stack using the previously set length,
 				</ul>
 				
 				<p>
@@ -690,7 +614,7 @@ FFFFFFFF80BBF2CC                 call    rax</code></pre>
 					The following PoC demonstrates gaining kernel code execution from the bug on 10.2-RELEASE for amd64:
 				</p>
 				
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+				<pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
@@ -798,7 +722,7 @@ int main(void) {
 					However, since my interest is just in demonstrating the impact of the bug, and not in creating fully weaponised source code, I decided to instead just use <code>swapgs</code> and <code>sysret</code> to return to userland with incorrect registers.
 				</p>
 				
-				<pre><code class="language-c">__asm__ volatile("swapgs; sysret");</code></pre>
+				<pre><code class=language-c >__asm__ volatile("swapgs; sysret");</code></pre>
 				
 				<br>
 				
@@ -810,7 +734,7 @@ int main(void) {
 					This final PoC demonstrates using kernel code execution to modify a read only <code>sysctl</code> variable, and then reading it from a separate userland process. I've also included code to read the original stack variables, just in case anyone wants to try using them to return from the payload properly.
 				</p>
 				
-				<pre><code class="language-c">#include &lt;stdio.h&gt;
+				<pre><code class=language-c >#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;stddef.h&gt;
 #include &lt;string.h&gt;
@@ -922,7 +846,7 @@ int main(void) {
 				
 				<br>
 				
-				<div class="center">
+				<div class=center >
 					<img src="images/FreeBSD/SETFKEY.png" />
 				</div>
 				
@@ -940,5 +864,3 @@ int main(void) {
 		</div>
 
 		<script src="js/prism.js" type="text/javascript"></script>
-	</body>
-</html>

